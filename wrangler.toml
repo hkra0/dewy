@@ -1,0 +1,13 @@
+name = "dewy-worker"
+main = "worker.js"
+compatibility_date = "2024-03-20"
+
+[vars]
+PI_TUNNEL_URL = ""
+PI_IMAGE_URL = ""
+PI_HISTORY_URL = ""
+
+# The following secrets should be set via `wrangler secret put <NAME>`
+# PI_SECRET_TOKEN
+# VIEWER_MAGIC_KEY
+# WATER_MAGIC_KEY
