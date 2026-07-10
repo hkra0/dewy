@@ -395,6 +395,12 @@
                 });
                 const data = await res.json();
                 
+                if (data.error) {
+                    console.error('API Error:', data.error);
+                    document.getElementById('chart-loading').innerText = 'Data fetch failed: ' + data.error;
+                    return;
+                }
+
                 // 存入内存缓存
                 historyCache[reqType] = data;
 
