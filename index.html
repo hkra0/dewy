@@ -428,8 +428,15 @@
             'watering': null
         };
 
-        function switchTab(tabName) {
+        function switchTab(tabName, pushState = true) {
             currentTab = tabName;
+            
+            if (pushState) {
+                const newPath = tabName === 'plant' ? '/' : `/${tabName}`;
+                if (window.location.pathname !== newPath) {
+                    history.pushState({ tab: tabName }, '', newPath);
+                }
+            }
             const hasKey = !!localStorage.getItem(STORAGE_KEY);
 
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
@@ -838,9 +845,27 @@
             if (btn) btn.innerText = 'refresh';
         }
 
+        window.addEventListener('popstate', (e) => {
+            if (e.state && e.state.tab) {
+                switchTab(e.state.tab, false);
+            } else {
+                const path = window.location.pathname;
+                let tab = 'plant';
+                if (path === '/system') tab = 'system';
+                else if (path === '/history') tab = 'history';
+                switchTab(tab, false);
+            }
+        });
+
         window.onload = () => {
             checkMagicLink();
-            switchTab('plant');
+            
+            const path = window.location.pathname;
+            let initialTab = 'plant';
+            if (path === '/system') initialTab = 'system';
+            else if (path === '/history') initialTab = 'history';
+            
+            switchTab(initialTab, false);
             fetchAllData(true);
         };
     </script>
