@@ -2,8 +2,8 @@ name = 'dewy'
 main = "worker.js"
 compatibility_date = "2024-03-20"
 
-[vars]
-PI_BASE_URL = ""
+# [vars]
+# PI_BASE_URL = ""
 
 # The following secrets should be set via `wrangler secret put <NAME>`
 # PI_SECRET_TOKEN
