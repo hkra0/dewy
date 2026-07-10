@@ -18,7 +18,7 @@ except ImportError:
 app = FastAPI(title="Robin Plant Monitor BFF")
 
 class WaterRequest(BaseModel):
-    duration: float = 1.0
+    duration: float = 0.5
 
 # ==================== 统一路径与硬件锁配置 ====================
 DATA_DIR = "/home/hkra/dewy/data"
@@ -36,7 +36,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # ==================== 自动浇水配置 ====================
 PIN_PUMP = 4
 WATERING_THRESHOLD = 70.0  
-WATERING_DURATION = 1      
+WATERING_DURATION = 0.5      
 
 if GPIO:
     GPIO.setwarnings(False)
