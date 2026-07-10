@@ -34,6 +34,9 @@ export default {
             if (url.pathname === "/api/monitor" || url.pathname === "/api/history") {
                 newHeaders.set("Accept", "application/json");
             }
+            if (request.headers.has("Content-Type")) {
+                newHeaders.set("Content-Type", request.headers.get("Content-Type"));
+            }
             
             try {
                 const piResponse = await fetch(targetURL, {

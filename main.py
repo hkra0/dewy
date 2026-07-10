@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 import uvicorn
 
 try:
@@ -15,6 +16,9 @@ except ImportError:
     GPIO = None
 
 app = FastAPI(title="Robin Plant Monitor BFF")
+
+class WaterRequest(BaseModel):
+    duration: float = 1.0
 
 # ==================== 统一路径与硬件锁配置 ====================
 DATA_DIR = "/home/hkra/dewy/data"
@@ -224,20 +228,20 @@ def can_water_now():
     except Exception:
         return False
 
-def trigger_watering(soil_before):
+def trigger_watering(soil_before, duration=WATERING_DURATION):
     if not GPIO: return False
     with pump_lock:
         try:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] 💦 开启水泵 (OUT / LOW)")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] 💦 开启水泵 (OUT / LOW), 时长: {duration}s")
             GPIO.setup(PIN_PUMP, GPIO.OUT)
             GPIO.output(PIN_PUMP, GPIO.LOW)
-            time.sleep(WATERING_DURATION)
+            time.sleep(duration)
             print(f"[{datetime.now().strftime('%H:%M:%S')}] 🛑 关闭水泵 (切回 IN)")
             GPIO.setup(PIN_PUMP, GPIO.IN)
             
             conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO watering_log (duration, soil_before) VALUES (?, ?)", (WATERING_DURATION, soil_before))
+            cursor.execute("INSERT INTO watering_log (duration, soil_before) VALUES (?, ?)", (duration, soil_before))
             conn.commit()
             conn.close()
             return True
@@ -365,15 +369,18 @@ def get_history_data(hist_type: str = "24h", x_bff_to_pi_token: str = Header(Non
 
 # 手动浇水 API
 @app.post("/api/water")
-def trigger_manual_watering(x_bff_to_pi_token: str = Header(None)):
+def trigger_manual_watering(req: WaterRequest, x_bff_to_pi_token: str = Header(None)):
     if x_bff_to_pi_token != PI_SECRET_TOKEN: 
         raise HTTPException(status_code=403, detail="Forbidden")
     
+    # 限制浇水时长不超过 1 秒，防止意外水漫金山
+    duration = max(0.1, min(req.duration, 1.0))
+
     # 快速读取当前湿度用于日志记录 (减少采样次数避免接口卡顿)
     with sensor_lock:
         soil_pct = soil.read_moisture(samples=5)
         
-    success = trigger_watering(soil_pct if soil_pct is not None else -1.0)
+    success = trigger_watering(soil_pct if soil_pct is not None else -1.0, duration)
     
     if success:
         return {"status": "success"}

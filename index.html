@@ -97,6 +97,10 @@
                 <div id="cam-timestamp"></div> 
             </div>
             <div class="card full-width hidden" id="water-block">
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+                    <label for="water-duration" style="flex: 1; font-size: 14px; color: #94a3b8;">Duration (s):</label>
+                    <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="1.0" style="width: 70px; padding: 8px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; outline: none;">
+                </div>
                 <button class="action-btn" id="water-btn" style="background: #3b82f6; margin-top: 0; padding: 16px; font-size: 15px;" onclick="triggerWatering()">💧 Water Plant</button>
             </div>
         </div>
@@ -127,7 +131,7 @@
             </div>
         </div>
         
-        <button class="action-btn" onclick="fetchAllData(true)">refresh</button>
+        <button class="action-btn" id="refresh-btn" onclick="fetchAllData(true)">refresh</button>
         <div class="status-bar" id="update-time">not synced</div>
     </div>
 
@@ -219,14 +223,18 @@
             
             const btn = document.getElementById('water-btn');
             const originalText = btn.innerText;
-            btn.innerText = '💧 Watering...';
             btn.disabled = true;
-            btn.style.opacity = '0.7';
-
+            const durationInput = document.getElementById('water-duration');
+            let duration = parseFloat(durationInput.value) || 1.0;
+            if (duration < 0.1) duration = 0.1;
+            if (duration > 1.0) duration = 1.0;
+            
+            btn.innerText = 'watering...';
             try {
                 const res = await fetch('/api/water', {
                     method: 'POST',
-                    headers: { 'x-water-key': waterKey }
+                    headers: { 'x-water-key': waterKey, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ duration: duration })
                 });
                 
                 if (res.ok) {
@@ -544,14 +552,14 @@
         function closeHD() { document.getElementById('hd-modal').style.display = 'none'; }
 
         async function fetchAllData(forceLive = false) {
-            const btn = document.querySelector('.action-btn');
-            btn.innerText = 'syncing...';
+            const btn = document.getElementById('refresh-btn');
+            if (btn) btn.innerText = 'syncing...';
             
             await fetchSensorData();
             if (currentTab === 'plant') await fetchImage(forceLive);
             if (currentTab === 'history') await fetchHistoryData();
             
-            btn.innerText = 'refresh';
+            if (btn) btn.innerText = 'refresh';
         }
 
         window.onload = () => {
