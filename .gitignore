@@ -27,3 +27,7 @@ package-lock.json
 .idea/
 *.swp
 *.swo
+
+# Cloudflare Wrangler
+.wrangler/
+.dev.vars
