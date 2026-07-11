@@ -9,6 +9,8 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import uvicorn
+import paho.mqtt.client as mqtt
+import json
 
 try:
     import RPi.GPIO as GPIO
@@ -29,9 +31,13 @@ DB_FILE = f"{DATA_DIR}/plant_history.db"
 sensor_lock = threading.Lock()
 camera_lock = threading.Lock()
 pump_lock = threading.Lock()
+esp32_lock = threading.Lock()
 PI_SECRET_TOKEN = "hKra_Secure_Sensor_2026_Token"
 
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# ESP32 实时数据缓存
+esp32_latest = {"temperature": "--", "humidity": "--", "pressure": "--"}
 
 # ==================== 自动浇水配置 ====================
 PIN_PUMP = 4
@@ -194,6 +200,15 @@ def init_db():
             soil_before REAL
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS esp32_env_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            temperature REAL,
+            humidity REAL,
+            pressure REAL
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -272,6 +287,20 @@ def background_logger():
                 VALUES (?, ?, ?, ?, ?)
             ''', (temp, rh, soil_pct, v, c))
             clean_soil_anomalies(cursor)
+            
+            # 保存 ESP32 历史数据
+            with esp32_lock:
+                e_temp = esp32_latest.get("temperature")
+                e_hum = esp32_latest.get("humidity")
+                e_pres = esp32_latest.get("pressure")
+            
+            # 如果从没收到过数据或为 "--"，则记为 None
+            if e_temp != "--" and e_hum != "--" and e_pres != "--":
+                cursor.execute('''
+                    INSERT INTO esp32_env_log (temperature, humidity, pressure)
+                    VALUES (?, ?, ?)
+                ''', (e_temp, e_hum, e_pres))
+
             conn.commit()
             conn.close()
             print(f"[{now.strftime('%H:%M:%S')}] 💾 数据归档")
@@ -284,9 +313,37 @@ def background_logger():
         if sleep_sec < 1: sleep_sec += 600
         time.sleep(sleep_sec)
 
+def on_mqtt_connect(client, userdata, flags, reason_code, properties):
+    if reason_code == 0:
+        print("✅ 已成功连接到本地 MQTT Broker")
+        client.subscribe("sensor/esp32/env_data")
+    else:
+        print(f"❌ 连接失败，返回码: {reason_code}")
+
+def on_mqtt_message(client, userdata, msg):
+    try:
+        payload = msg.payload.decode("utf-8")
+        data = json.loads(payload)
+        with esp32_lock:
+            esp32_latest["temperature"] = data.get('temperature', "--")
+            esp32_latest["humidity"] = data.get('humidity', "--")
+            esp32_latest["pressure"] = data.get('pressure', "--")
+    except Exception as e:
+        pass
+
 @app.on_event("startup")
 def start_background_logger():
     threading.Thread(target=background_logger, daemon=True).start()
+    
+    # 初始化 MQTT 客户端
+    try:
+        mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        mqtt_client.on_connect = on_mqtt_connect
+        mqtt_client.on_message = on_mqtt_message
+        mqtt_client.connect("127.0.0.1", 1883, 60)
+        mqtt_client.loop_start()
+    except Exception as e:
+        print(f"MQTT 启动失败: {e}")
 
 # ==================== API 路由 ====================
 @app.get("/api/monitor")
@@ -304,6 +361,7 @@ def get_monitor_data(x_bff_to_pi_token: str = Header(None)):
             "humidity": rh if rh is not None else "--", 
             "soil_moisture": soil_pct if soil_pct is not None else "--"
         },
+        "esp32": esp32_latest,
         "power": {"voltage": v, "current": c, "status": "监控中"},
         "system_health": get_system_stats(),
         "system": {"device": "Robin (Zero 2 WH)", "status": "Healthy"}
@@ -353,6 +411,29 @@ def get_history_data(hist_type: str = "24h", x_bff_to_pi_token: str = Header(Non
             conn.close()
             rows.reverse()
             return [{"time": r[0][5:], "temp": round(r[1], 1) if r[1] is not None else None, "hum": round(r[2], 1) if r[2] is not None else None, "soil": round(r[3], 1) if r[3] is not None else None} for r in rows]
+            
+        elif hist_type == "sub1_daily":
+            cursor.execute('''
+                SELECT date(timestamp, 'localtime') as day, AVG(temperature), AVG(humidity), AVG(pressure)
+                FROM esp32_env_log GROUP BY day ORDER BY day DESC LIMIT 30
+            ''')
+            rows = cursor.fetchall()
+            conn.close()
+            rows.reverse()
+            return [{"time": r[0][5:], "temp": round(r[1], 1) if r[1] is not None else None, "hum": round(r[2], 1) if r[2] is not None else None, "pressure": round(r[3], 1) if r[3] is not None else None} for r in rows]
+            
+        elif hist_type == "sub1_24h":
+            cursor.execute('''
+                SELECT datetime(timestamp, 'localtime'), temperature, humidity, pressure 
+                FROM esp32_env_log 
+                WHERE timestamp >= datetime('now', '-24 hours')
+                ORDER BY timestamp DESC
+            ''')
+            rows = cursor.fetchall()
+            conn.close()
+            rows.reverse()
+            return [{"time": r[0].split(" ")[1][:5] if " " in r[0] else r[0], "temp": round(r[1], 1) if r[1] is not None else None, "hum": round(r[2], 1) if r[2] is not None else None, "pressure": round(r[3], 1) if r[3] is not None else None} for r in rows]
+            
         else:
             cursor.execute('''
                 SELECT datetime(timestamp, 'localtime'), temperature, humidity, soil_moisture 

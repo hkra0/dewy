@@ -332,41 +332,63 @@
             <div class="nav-btn" onclick="switchTab('history')" id="tab-history">history</div>
         </div>
 
-        <div class="grid" id="view-plant">
-            <div class="card">
-                <div class="card-title">temperature</div>
-                <div class="card-value" id="temp">-- ℃</div>
+        <div id="view-plant">
+            <div class="sub-nav" id="plant-sub-nav">
+                <div class="sub-nav-btn active" id="plant-dev-main" onclick="switchDevice('main')">main</div>
+                <div class="sub-nav-btn" id="plant-dev-sub1" onclick="switchDevice('sub1')">sub1</div>
             </div>
-            <div class="card">
-                <div class="card-title">humidity</div>
-                <div class="card-value" id="env-humidity">-- %</div>
-            </div>
-            <div class="card full-width">
-                <div class="card-title">soil humidity</div>
-                <div class="card-value" style="color: #059669;" id="soil-humidity">-- %</div>
-            </div>
-            <div class="card full-width hidden" id="camera-block">
-                <div class="card-title">camera</div>
-                <div class="camera-container"><img id="cam-img" alt="camera view" onclick="fetchHDImage()" /></div>
-                <div id="cam-timestamp"></div>
-            </div>
-            <details class="card full-width hidden" id="water-block"
-                style="padding: 10px 15px; cursor: pointer; transition: all 0.3s;">
-                <summary style="font-weight: 600; color: #e2e8f0; outline: none; user-select: none;">manual watering
-                </summary>
-                <div
-                    style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; cursor: default;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label for="water-duration"
-                            style="font-size: 14px; color: #94a3b8; white-space: nowrap;">Duration (s):</label>
-                        <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5"
-                            style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; outline: none;">
-                    </div>
-                    <button class="action-btn" id="water-btn"
-                        style="background: #3b82f6; width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
-                        onclick="triggerWatering()">Water</button>
+            
+            <div class="grid" id="view-plant-main">
+                <div class="card">
+                    <div class="card-title">temperature</div>
+                    <div class="card-value" id="temp">-- ℃</div>
                 </div>
-            </details>
+                <div class="card">
+                    <div class="card-title">humidity</div>
+                    <div class="card-value" id="env-humidity">-- %</div>
+                </div>
+                <div class="card full-width">
+                    <div class="card-title">soil humidity</div>
+                    <div class="card-value" style="color: #059669;" id="soil-humidity">-- %</div>
+                </div>
+                <div class="card full-width hidden" id="camera-block">
+                    <div class="card-title">camera</div>
+                    <div class="camera-container"><img id="cam-img" alt="camera view" onclick="fetchHDImage()" /></div>
+                    <div id="cam-timestamp"></div>
+                </div>
+                <details class="card full-width hidden" id="water-block"
+                    style="padding: 10px 15px; cursor: pointer; transition: all 0.3s;">
+                    <summary style="font-weight: 600; color: #e2e8f0; outline: none; user-select: none;">manual watering
+                    </summary>
+                    <div
+                        style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; cursor: default;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label for="water-duration"
+                                style="font-size: 14px; color: #94a3b8; white-space: nowrap;">Duration (s):</label>
+                            <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5"
+                                style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; outline: none;">
+                        </div>
+                        <button class="action-btn" id="water-btn"
+                            style="background: #3b82f6; width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
+                            onclick="triggerWatering()">Water</button>
+                    </div>
+                </details>
+            </div>
+            
+            <div class="grid hidden" id="view-plant-sub1">
+                <div class="card full-width">
+                    <div class="card-title">temperature</div>
+                    <div class="card-value" style="color: #f59e0b;" id="sub1-temp">-- ℃</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">humidity</div>
+                    <div class="card-value" style="color: #3b82f6;" id="sub1-hum">-- %</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">pressure</div>
+                    <div class="card-value" style="color: #8b5cf6;" id="sub1-pres">-- hPa</div>
+                </div>
+            </div>
         </div>
 
         <div class="grid hidden" id="view-system">
@@ -392,10 +414,20 @@
             <div class="card full-width" style="padding-bottom: 20px;">
                 <div class="card-title">environmental trends</div>
 
-                <div class="sub-nav">
+                <div class="sub-nav" id="history-dev-nav">
+                    <div class="sub-nav-btn active" id="hist-dev-main" onclick="switchDevice('main')">main</div>
+                    <div class="sub-nav-btn" id="hist-dev-sub1" onclick="switchDevice('sub1')">sub1</div>
+                </div>
+
+                <div class="sub-nav" id="history-type-nav-main">
                     <div class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')">past 24h</div>
                     <div class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')">daily avg</div>
                     <div class="sub-nav-btn" id="hist-watering" onclick="switchHistType('watering')">watering log</div>
+                </div>
+                
+                <div class="sub-nav hidden" id="history-type-nav-sub1">
+                    <div class="sub-nav-btn active" id="hist-sub1_24h" onclick="switchHistType('sub1_24h')">past 24h</div>
+                    <div class="sub-nav-btn" id="hist-sub1_daily" onclick="switchHistType('sub1_daily')">daily avg</div>
                 </div>
 
                 <div class="chart-container" id="chart-container-wrapper">
@@ -420,13 +452,53 @@
         let myChart = null;
         let currentTab = 'plant';
         let currentHistType = '24h';
+        let currentDevice = 'main';
 
-        // 分离式内存缓存体系，分别记录 24h, daily, watering 的数据
+        // 分离式内存缓存体系
         const historyCache = {
             '24h': null,
             'daily': null,
-            'watering': null
+            'watering': null,
+            'sub1_24h': null,
+            'sub1_daily': null
         };
+
+        function switchDevice(dev) {
+            currentDevice = dev;
+            
+            // Plant View
+            document.getElementById('plant-dev-main').classList.remove('active');
+            document.getElementById('plant-dev-sub1').classList.remove('active');
+            document.getElementById('plant-dev-' + dev).classList.add('active');
+            
+            if (dev === 'main') {
+                document.getElementById('view-plant-main').classList.remove('hidden');
+                document.getElementById('view-plant-sub1').classList.add('hidden');
+            } else {
+                document.getElementById('view-plant-main').classList.add('hidden');
+                document.getElementById('view-plant-sub1').classList.remove('hidden');
+            }
+
+            // History View
+            const histDevMainBtn = document.getElementById('hist-dev-main');
+            if (histDevMainBtn) {
+                histDevMainBtn.classList.remove('active');
+                document.getElementById('hist-dev-sub1').classList.remove('active');
+                document.getElementById('hist-dev-' + dev).classList.add('active');
+
+                if (dev === 'main') {
+                    document.getElementById('history-type-nav-main').classList.remove('hidden');
+                    document.getElementById('history-type-nav-sub1').classList.add('hidden');
+                    if (currentHistType.startsWith('sub1_')) switchHistType('24h');
+                    else switchHistType(currentHistType);
+                } else {
+                    document.getElementById('history-type-nav-main').classList.add('hidden');
+                    document.getElementById('history-type-nav-sub1').classList.remove('hidden');
+                    if (!currentHistType.startsWith('sub1_')) switchHistType('sub1_24h');
+                    else switchHistType(currentHistType);
+                }
+            }
+        }
 
         function switchTab(tabName, pushState = true, skipFetch = false) {
             currentTab = tabName;
@@ -470,8 +542,9 @@
 
         function switchHistType(type) {
             currentHistType = type;
-            document.querySelectorAll('.sub-nav-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('hist-' + type).classList.add('active');
+            document.querySelectorAll('#history-type-nav-main .sub-nav-btn, #history-type-nav-sub1 .sub-nav-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById('hist-' + type);
+            if (activeBtn) activeBtn.classList.add('active');
 
             if (type === 'watering') {
                 document.getElementById('chart-container-wrapper').classList.add('hidden');
@@ -568,6 +641,12 @@
                 document.getElementById('temp').innerText = data.environment.temperature + ' ℃';
                 document.getElementById('env-humidity').innerText = data.environment.humidity + ' %';
                 document.getElementById('soil-humidity').innerText = data.environment.soil_moisture + ' %';
+                
+                if (data.esp32) {
+                    document.getElementById('sub1-temp').innerText = data.esp32.temperature + ' ℃';
+                    document.getElementById('sub1-hum').innerText = data.esp32.humidity + ' %';
+                    document.getElementById('sub1-pres').innerText = data.esp32.pressure + ' hPa';
+                }
 
                 const cVal = data.power.current;
                 document.getElementById('power-status').innerText = data.power.voltage + ' V / ' + (cVal > 0 ? '+' + cVal : cVal) + ' mA';
@@ -632,7 +711,19 @@
             const labels = chartData.map(d => d.time);
             const temps = chartData.map(d => d.temp);
             const hums = chartData.map(d => d.hum);
-            const soils = chartData.map(d => d.soil);
+            
+            const datasets = [
+                { label: 'temp (℃)', data: temps, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', tension: 0.4, pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 4, yAxisID: 'y', spanGaps: true },
+                { label: 'hum (%)', data: hums, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 4, yAxisID: 'y1', spanGaps: true }
+            ];
+
+            if (type.startsWith('sub1_')) {
+                const press = chartData.map(d => d.pressure);
+                datasets.push({ label: 'pres (hPa)', data: press, borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', tension: 0.4, pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 4, yAxisID: 'y1', spanGaps: true });
+            } else {
+                const soils = chartData.map(d => d.soil);
+                datasets.push({ label: 'soil (%)', data: soils, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.4, pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 4, yAxisID: 'y1', spanGaps: true });
+            }
 
             const ctx = document.getElementById('historyChart').getContext('2d');
             if (myChart) myChart.destroy();
@@ -641,12 +732,7 @@
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [
-                        // ✨ 将 spanGaps 改为 true，强制连接所有断点
-                        { label: 'temp (℃)', data: temps, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', tension: 0.4, pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 4, yAxisID: 'y', spanGaps: true },
-                        { label: 'hum (%)', data: hums, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 4, yAxisID: 'y1', spanGaps: true },
-                        { label: 'soil (%)', data: soils, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.4, pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 4, yAxisID: 'y1', spanGaps: true }
-                    ]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,
