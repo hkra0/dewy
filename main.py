@@ -284,7 +284,9 @@ def background_logger():
         if sleep_sec < 1: sleep_sec += 600
         time.sleep(sleep_sec)
 
-threading.Thread(target=background_logger, daemon=True).start()
+@app.on_event("startup")
+def start_background_logger():
+    threading.Thread(target=background_logger, daemon=True).start()
 
 # ==================== API 路由 ====================
 @app.get("/api/monitor")
