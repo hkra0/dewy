@@ -359,7 +359,7 @@
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="water-duration"
                             style="font-size: 14px; color: #94a3b8; white-space: nowrap;">Duration (s):</label>
-                        <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="1.0"
+                        <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5"
                             style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; outline: none;">
                     </div>
                     <button class="action-btn" id="water-btn"
@@ -428,9 +428,9 @@
             'watering': null
         };
 
-        function switchTab(tabName, pushState = true) {
+        function switchTab(tabName, pushState = true, skipFetch = false) {
             currentTab = tabName;
-            
+
             if (pushState) {
                 const newPath = tabName === 'plant' ? '/' : `/${tabName}`;
                 if (window.location.pathname !== newPath) {
@@ -463,8 +463,8 @@
                 if (waterBlock) waterBlock.classList.add('hidden');
             }
 
-            if (tabName === 'history') {
-                fetchHistoryData();
+            if (tabName === 'history' && !skipFetch) {
+                loadHistoryData(false);
             }
         }
 
@@ -481,7 +481,7 @@
                 document.getElementById('watering-log-wrapper').classList.add('hidden');
             }
 
-            fetchHistoryData();
+            loadHistoryData(false);
         }
 
         function checkMagicLink() {
@@ -662,13 +662,14 @@
             });
         }
 
-        async function fetchHistoryData() {
+        async function loadHistoryData(forceFetch = false) {
             const savedKey = localStorage.getItem(STORAGE_KEY) || '';
             const reqType = currentHistType; // 记住发起请求时的类型
 
-            // ✨ 1. 如果内存里有缓存，立刻用缓存画图（0毫秒延迟），消除白屏
+            // 1. 如果内存里有缓存，立刻用缓存画图
             if (historyCache[reqType]) {
                 renderHistoryUI(historyCache[reqType], reqType);
+                if (!forceFetch) return; // 只有在首次访问或点击刷新按钮时才进行网络请求
             } else {
                 // 如果没有缓存，为了避免“幽灵数据”，立刻销毁旧图表并显示 loading
                 if (reqType === 'watering') {
@@ -679,7 +680,7 @@
                 }
             }
 
-            // ✨ 2. 后台偷偷向树莓派要最新的数据
+            // 2. 获取最新的数据
             try {
                 const res = await fetch('/api/history?hist_type=' + reqType, {
                     headers: { 'X-Viewer-Key': savedKey, 'X-Requested-By': 'Robin-Web' }
@@ -695,7 +696,7 @@
                 // 存入内存缓存
                 historyCache[reqType] = data;
 
-                // ✨ 3. 如果数据回来时，用户还在看这个页面，就静默更新它
+                // 3. 数据返回时还留存在此页面则刷新
                 if (currentHistType === reqType) {
                     renderHistoryUI(data, reqType);
                 }
@@ -840,7 +841,7 @@
 
             await fetchSensorData();
             if (currentTab === 'plant') await fetchImage(forceLive);
-            if (currentTab === 'history') await fetchHistoryData();
+            if (currentTab === 'history') await loadHistoryData(true);
 
             if (btn) btn.innerText = 'refresh';
         }
@@ -859,13 +860,13 @@
 
         window.onload = () => {
             checkMagicLink();
-            
+
             const path = window.location.pathname;
             let initialTab = 'plant';
             if (path === '/system') initialTab = 'system';
             else if (path === '/history') initialTab = 'history';
-            
-            switchTab(initialTab, false);
+
+            switchTab(initialTab, false, true);
             fetchAllData(true);
         };
     </script>
