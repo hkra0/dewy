@@ -324,19 +324,24 @@
     </div>
 
     <div class="container">
-        <h1>🌱 dewy</h1>
+        <div class="header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+            <h1 style="margin: 0;">🌱 dewy</h1>
+            <div style="position: relative;">
+                <select id="device-select" onchange="switchDevice(this.value, true)" style="padding: 6px 28px 6px 12px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; font-size: 13px; font-weight: 500; outline: none; cursor: pointer; appearance: none; -webkit-appearance: none;">
+                    <option value="main">Main Device</option>
+                    <option value="sub1">ESP32 Sensor</option>
+                </select>
+                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b; font-size: 10px;">▼</span>
+            </div>
+        </div>
 
         <div class="nav">
-            <div class="nav-btn active" onclick="switchTab('plant')" id="tab-plant">plant</div>
+            <div class="nav-btn active" onclick="switchTab('environment')" id="tab-environment">environment</div>
             <div class="nav-btn" onclick="switchTab('system')" id="tab-system">system</div>
             <div class="nav-btn" onclick="switchTab('history')" id="tab-history">history</div>
         </div>
 
-        <div id="view-plant">
-            <div class="sub-nav" id="plant-sub-nav">
-                <div class="sub-nav-btn active" id="plant-dev-main" onclick="switchDevice('main')">main</div>
-                <div class="sub-nav-btn" id="plant-dev-sub1" onclick="switchDevice('sub1')">sub1</div>
-            </div>
+        <div id="view-environment">
             
             <div class="grid" id="view-plant-main">
                 <div class="card">
@@ -414,11 +419,6 @@
             <div class="card full-width" style="padding-bottom: 20px;">
                 <div class="card-title">environmental trends</div>
 
-                <div class="sub-nav" id="history-dev-nav">
-                    <div class="sub-nav-btn active" id="hist-dev-main" onclick="switchDevice('main')">main</div>
-                    <div class="sub-nav-btn" id="hist-dev-sub1" onclick="switchDevice('sub1')">sub1</div>
-                </div>
-
                 <div class="sub-nav" id="history-type-nav-main">
                     <div class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')">past 24h</div>
                     <div class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')">daily avg</div>
@@ -450,7 +450,7 @@
         let sessionHDTime = null;
         let sessionHDEpoch = 0;
         let myChart = null;
-        let currentTab = 'plant';
+        let currentTab = 'environment';
         let currentHistType = '24h';
         let currentDevice = 'main';
 
@@ -463,40 +463,50 @@
             'sub1_daily': null
         };
 
-        function switchDevice(dev) {
+        function updateURL() {
+            let newPath = '/';
+            if (currentDevice === 'main') {
+                if (currentTab === 'system') newPath = '/system';
+                else if (currentTab === 'history') newPath = '/history';
+            } else {
+                if (currentTab === 'history') newPath = '/sub1/history';
+                else newPath = '/sub1';
+            }
+            if (window.location.pathname !== newPath) {
+                history.pushState({ tab: currentTab, dev: currentDevice }, '', newPath);
+            }
+        }
+
+        function switchDevice(dev, pushState = false) {
             currentDevice = dev;
-            
-            // Plant View
-            document.getElementById('plant-dev-main').classList.remove('active');
-            document.getElementById('plant-dev-sub1').classList.remove('active');
-            document.getElementById('plant-dev-' + dev).classList.add('active');
             
             if (dev === 'main') {
                 document.getElementById('view-plant-main').classList.remove('hidden');
                 document.getElementById('view-plant-sub1').classList.add('hidden');
+                document.getElementById('tab-system').classList.remove('hidden');
+                document.getElementById('history-type-nav-main').classList.remove('hidden');
+                document.getElementById('history-type-nav-sub1').classList.add('hidden');
+                if (currentHistType.startsWith('sub1_')) switchHistType('24h');
+                else switchHistType(currentHistType);
             } else {
                 document.getElementById('view-plant-main').classList.add('hidden');
                 document.getElementById('view-plant-sub1').classList.remove('hidden');
-            }
-
-            // History View
-            const histDevMainBtn = document.getElementById('hist-dev-main');
-            if (histDevMainBtn) {
-                histDevMainBtn.classList.remove('active');
-                document.getElementById('hist-dev-sub1').classList.remove('active');
-                document.getElementById('hist-dev-' + dev).classList.add('active');
-
-                if (dev === 'main') {
-                    document.getElementById('history-type-nav-main').classList.remove('hidden');
-                    document.getElementById('history-type-nav-sub1').classList.add('hidden');
-                    if (currentHistType.startsWith('sub1_')) switchHistType('24h');
-                    else switchHistType(currentHistType);
-                } else {
-                    document.getElementById('history-type-nav-main').classList.add('hidden');
-                    document.getElementById('history-type-nav-sub1').classList.remove('hidden');
-                    if (!currentHistType.startsWith('sub1_')) switchHistType('sub1_24h');
-                    else switchHistType(currentHistType);
+                document.getElementById('tab-system').classList.add('hidden');
+                
+                if (currentTab === 'system') {
+                    switchTab('environment', false);
                 }
+                
+                document.getElementById('history-type-nav-main').classList.add('hidden');
+                document.getElementById('history-type-nav-sub1').classList.remove('hidden');
+                if (!currentHistType.startsWith('sub1_')) switchHistType('sub1_24h');
+                else switchHistType(currentHistType);
+            }
+            
+            document.getElementById('device-select').value = dev;
+
+            if (pushState) {
+                updateURL();
             }
         }
 
@@ -504,24 +514,21 @@
             currentTab = tabName;
 
             if (pushState) {
-                const newPath = tabName === 'plant' ? '/' : `/${tabName}`;
-                if (window.location.pathname !== newPath) {
-                    history.pushState({ tab: tabName }, '', newPath);
-                }
+                updateURL();
             }
             const hasKey = !!localStorage.getItem(STORAGE_KEY);
 
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('tab-' + tabName).classList.add('active');
 
-            document.getElementById('view-plant').classList.add('hidden');
+            document.getElementById('view-environment').classList.add('hidden');
             document.getElementById('view-system').classList.add('hidden');
             document.getElementById('view-history').classList.add('hidden');
 
             document.getElementById('view-' + tabName).classList.remove('hidden');
 
             const cameraBlock = document.getElementById('camera-block');
-            if (tabName === 'plant' && hasKey) {
+            if (tabName === 'environment' && hasKey) {
                 cameraBlock.classList.remove('hidden');
             } else {
                 cameraBlock.classList.add('hidden');
@@ -529,7 +536,7 @@
 
             const hasWaterKey = !!localStorage.getItem('robin_water_key');
             const waterBlock = document.getElementById('water-block');
-            if (tabName === 'plant' && hasWaterKey) {
+            if (tabName === 'environment' && hasWaterKey) {
                 if (waterBlock) waterBlock.classList.remove('hidden');
             } else {
                 if (waterBlock) waterBlock.classList.add('hidden');
@@ -818,7 +825,7 @@
                 if (!res.ok) {
                     camTs.innerText = '⚠️ camera hardware offline or error';
                     camTs.style.color = '#ef4444';
-                    if (currentTab === 'plant') cameraBlock.classList.remove('hidden');
+                    if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
                     return;
                 }
 
@@ -835,11 +842,11 @@
                 };
                 img.src = URL.createObjectURL(blob);
 
-                if (currentTab === 'plant') cameraBlock.classList.remove('hidden');
+                if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
             } catch (e) {
                 camTs.innerText = '⚠️ network disconnected';
                 camTs.style.color = '#ef4444';
-                if (currentTab === 'plant') cameraBlock.classList.remove('hidden');
+                if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
             }
         }
 
@@ -932,33 +939,44 @@
             if (btn) btn.innerText = 'syncing...';
 
             await fetchSensorData();
-            if (currentTab === 'plant') await fetchImage(forceLive);
+            if (currentTab === 'environment') await fetchImage(forceLive);
             if (currentTab === 'history') await loadHistoryData(true);
 
             if (btn) btn.innerText = 'refresh';
         }
 
         window.addEventListener('popstate', (e) => {
-            if (e.state && e.state.tab) {
+            if (e.state && e.state.tab && e.state.dev) {
+                switchDevice(e.state.dev, false);
                 switchTab(e.state.tab, false);
             } else {
-                const path = window.location.pathname;
-                let tab = 'plant';
-                if (path === '/system') tab = 'system';
-                else if (path === '/history') tab = 'history';
-                switchTab(tab, false);
+                parseURLAndNavigate();
             }
         });
 
+        function parseURLAndNavigate() {
+            const path = window.location.pathname;
+            let initialTab = 'environment';
+            let initialDev = 'main';
+            
+            if (path.startsWith('/sub1')) {
+                initialDev = 'sub1';
+                if (path === '/sub1/history') initialTab = 'history';
+                else initialTab = 'environment';
+            } else {
+                initialDev = 'main';
+                if (path === '/system') initialTab = 'system';
+                else if (path === '/history') initialTab = 'history';
+                else initialTab = 'environment';
+            }
+
+            switchDevice(initialDev, false);
+            switchTab(initialTab, false, true);
+        }
+
         window.onload = () => {
             checkMagicLink();
-
-            const path = window.location.pathname;
-            let initialTab = 'plant';
-            if (path === '/system') initialTab = 'system';
-            else if (path === '/history') initialTab = 'history';
-
-            switchTab(initialTab, false, true);
+            parseURLAndNavigate();
             fetchAllData(true);
         };
     </script>

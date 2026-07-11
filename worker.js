@@ -63,7 +63,7 @@ export default {
             }
         }
 
-        if (url.pathname === "/" || url.pathname === "/system" || url.pathname === "/history") {
+        if (url.pathname === "/" || url.pathname === "/system" || url.pathname === "/history" || url.pathname === "/sub1" || url.pathname === "/sub1/history") {
             return new Response(HTML_TEMPLATE, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
         }
 
