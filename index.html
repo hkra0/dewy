@@ -683,7 +683,13 @@
             }
 
             // 图表渲染逻辑
-            if (!data || data.length === 0) return;
+            if (!data || data.length === 0) {
+                if (myChart) { myChart.destroy(); myChart = null; }
+                document.getElementById('chart-loading').innerText = 'no data available.';
+                document.getElementById('chart-loading').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('chart-loading').innerText = 'loading...';
             document.getElementById('chart-loading').classList.add('hidden');
 
             // 使用深拷贝保护缓存数据不被污染
