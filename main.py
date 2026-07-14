@@ -42,7 +42,7 @@ esp32_updated = False
 
 # ==================== 自动浇水配置 ====================
 PIN_PUMP = 4
-WATERING_THRESHOLD = 70.0  
+WATERING_THRESHOLD = 50.0  
 WATERING_DURATION = 0.5      
 
 if GPIO:
