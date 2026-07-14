@@ -34,11 +34,19 @@ pump_lock = threading.Lock()
 esp32_lock = threading.Lock()
 PI_SECRET_TOKEN = "hKra_Secure_Sensor_2026_Token"
 
+# ==================== 补光灯与继电器配置 ====================
+RELAY_MQTT_TOPIC = "f024f9d1f43c"
+# 补光时间 7:30 - 21:30
+LIGHT_ON_TIME = 7 * 60 + 30
+LIGHT_OFF_TIME = 21 * 60 + 30
+global_mqtt_client = None
+
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ESP32 实时数据缓存
 esp32_latest = {"temperature": "--", "humidity": "--", "pressure": "--"}
 esp32_updated = False
+light_status = "--"
 
 # ==================== 自动浇水配置 ====================
 PIN_PUMP = 4
@@ -278,6 +286,16 @@ def background_logger():
             
             now = datetime.now()
             
+            # 补光灯定时控制
+            time_val = now.hour * 60 + now.minute
+            is_light_time = LIGHT_ON_TIME <= time_val < LIGHT_OFF_TIME
+            if global_mqtt_client:
+                cmd = "a1" if is_light_time else "b1"
+                try:
+                    global_mqtt_client.publish(RELAY_MQTT_TOPIC, json.dumps({"command": cmd}), retain=True)
+                except Exception:
+                    pass
+            
             if now.hour == 6 and can_water_now():
                 if soil_pct is not None and soil_pct < WATERING_THRESHOLD:
                     trigger_watering(soil_pct)
@@ -321,14 +339,26 @@ def on_mqtt_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
         print("✅ 已成功连接到本地 MQTT Broker")
         client.subscribe("sensor/esp32/env_data")
+        client.subscribe(RELAY_MQTT_TOPIC)
+        # 主动查询一次继电器状态
+        client.publish(RELAY_MQTT_TOPIC, json.dumps({"command": "q1"}))
     else:
         print(f"❌ 连接失败，返回码: {reason_code}")
 
 def on_mqtt_message(client, userdata, msg):
-    global esp32_updated
+    global esp32_updated, light_status
     try:
         payload = msg.payload.decode("utf-8")
         data = json.loads(payload)
+        
+        if msg.topic == RELAY_MQTT_TOPIC:
+            info = data.get("information", "")
+            if "n1" in info:
+                light_status = "ON"
+            elif "f1" in info:
+                light_status = "OFF"
+            return
+            
         with esp32_lock:
             esp32_latest["temperature"] = data.get('temperature', "--")
             esp32_latest["humidity"] = data.get('humidity', "--")
@@ -339,6 +369,7 @@ def on_mqtt_message(client, userdata, msg):
 
 @app.on_event("startup")
 def start_background_logger():
+    global global_mqtt_client
     threading.Thread(target=background_logger, daemon=True).start()
     
     # 初始化 MQTT 客户端
@@ -348,6 +379,7 @@ def start_background_logger():
         mqtt_client.on_message = on_mqtt_message
         mqtt_client.connect("127.0.0.1", 1883, 60)
         mqtt_client.loop_start()
+        global_mqtt_client = mqtt_client
     except Exception as e:
         print(f"MQTT 启动失败: {e}")
 
@@ -367,6 +399,7 @@ def get_monitor_data(x_bff_to_pi_token: str = Header(None)):
             "humidity": rh if rh is not None else "--", 
             "soil_moisture": soil_pct if soil_pct is not None else "--"
         },
+        "light_status": light_status,
         "esp32": esp32_latest,
         "power": {"voltage": v, "current": c, "status": "监控中"},
         "system_health": get_system_stats(),
@@ -380,6 +413,19 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
     if live:
         try:
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            
+            # 检查是否为黑暗条件（不在补光时段内），若是则临时开启闪光灯
+            now = datetime.now()
+            time_val = now.hour * 60 + now.minute
+            is_light_time = LIGHT_ON_TIME <= time_val < LIGHT_OFF_TIME
+            if not is_light_time and global_mqtt_client:
+                duration = 4 if hq else 2  # HQ 拍照需要更长的曝光时间和处理时间
+                try:
+                    global_mqtt_client.publish(RELAY_MQTT_TOPIC, json.dumps({"command": f"c1={duration}"}))
+                    time.sleep(0.6)  # 等待继电器和补光灯点亮
+                except Exception:
+                    pass
+
             with camera_lock:
                 if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
                 else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "80", "--vflip", "--hflip", "--nopreview"]

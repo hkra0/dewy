@@ -352,9 +352,13 @@
                     <div class="card-title">humidity</div>
                     <div class="card-value" id="env-humidity">-- %</div>
                 </div>
-                <div class="card full-width">
+                <div class="card">
                     <div class="card-title">soil humidity</div>
                     <div class="card-value" style="color: #059669;" id="soil-humidity">-- %</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">fill light status</div>
+                    <div class="card-value" style="color: #64748b;" id="light-status">--</div>
                 </div>
                 <div class="card full-width hidden" id="camera-block">
                     <div class="card-title">camera</div>
@@ -653,6 +657,14 @@
                     document.getElementById('sub1-temp').innerText = data.esp32.temperature + ' ℃';
                     document.getElementById('sub1-hum').innerText = data.esp32.humidity + ' %';
                     document.getElementById('sub1-pres').innerText = data.esp32.pressure + ' hPa';
+                }
+
+                if (data.light_status !== undefined) {
+                    const statusEl = document.getElementById('light-status');
+                    if (statusEl) {
+                        statusEl.innerText = data.light_status;
+                        statusEl.style.color = data.light_status === 'ON' ? '#eab308' : '#64748b';
+                    }
                 }
 
                 const cVal = data.power.current;
