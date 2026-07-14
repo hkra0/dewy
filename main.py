@@ -38,6 +38,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # ESP32 实时数据缓存
 esp32_latest = {"temperature": "--", "humidity": "--", "pressure": "--"}
+esp32_updated = False
 
 # ==================== 自动浇水配置 ====================
 PIN_PUMP = 4
@@ -266,6 +267,7 @@ def trigger_watering(soil_before, duration=WATERING_DURATION):
             return False
 
 def background_logger():
+    global esp32_updated
     init_db()
     while True:
         try:
@@ -293,9 +295,11 @@ def background_logger():
                 e_temp = esp32_latest.get("temperature")
                 e_hum = esp32_latest.get("humidity")
                 e_pres = esp32_latest.get("pressure")
+                e_upd = esp32_updated
+                esp32_updated = False
             
             # 如果从没收到过数据或为 "--"，则记为 None
-            if e_temp != "--" and e_hum != "--" and e_pres != "--":
+            if e_temp != "--" and e_hum != "--" and e_pres != "--" and e_upd:
                 cursor.execute('''
                     INSERT INTO esp32_env_log (temperature, humidity, pressure)
                     VALUES (?, ?, ?)
@@ -321,6 +325,7 @@ def on_mqtt_connect(client, userdata, flags, reason_code, properties):
         print(f"❌ 连接失败，返回码: {reason_code}")
 
 def on_mqtt_message(client, userdata, msg):
+    global esp32_updated
     try:
         payload = msg.payload.decode("utf-8")
         data = json.loads(payload)
@@ -328,6 +333,7 @@ def on_mqtt_message(client, userdata, msg):
             esp32_latest["temperature"] = data.get('temperature', "--")
             esp32_latest["humidity"] = data.get('humidity', "--")
             esp32_latest["pressure"] = data.get('pressure', "--")
+            esp32_updated = True
     except Exception as e:
         pass
 
