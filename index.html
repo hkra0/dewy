@@ -662,6 +662,7 @@
                         btn.style.background = '#0ea5e9';
                         btn.disabled = false;
                     }, 2000);
+                    fetchConfig();
                 } else {
                     throw new Error('Failed');
                 }
@@ -1266,6 +1267,7 @@
                 initialDev = 'main';
                 if (path === '/system') initialTab = 'system';
                 else if (path === '/history') initialTab = 'history';
+                else if (path === '/settings') initialTab = 'settings';
                 else initialTab = 'environment';
             }
 
