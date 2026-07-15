@@ -634,8 +634,15 @@
             if (hasSettings) document.getElementById('tab-settings').classList.remove('hidden');
             else document.getElementById('tab-settings').classList.add('hidden');
             
+            if (nodeInfo.has_pump) document.getElementById('hist-watering').classList.remove('hidden');
+            else document.getElementById('hist-watering').classList.add('hidden');
+
             if ((currentTab === 'system' && !hasSystem) || (currentTab === 'settings' && !hasSettings)) {
                 switchTab('environment', false, true);
+            }
+            
+            if (currentHistType === 'watering' && !nodeInfo.has_pump) {
+                switchHistType('24h');
             }
 
             if (pushState) updateURL();

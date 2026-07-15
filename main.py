@@ -370,12 +370,14 @@ def get_nodes(x_bff_to_pi_token: str = Header(None)):
         has_system = (node_type == "local")
         actuators = config.get("actuators", {})
         has_settings = ("pump" in actuators or "light" in actuators)
+        has_pump = ("pump" in actuators)
         
         nodes_info[node_id] = {
             "type": node_type,
             "description": config.get("description", f"Node {node_id}"),
             "has_system": has_system,
-            "has_settings": has_settings
+            "has_settings": has_settings,
+            "has_pump": has_pump
         }
     return nodes_info
 
