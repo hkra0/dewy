@@ -433,7 +433,8 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
             else:
                 is_light_time = time_val >= on_time or time_val < off_time
                 
-            if not is_light_time and global_mqtt_client:
+            needs_temp_light = (not is_light_time) and (light_status != "ON")
+            if needs_temp_light and global_mqtt_client:
                 duration = 4 if hq else 2
                 l_node = global_config["auto_light"]["node_id"]
                 l_act = global_config["auto_light"]["actuator_id"]
@@ -448,7 +449,7 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
                 else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "80", "--vflip", "--hflip", "--nopreview"]
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
-            if not is_light_time and global_mqtt_client:
+            if needs_temp_light and global_mqtt_client:
                 try:
                     hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command="b1")
                 except Exception:
