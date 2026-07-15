@@ -750,9 +750,11 @@
                     document.getElementById('sys-ram').innerText = data.system_health.ram_usage_percent + ' %';
                     document.getElementById('sys-disk').innerText = data.system_health.disk_usage_percent + ' %';
                 }
-                if (data.power) {
-                    const cVal = data.power.current;
-                    document.getElementById('power-status').innerText = data.power.voltage + ' V / ' + (cVal > 0 ? '+' + cVal : cVal) + ' mA';
+                if (nodeData && nodeData.voltage != null && nodeData.current != null) {
+                    const cVal = nodeData.current;
+                    document.getElementById('power-status').innerText = nodeData.voltage + ' V / ' + (cVal > 0 ? '+' + cVal : cVal) + ' mA';
+                } else {
+                    document.getElementById('power-status').innerText = '-- V / -- mA';
                 }
                 const time = new Date(data.timestamp * 1000);
                 document.getElementById('update-time').innerText = 'last synced at ' + time.toLocaleTimeString().toLowerCase();
