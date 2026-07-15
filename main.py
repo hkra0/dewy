@@ -433,6 +433,12 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
                 if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
                 else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "80", "--vflip", "--hflip", "--nopreview"]
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+            if not is_light_time and global_mqtt_client:
+                try:
+                    hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command="b1")
+                except Exception:
+                    pass
         except Exception:
             pass
     if os.path.exists(target_path):
@@ -544,6 +550,9 @@ def toggle_manual_light(x_bff_to_pi_token: str = Header(None)):
         raise HTTPException(status_code=500, detail="MQTT not connected")
         
     new_cmd = "a1" if light_status != "ON" else "b1"
+    
+    # 强制预更新状态，防止因继电器状态未及时上报导致死锁
+    light_status = "ON" if new_cmd == "a1" else "OFF"
     
     l_node = global_config["auto_light"]["node_id"]
     l_act = global_config["auto_light"]["actuator_id"]
