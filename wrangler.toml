@@ -14,3 +14,7 @@ compatibility_date = "2024-03-20"
 type = "Text"
 globs = ["**/*.html"]
 fallback = false
+
+[observability.logs]
+enabled = false
+invocation_logs = true
