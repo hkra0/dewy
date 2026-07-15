@@ -18,8 +18,8 @@ export default {
                 if (clientKey !== VIEWER_MAGIC_KEY && requestedBy !== "Robin-Web") return new Response("not found", { status: 404 });
             } else if (url.pathname === "/api/image") {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404 });
-            } else if (url.pathname === "/api/water" || url.pathname === "/api/light") {
-                if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+            } else if (url.pathname === "/api/water" || url.pathname === "/api/light" || url.pathname === "/api/config") {
+                if (url.pathname !== "/api/config" && request.method !== "POST") return new Response("method not allowed", { status: 405 });
                 const clientWaterKey = request.headers.get("x-water-key");
                 if (clientWaterKey !== WATER_MAGIC_KEY) {
                     return new Response(JSON.stringify({ error: "invalid key" }), { status: 403, headers: { 'Content-Type': 'application/json' } });

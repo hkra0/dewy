@@ -11,6 +11,8 @@ from pydantic import BaseModel
 import uvicorn
 import paho.mqtt.client as mqtt
 import json
+import urllib.request
+import math
 
 try:
     import RPi.GPIO as GPIO
@@ -27,6 +29,7 @@ DATA_DIR = "/home/hkra/dewy/data"
 TMP_IMG_PATH = f"{DATA_DIR}/live.jpg"
 TMP_IMG_HQ_PATH = f"{DATA_DIR}/live_hq.jpg"
 DB_FILE = f"{DATA_DIR}/plant_history.db"
+CONFIG_FILE = f"{DATA_DIR}/config.json"
 
 sensor_lock = threading.Lock()
 camera_lock = threading.Lock()
@@ -36,12 +39,83 @@ PI_SECRET_TOKEN = "hKra_Secure_Sensor_2026_Token"
 
 # ==================== 补光灯与继电器配置 ====================
 RELAY_MQTT_TOPIC = "f024f9d1f43c"
-# 补光时间 7:30 - 21:30
-LIGHT_ON_TIME = 7 * 60 + 30
-LIGHT_OFF_TIME = 21 * 60 + 30
 global_mqtt_client = None
 
 os.makedirs(DATA_DIR, exist_ok=True)
+
+DEFAULT_CONFIG = {
+    "auto_water": {"enabled": True, "duration": 0.5, "threshold": 50.0},
+    "auto_light": {"enabled": True, "mode": "fixed", "on_time": "07:30", "off_time": "21:30", "sun_on_offset": 0, "sun_off_offset": 0, "lat": "", "lng": ""}
+}
+global_config = DEFAULT_CONFIG.copy()
+
+def load_config():
+    global global_config
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                loaded = json.load(f)
+                for k, v in DEFAULT_CONFIG.items():
+                    if k not in loaded: loaded[k] = v
+                    elif isinstance(v, dict):
+                        for subk, subv in v.items():
+                            if subk not in loaded[k]: loaded[k][subk] = subv
+                global_config = loaded
+        except Exception:
+            pass
+    else:
+        save_config(global_config)
+
+def save_config(cfg):
+    global global_config
+    global_config = cfg
+    try:
+        with open(CONFIG_FILE, "w") as f: json.dump(cfg, f, indent=4)
+    except: pass
+
+def fetch_ip_location():
+    try:
+        req = urllib.request.urlopen("http://ip-api.com/json", timeout=3)
+        data = json.loads(req.read())
+        return data.get("lat"), data.get("lon")
+    except: return None, None
+
+def get_effective_light_times():
+    cfg = global_config["auto_light"]
+    if cfg["mode"] == "fixed":
+        try:
+            on_h, on_m = map(int, cfg["on_time"].split(":"))
+            off_h, off_m = map(int, cfg["off_time"].split(":"))
+            return on_h * 60 + on_m, off_h * 60 + off_m
+        except: return 7 * 60 + 30, 21 * 60 + 30
+    else:
+        lat, lng = cfg.get("lat"), cfg.get("lng")
+        if not lat or not lng:
+            lat, lng = fetch_ip_location()
+            if lat and lng:
+                cfg["lat"], cfg["lng"] = str(lat), str(lng)
+                save_config(global_config)
+            else: return 7 * 60 + 30, 21 * 60 + 30
+        try:
+            lat_f, lng_f = float(lat), float(lng)
+            from datetime import date
+            import time
+            N = date.today().timetuple().tm_yday
+            B = math.radians((360 / 365) * (N - 81))
+            decl = 23.45 * math.sin(B)
+            cos_ha = (math.cos(math.radians(90.8333)) - (math.sin(math.radians(lat_f)) * math.sin(math.radians(decl)))) / (math.cos(math.radians(lat_f)) * math.cos(math.radians(decl)))
+            if cos_ha > 1 or cos_ha < -1: return 7 * 60 + 30, 21 * 60 + 30
+            ha = math.degrees(math.acos(cos_ha))
+            eot = 9.87 * math.sin(2 * B) - 7.53 * math.cos(B) - 1.5 * math.sin(B)
+            solar_noon_utc = 12 - (lng_f / 15) - (eot / 60)
+            is_dst = time.daylight and time.localtime().tm_isdst > 0
+            utc_offset = - (time.altzone if is_dst else time.timezone) / 3600
+            sr_local = (solar_noon_utc - (ha / 15) + utc_offset) % 24
+            ss_local = (solar_noon_utc + (ha / 15) + utc_offset) % 24
+            on_time = int(sr_local * 60) + int(cfg.get("sun_on_offset", 0))
+            off_time = int(ss_local * 60) + int(cfg.get("sun_off_offset", 0))
+            return on_time, off_time
+        except: return 7 * 60 + 30, 21 * 60 + 30
 
 # ESP32 实时数据缓存
 esp32_latest = {"temperature": "--", "humidity": "--", "pressure": "--"}
@@ -50,8 +124,6 @@ light_status = "--"
 
 # ==================== 自动浇水配置 ====================
 PIN_PUMP = 4
-WATERING_THRESHOLD = 50.0  
-WATERING_DURATION = 0.5      
 
 if GPIO:
     GPIO.setwarnings(False)
@@ -252,7 +324,8 @@ def can_water_now():
     except Exception:
         return False
 
-def trigger_watering(soil_before, duration=WATERING_DURATION):
+def trigger_watering(soil_before, duration=None):
+    if duration is None: duration = global_config["auto_water"]["duration"]
     if not GPIO: return False
     with pump_lock:
         try:
@@ -287,18 +360,25 @@ def background_logger():
             now = datetime.now()
             
             # 补光灯定时控制
-            time_val = now.hour * 60 + now.minute
-            is_light_time = LIGHT_ON_TIME <= time_val < LIGHT_OFF_TIME
-            if global_mqtt_client:
-                cmd = "a1" if is_light_time else "b1"
-                try:
-                    global_mqtt_client.publish(RELAY_MQTT_TOPIC, json.dumps({"command": cmd}), retain=True)
-                except Exception:
-                    pass
+            if global_config["auto_light"]["enabled"]:
+                on_time, off_time = get_effective_light_times()
+                time_val = now.hour * 60 + now.minute
+                if on_time < off_time:
+                    is_light_time = on_time <= time_val < off_time
+                else:
+                    is_light_time = time_val >= on_time or time_val < off_time
+                    
+                if global_mqtt_client:
+                    cmd = "a1" if is_light_time else "b1"
+                    try:
+                        global_mqtt_client.publish(RELAY_MQTT_TOPIC, json.dumps({"command": cmd}), retain=True)
+                    except Exception:
+                        pass
             
-            if now.hour == 6 and can_water_now():
-                if soil_pct is not None and soil_pct < WATERING_THRESHOLD:
-                    trigger_watering(soil_pct)
+            if global_config["auto_water"]["enabled"]:
+                if now.hour == 6 and can_water_now():
+                    if soil_pct is not None and soil_pct < global_config["auto_water"]["threshold"]:
+                        trigger_watering(soil_pct, global_config["auto_water"]["duration"])
             
             conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
@@ -370,6 +450,7 @@ def on_mqtt_message(client, userdata, msg):
 @app.on_event("startup")
 def start_background_logger():
     global global_mqtt_client
+    load_config()
     threading.Thread(target=background_logger, daemon=True).start()
     
     # 初始化 MQTT 客户端
@@ -417,7 +498,11 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
             # 检查是否为黑暗条件（不在补光时段内），若是则临时开启闪光灯
             now = datetime.now()
             time_val = now.hour * 60 + now.minute
-            is_light_time = LIGHT_ON_TIME <= time_val < LIGHT_OFF_TIME
+            on_time, off_time = get_effective_light_times()
+            if on_time < off_time:
+                is_light_time = on_time <= time_val < off_time
+            else:
+                is_light_time = time_val >= on_time or time_val < off_time
             if not is_light_time and global_mqtt_client:
                 duration = 4 if hq else 2  # HQ 拍照需要更长的曝光时间和处理时间
                 try:
@@ -521,6 +606,17 @@ def trigger_manual_watering(req: WaterRequest, x_bff_to_pi_token: str = Header(N
         return {"status": "success"}
     else:
         raise HTTPException(status_code=500, detail="Hardware error")
+
+@app.get("/api/config")
+def get_config(x_bff_to_pi_token: str = Header(None)):
+    if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
+    return global_config
+
+@app.post("/api/config")
+def update_config(cfg: dict, x_bff_to_pi_token: str = Header(None)):
+    if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
+    save_config(cfg)
+    return {"status": "success"}
 
 # 手动控制补光灯 API
 @app.post("/api/light")
