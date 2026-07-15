@@ -593,7 +593,7 @@
         async function initNodes() {
             try {
                 const savedKey = localStorage.getItem(STORAGE_KEY) || '';
-                const res = await fetch('/api/nodes', { headers: { 'X-Viewer-Key': savedKey } });
+                const res = await fetch('/api/nodes', { headers: { 'X-Viewer-Key': savedKey, 'X-Requested-By': 'Robin-Web' } });
                 availableNodes = await res.json();
                 const select = document.getElementById('device-select');
                 select.innerHTML = '';
@@ -737,7 +737,7 @@
         async function fetchSensorData() {
             const savedKey = localStorage.getItem(STORAGE_KEY) || '';
             try {
-                const res = await fetch('/api/monitor', { headers: { 'X-Viewer-Key': savedKey } });
+                const res = await fetch('/api/monitor', { headers: { 'X-Viewer-Key': savedKey, 'X-Requested-By': 'Robin-Web' } });
                 const data = await res.json();
                 if (data.error) return;
 
@@ -846,7 +846,7 @@
             }
 
             try {
-                const res = await fetch(`/api/history?hist_type=${reqType}&node_id=${currentDevice}`, { headers: { 'X-Viewer-Key': savedKey } });
+                const res = await fetch(`/api/history?hist_type=${reqType}&node_id=${currentDevice}`, { headers: { 'X-Viewer-Key': savedKey, 'X-Requested-By': 'Robin-Web' } });
                 const data = await res.json();
                 if (!data.error) {
                     historyCache[cacheKey] = data;
