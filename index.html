@@ -588,7 +588,60 @@
             } catch (e) { console.error(e); }
         }
 
-        async function saveConfig() { /* ... unchanged saveConfig ... */ }
+        async function saveConfig() {
+            const waterKey = localStorage.getItem('robin_water_key');
+            if (!waterKey) return;
+            
+            const btn = document.getElementById('save-cfg-btn');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = 'saving...';
+            
+            const cfg = {
+                auto_water: {
+                    enabled: document.getElementById('cfg-water-enabled').checked,
+                    threshold: parseFloat(document.getElementById('cfg-water-threshold').value) || 50.0,
+                    duration: parseFloat(document.getElementById('cfg-water-duration').value) || 0.5
+                },
+                auto_light: {
+                    enabled: document.getElementById('cfg-light-enabled').checked,
+                    mode: document.getElementById('cfg-light-mode').value,
+                    on_time: document.getElementById('cfg-light-on').value,
+                    off_time: document.getElementById('cfg-light-off').value,
+                    sun_on_offset: parseInt(document.getElementById('cfg-light-on-offset').value) || 0,
+                    sun_off_offset: parseInt(document.getElementById('cfg-light-off-offset').value) || 0,
+                    lat: document.getElementById('cfg-light-lat').value,
+                    lng: document.getElementById('cfg-light-lng').value
+                }
+            };
+            
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'x-water-key': waterKey, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cfg)
+                });
+                if (res.ok) {
+                    btn.innerText = '✅ Saved';
+                    btn.style.background = '#10b981';
+                    setTimeout(() => {
+                        btn.innerText = originalText;
+                        btn.style.background = '#0ea5e9';
+                        btn.disabled = false;
+                    }, 2000);
+                } else {
+                    throw new Error('Failed');
+                }
+            } catch (e) {
+                btn.innerText = '❌ Error';
+                btn.style.background = '#ef4444';
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.background = '#0ea5e9';
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
 
         async function initNodes() {
             try {
@@ -857,25 +910,131 @@
             } catch (e) { }
         }
 
-        /* fetchImage, fetchHDImage, closeHD unchanged... */
         async function fetchImage(forceLive = false) {
             const savedKey = localStorage.getItem(STORAGE_KEY);
             const cameraBlock = document.getElementById('camera-block');
+            
             if (!savedKey) { cameraBlock.classList.add('hidden'); return; }
+
             const img = document.getElementById('cam-img');
             const camTs = document.getElementById('cam-timestamp');
-            camTs.innerText = 'syncing...';
+
+            camTs.innerText = 'syncing...'; 
+            camTs.style.color = '#94a3b8'; 
+            
             try {
-                const res = await fetch((forceLive ? '/api/image?live=true&t=' : '/api/image?t=') + Date.now(), { headers: { 'X-Viewer-Key': savedKey } });
-                if (!res.ok) throw new Error();
-                const ts = res.headers.get('X-Image-Timestamp');
-                img.src = URL.createObjectURL(await res.blob());
-                if (ts) camTs.innerText = new Date(parseInt(ts) * 1000).toLocaleTimeString().toLowerCase();
-            } catch (e) { camTs.innerText = '⚠️ error'; }
+                const endpoint = forceLive ? '/api/image?live=true&t=' : '/api/image?t=';
+                const res = await fetch(endpoint + new Date().getTime(), {
+                    method: 'GET', headers: { 'X-Viewer-Key': savedKey }
+                });
+                
+                if (!res.ok) { 
+                    camTs.innerText = '⚠️ camera hardware offline or error';
+                    camTs.style.color = '#ef4444';
+                    if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
+                    return; 
+                }
+
+                const timestamp = res.headers.get('X-Image-Timestamp');
+                const blob = await res.blob();
+                
+                img.onload = () => {
+                    if (timestamp) {
+                        const imgDate = new Date(parseInt(timestamp) * 1000);
+                        const isStale = (Date.now() - imgDate.getTime()) > 60000; 
+                        camTs.innerText = (isStale ? '⏳ ' : '📸 ') + imgDate.toLocaleTimeString().toLowerCase();
+                        camTs.style.color = '#94a3b8'; 
+                    }
+                };
+                img.src = URL.createObjectURL(blob);
+                
+                if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
+            } catch (e) { 
+                camTs.innerText = '⚠️ network disconnected';
+                camTs.style.color = '#ef4444'; 
+                if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
+            }
         }
         async function fetchHDImage() {
-            // minimal implementation
-            closeHD();
+            const savedKey = localStorage.getItem(STORAGE_KEY);
+            if (!savedKey) return;
+
+            const modal = document.getElementById('hd-modal');
+            const hdImg = document.getElementById('hd-img');
+            const statusText = document.getElementById('hd-status');
+            const loader = document.getElementById('hd-loader');
+            const hdTs = document.getElementById('hd-timestamp');
+
+            hdImg.onload = null;
+
+            const now = Date.now();
+            if (sessionHDSrc && sessionHDEpoch > 0 && (now - sessionHDEpoch < 60000)) {
+                statusText.style.display = 'none';
+                loader.style.display = 'none';
+                hdImg.src = sessionHDSrc;
+                hdImg.style.display = 'block';
+                hdImg.style.opacity = '1';
+                hdImg.style.filter = 'none';
+                hdTs.innerText = '📸 ' + sessionHDTime;
+                hdTs.classList.remove('hidden');
+                hdTs.style.opacity = '1';
+                modal.style.display = 'flex';
+                return;
+            }
+
+            statusText.style.display = 'block';
+            statusText.innerText = 'capturing hd image... (est. 10s+)';
+            loader.style.display = 'block';
+            modal.style.display = 'flex';
+
+            if (sessionHDSrc) {
+                hdImg.src = sessionHDSrc;
+                hdImg.style.display = 'block';
+                hdImg.style.opacity = '1';
+                hdImg.style.filter = 'none';
+                if (sessionHDTime) {
+                    hdTs.innerText = '📸 ' + sessionHDTime;
+                    hdTs.classList.remove('hidden');
+                    hdTs.style.opacity = '1';
+                }
+            } else {
+                hdImg.style.display = 'none';
+                hdTs.classList.add('hidden');
+            }
+
+            try {
+                const res = await fetch('/api/image?live=true&hq=true&t=' + new Date().getTime(), {
+                    method: 'GET', headers: { 'X-Viewer-Key': savedKey }
+                });
+                
+                if (!res.ok) throw new Error('capture failed');
+
+                const timestamp = res.headers.get('X-Image-Timestamp');
+                const liveBlob = await res.blob();
+                
+                hdImg.onload = () => {
+                    statusText.style.display = 'none';
+                    loader.style.display = 'none';
+                    hdImg.style.display = 'block';
+                    sessionHDEpoch = Date.now();
+                    if (timestamp) {
+                        const imgDate = new Date(parseInt(timestamp) * 1000);
+                        sessionHDTime = imgDate.toLocaleTimeString().toLowerCase();
+                        hdTs.innerText = '📸 ' + sessionHDTime;
+                        hdTs.classList.remove('hidden');
+                    }
+                };
+
+                if (sessionHDSrc) URL.revokeObjectURL(sessionHDSrc);
+                sessionHDSrc = URL.createObjectURL(liveBlob);
+                hdImg.src = sessionHDSrc;
+
+            } catch (e) {
+                loader.style.display = 'none';
+                statusText.style.display = 'block';
+                statusText.innerText = '❌ failed to capture hd image.';
+                statusText.style.color = '#ef4444';
+            }
         }
         function closeHD() { document.getElementById('hd-modal').style.display = 'none'; }
 
