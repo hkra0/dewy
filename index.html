@@ -356,7 +356,7 @@
                     <div class="card-title">soil humidity</div>
                     <div class="card-value" style="color: #059669;" id="soil-humidity">-- %</div>
                 </div>
-                <div class="card">
+                <div class="card" id="light-card" style="transition: all 0.3s;">
                     <div class="card-title">fill light status</div>
                     <div class="card-value" style="color: #64748b;" id="light-status">--</div>
                 </div>
@@ -540,10 +540,21 @@
 
             const hasWaterKey = !!localStorage.getItem('robin_water_key');
             const waterBlock = document.getElementById('water-block');
+            const lightCard = document.getElementById('light-card');
             if (tabName === 'environment' && hasWaterKey) {
                 if (waterBlock) waterBlock.classList.remove('hidden');
+                if (lightCard) {
+                    lightCard.style.cursor = 'pointer';
+                    lightCard.onclick = toggleLight;
+                    lightCard.title = 'Click to toggle light';
+                }
             } else {
                 if (waterBlock) waterBlock.classList.add('hidden');
+                if (lightCard) {
+                    lightCard.style.cursor = 'default';
+                    lightCard.onclick = null;
+                    lightCard.title = '';
+                }
             }
 
             if (tabName === 'history' && !skipFetch) {
@@ -636,6 +647,49 @@
                     btn.style.background = '#3b82f6';
                     btn.disabled = false;
                     btn.style.opacity = '1';
+                }, 2000);
+            }
+        }
+
+        async function toggleLight() {
+            const waterKey = localStorage.getItem('robin_water_key');
+            if (!waterKey) return;
+
+            const statusEl = document.getElementById('light-status');
+            const originalText = statusEl.innerText;
+            const originalColor = statusEl.style.color;
+            
+            statusEl.innerText = '...';
+            statusEl.style.color = '#94a3b8';
+
+            try {
+                const res = await fetch('/api/light', {
+                    method: 'POST',
+                    headers: { 'x-water-key': waterKey, 'Content-Type': 'application/json' }
+                });
+
+                if (res.ok) {
+                    setTimeout(() => fetchAllData(true), 500);
+                } else {
+                    statusEl.innerText = 'error';
+                    statusEl.style.color = '#ef4444';
+                    setTimeout(() => {
+                        statusEl.innerText = originalText;
+                        statusEl.style.color = originalColor;
+                        if (res.status === 403) {
+                            localStorage.removeItem('robin_water_key');
+                            document.getElementById('water-block').classList.add('hidden');
+                            document.getElementById('light-card').style.cursor = 'default';
+                            document.getElementById('light-card').onclick = null;
+                        }
+                    }, 2000);
+                }
+            } catch (e) {
+                statusEl.innerText = 'error';
+                statusEl.style.color = '#ef4444';
+                setTimeout(() => {
+                    statusEl.innerText = originalText;
+                    statusEl.style.color = originalColor;
                 }, 2000);
             }
         }

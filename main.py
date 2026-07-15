@@ -522,5 +522,22 @@ def trigger_manual_watering(req: WaterRequest, x_bff_to_pi_token: str = Header(N
     else:
         raise HTTPException(status_code=500, detail="Hardware error")
 
+# 手动控制补光灯 API
+@app.post("/api/light")
+def toggle_manual_light(x_bff_to_pi_token: str = Header(None)):
+    if x_bff_to_pi_token != PI_SECRET_TOKEN: 
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    global light_status
+    if not global_mqtt_client:
+        raise HTTPException(status_code=500, detail="Hardware error")
+        
+    new_cmd = "a1" if light_status != "ON" else "b1"
+    try:
+        global_mqtt_client.publish(RELAY_MQTT_TOPIC, json.dumps({"command": new_cmd}), retain=True)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Hardware error")
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)
