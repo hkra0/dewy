@@ -1,0 +1,66 @@
+# ==============================================================================
+# Robin Plant Monitor - Hardware Configuration Example
+#
+# This file defines the hardware nodes, sensors, and actuators connected to
+# the system. By editing this file, you can easily adapt the software to run
+# on different hardware setups without changing the core application code.
+#
+# Supported formats: TOML, YAML, JSON
+# The application will automatically look for hardware_config.[toml|yaml|json]
+# ==============================================================================
+
+# Global configuration (optional)
+# [global]
+# timezone = "Asia/Shanghai"
+
+# ==============================================================================
+# Node Definitions
+# A node represents a physical device or a virtual group of sensors.
+# For example, "main" could be the Raspberry Pi running the script,
+# while "sub1" could be a remote ESP32 communicating via MQTT.
+# ==============================================================================
+
+[nodes.main]
+type = "local"           # local: Directly connected via I2C/GPIO
+description = "Raspberry Pi Zero 2 W"
+
+# ---- Sensors ----
+# Format: [nodes.<node_id>.sensors.<sensor_id>]
+# driver: Python class name inside `hardware.drivers`
+[nodes.main.sensors.sht30]
+driver = "SHT30"
+bus = 1
+address = "0x44"
+
+[nodes.main.sensors.soil]
+driver = "ADS1115_Soil"
+bus = 1
+address = "0x48"
+
+[nodes.main.sensors.ups]
+driver = "INA219_UPS"
+bus = 1
+address = "0x43"
+
+# ---- Actuators ----
+[nodes.main.actuators.pump]
+driver = "GPIO_Relay"
+pin = 4
+active_low = true        # If true, LOW triggers the relay
+
+[nodes.main.actuators.light]
+driver = "MQTT_Relay"
+topic = "f024f9d1f43c"
+
+
+# ==============================================================================
+# Remote ESP32 Node Example
+# ==============================================================================
+[nodes.sub1]
+type = "mqtt_node"       # mqtt_node: Receives data via MQTT
+topic = "sensor/esp32/env_data"
+description = "ESP32 Bedroom Sensor"
+
+# For mqtt_node, the sensors are determined by the JSON payload received.
+# You can optionally define the expected metrics.
+metrics = ["temperature", "humidity", "pressure"]

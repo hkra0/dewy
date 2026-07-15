@@ -31,3 +31,8 @@ package-lock.json
 # Cloudflare Wrangler
 .wrangler/
 .dev.vars
+
+# Hardware configurations
+hardware_config.toml
+hardware_config.yaml
+hardware_config.json
