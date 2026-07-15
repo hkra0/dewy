@@ -41,6 +41,7 @@ hardware_manager = HardwareManager(DATA_DIR)
 
 global_mqtt_client = None
 light_status = "--"
+camera_light_active = False
 
 mqtt_topic_to_node = {}
 for n_id, info in hardware_manager.mqtt_nodes.items():
@@ -340,9 +341,11 @@ def on_mqtt_message(client, userdata, msg):
                 if hasattr(actuator, "topic") and actuator.topic == topic:
                     info = data.get("information", "")
                     if "n1" in info:
-                        light_status = "ON"
+                        if not camera_light_active:
+                            light_status = "ON"
                     elif "f1" in info:
-                        light_status = "OFF"
+                        if not camera_light_active:
+                            light_status = "OFF"
                     return
         
         # 更新传感器节点数据
@@ -433,8 +436,10 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
             else:
                 is_light_time = time_val >= on_time or time_val < off_time
                 
+            global camera_light_active
             needs_temp_light = (not is_light_time) and (light_status != "ON")
             if needs_temp_light and global_mqtt_client:
+                camera_light_active = True
                 duration = 4 if hq else 2
                 l_node = global_config["auto_light"]["node_id"]
                 l_act = global_config["auto_light"]["actuator_id"]
@@ -444,16 +449,19 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
                 except Exception:
                     pass
 
-            with camera_lock:
-                if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
-                else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "80", "--vflip", "--hflip", "--nopreview"]
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-            if needs_temp_light and global_mqtt_client:
-                try:
-                    hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command="b1")
-                except Exception:
-                    pass
+            try:
+                with camera_lock:
+                    if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
+                    else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "80", "--vflip", "--hflip", "--nopreview"]
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            finally:
+                if needs_temp_light and global_mqtt_client:
+                    try:
+                        hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command="b1")
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
+                    camera_light_active = False
         except Exception:
             pass
     if os.path.exists(target_path):
