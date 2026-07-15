@@ -589,9 +589,10 @@
 
         async function fetchConfig() {
             const savedKey = localStorage.getItem(STORAGE_KEY) || '';
+            const waterKey = localStorage.getItem('robin_water_key') || '';
             try {
                 const res = await fetch('/api/config', {
-                    headers: { 'X-Viewer-Key': savedKey, 'X-Requested-By': 'Robin-Web' }
+                    headers: { 'X-Viewer-Key': savedKey, 'x-water-key': waterKey, 'X-Requested-By': 'Robin-Web' }
                 });
                 const data = await res.json();
                 if (data.error) return;

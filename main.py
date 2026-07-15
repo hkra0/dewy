@@ -5,7 +5,7 @@ import os
 import threading
 import sqlite3
 from datetime import datetime
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import uvicorn
@@ -613,10 +613,14 @@ def get_config(x_bff_to_pi_token: str = Header(None)):
     return global_config
 
 @app.post("/api/config")
-def update_config(cfg: dict, x_bff_to_pi_token: str = Header(None)):
+async def update_config(req: Request, x_bff_to_pi_token: str = Header(None)):
     if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
-    save_config(cfg)
-    return {"status": "success"}
+    try:
+        cfg = await req.json()
+        save_config(cfg)
+        return {"status": "success"}
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
 
 # 手动控制补光灯 API
 @app.post("/api/light")
