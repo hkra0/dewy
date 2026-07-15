@@ -48,7 +48,18 @@ for n_id, info in hardware_manager.mqtt_nodes.items():
         mqtt_topic_to_node[info["topic"]] = n_id
 
 mqtt_latest_data = {n_id: {"data": {}, "updated": False} for n_id in hardware_manager.mqtt_nodes}
+local_latest_data = {n_id: {} for n_id in hardware_manager.local_sensors}
 
+def local_sensor_updater():
+    while True:
+        try:
+            for node_id in hardware_manager.local_sensors:
+                data = hardware_manager.read_local_node(node_id)
+                if data:
+                    local_latest_data[node_id] = data
+        except Exception as e:
+            pass
+        time.sleep(2.0)
 # ==================== 软件配置管理 ====================
 DEFAULT_CONFIG = {
     "auto_water": {"enabled": True, "duration": 0.5, "threshold": 50.0, "node_id": "main"},
@@ -251,8 +262,9 @@ def background_logger():
             
             # 采集本地节点数据
             for node_id in hardware_manager.local_sensors:
-                data = hardware_manager.read_local_node(node_id)
+                data = local_latest_data.get(node_id, {})
                 if data:
+                    data = data.copy()
                     data["node_id"] = node_id
                     node_data_to_save.append(data)
                 
@@ -349,6 +361,7 @@ def start_background_logger():
     global global_mqtt_client
     load_config()
     threading.Thread(target=background_logger, daemon=True).start()
+    threading.Thread(target=local_sensor_updater, daemon=True).start()
     
     try:
         mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
@@ -389,7 +402,8 @@ def get_monitor_data(x_bff_to_pi_token: str = Header(None)):
     
     # 读 Local Nodes
     for node_id in hardware_manager.local_sensors:
-        nodes_data[node_id] = hardware_manager.read_local_node(node_id)
+        if node_id in local_latest_data:
+            nodes_data[node_id] = local_latest_data[node_id].copy()
         
     # 读 MQTT Nodes
     for node_id, info in mqtt_latest_data.items():

@@ -832,12 +832,24 @@
             if (!waterKey) return;
             const statusEl = document.getElementById('light-status');
             if (!statusEl) return;
-            const orig = statusEl.innerText; statusEl.innerText = '...';
+            
+            const orig = statusEl.innerText;
+            const isCurrentlyOn = orig.trim() === 'ON';
+            const newStatus = isCurrentlyOn ? 'OFF' : 'ON';
+            
+            // Optimistic update
+            statusEl.innerText = newStatus;
+            statusEl.style.color = newStatus === 'ON' ? '#eab308' : '#64748b';
+            
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
                 if (res.ok) setTimeout(() => fetchAllData(true), 500);
                 else throw new Error('fail');
-            } catch (e) { statusEl.innerText = orig; }
+            } catch (e) {
+                // Revert on failure
+                statusEl.innerText = orig;
+                statusEl.style.color = isCurrentlyOn ? '#eab308' : '#64748b';
+            }
         }
 
         function renderHistoryUI(data, type) {
@@ -1041,9 +1053,13 @@
         async function fetchAllData(forceLive = false) {
             const btn = document.getElementById('refresh-btn');
             if (btn) btn.innerText = 'syncing...';
-            await fetchSensorData();
-            if (currentTab === 'environment') await fetchImage(forceLive);
-            if (currentTab === 'history') await loadHistoryData(true);
+            
+            const tasks = [fetchSensorData()];
+            if (currentTab === 'environment') tasks.push(fetchImage(forceLive));
+            if (currentTab === 'history') tasks.push(loadHistoryData(true));
+            
+            await Promise.allSettled(tasks);
+            
             if (btn) btn.innerText = 'refresh';
         }
 
