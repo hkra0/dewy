@@ -843,7 +843,7 @@
             
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
-                if (res.ok) setTimeout(() => fetchAllData(true), 500);
+                if (res.ok) setTimeout(() => fetchAllData(false), 500);
                 else throw new Error('fail');
             } catch (e) {
                 // Revert on failure
