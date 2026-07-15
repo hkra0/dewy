@@ -36,3 +36,7 @@ package-lock.json
 hardware_config.toml
 hardware_config.yaml
 hardware_config.json
+
+# PlatformIO build artifacts
+.pio/
+.build/

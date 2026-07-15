@@ -64,3 +64,9 @@ description = "ESP32 Bedroom Sensor"
 # For mqtt_node, the sensors are determined by the JSON payload received.
 # You can optionally define the expected metrics.
 metrics = ["temperature", "humidity", "pressure"]
+
+# ---- ESP32 Specific Config (Used during PlatformIO Build) ----
+wifi_ssid = "YOUR_WIFI_SSID"
+wifi_password = "YOUR_WIFI_PASSWORD"
+mqtt_host = "robin"
+mqtt_client_id = "ESP32_Plant_Node_01"
