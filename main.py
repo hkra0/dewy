@@ -366,9 +366,16 @@ def get_nodes(x_bff_to_pi_token: str = Header(None)):
     if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
     nodes_info = {}
     for node_id, config in hardware_manager.nodes.items():
+        node_type = config.get("type", "unknown")
+        has_system = (node_type == "local")
+        actuators = config.get("actuators", {})
+        has_settings = ("pump" in actuators or "light" in actuators)
+        
         nodes_info[node_id] = {
-            "type": config.get("type", "unknown"),
-            "description": config.get("description", f"Node {node_id}")
+            "type": node_type,
+            "description": config.get("description", f"Node {node_id}"),
+            "has_system": has_system,
+            "has_settings": has_settings
         }
     return nodes_info
 

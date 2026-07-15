@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>dewy - dynamic nodes</title>
+    <title>dewy</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
@@ -75,10 +76,10 @@
             text-align: center;
             transition: transform 0.2s, box-shadow 0.2s;
         }
-        
+
         .card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
         }
 
         .card-title {
@@ -293,7 +294,15 @@
             margin-bottom: 12px;
         }
 
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
 
         .close-btn {
             margin-top: 20px;
@@ -307,25 +316,54 @@
             transition: background 0.2s;
         }
 
-        .close-btn:hover { background: rgba(255, 255, 255, 0.25); }
-        
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
         .switch {
             position: relative;
             display: inline-block;
             width: 40px;
             height: 22px;
         }
-        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
         .slider {
-            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #cbd5e1; transition: .3s; border-radius: 22px;
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: .3s;
+            border-radius: 22px;
         }
+
         .slider:before {
-            position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px;
-            background-color: white; transition: .3s; border-radius: 50%;
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
         }
-        input:checked + .slider { background-color: #10b981; }
-        input:checked + .slider:before { transform: translateX(18px); }
+
+        input:checked+.slider {
+            background-color: #10b981;
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(18px);
+        }
     </style>
 </head>
 
@@ -342,10 +380,12 @@
         <div class="header" style="text-align: center; margin-bottom: 22px;">
             <h1 style="margin: 0; font-size: 24px; color: #1e293b; letter-spacing: -0.5px;">🌱 dewy</h1>
             <div style="display: inline-block; position: relative; margin-top: 8px;">
-                <select id="device-select" onchange="switchDevice(this.value, true)" style="appearance: none; -webkit-appearance: none; background: #e2e8f0; color: #475569; padding: 4px 28px 4px 14px; border-radius: 16px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); text-align: center;">
+                <select id="device-select" onchange="switchDevice(this.value, true)"
+                    style="appearance: none; -webkit-appearance: none; background: #e2e8f0; color: #475569; padding: 4px 28px 4px 14px; border-radius: 16px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); text-align: center;">
                     <option value="main">Loading...</option>
                 </select>
-                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b; font-size: 9px;">▼</span>
+                <span
+                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b; font-size: 9px;">▼</span>
             </div>
         </div>
 
@@ -361,21 +401,28 @@
             <div class="grid" id="dynamic-cards">
                 <!-- Cards will be injected here -->
             </div>
-            
+
             <div class="card full-width hidden" id="camera-block" style="margin-top: 15px;">
                 <div class="card-title">camera</div>
                 <div class="camera-container"><img id="cam-img" alt="camera view" onclick="fetchHDImage()" /></div>
                 <div id="cam-timestamp"></div>
             </div>
-            
-            <details class="card full-width hidden" id="water-block" style="margin-top: 15px; padding: 10px 15px; cursor: pointer;">
-                <summary style="font-weight: 600; color: #64748b; outline: none; user-select: none;">manual watering</summary>
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; cursor: default;">
+
+            <details class="card full-width hidden" id="water-block"
+                style="margin-top: 15px; padding: 10px 15px; cursor: pointer;">
+                <summary style="font-weight: 600; color: #64748b; outline: none; user-select: none;">manual watering
+                </summary>
+                <div
+                    style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; cursor: default;">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <label for="water-duration" style="font-size: 14px; color: #64748b; white-space: nowrap;">Duration (s):</label>
-                        <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5" style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
+                        <label for="water-duration"
+                            style="font-size: 14px; color: #64748b; white-space: nowrap;">Duration (s):</label>
+                        <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5"
+                            style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
                     </div>
-                    <button class="action-btn" id="water-btn" style="background: #3b82f6; width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;" onclick="triggerWatering()">Water</button>
+                    <button class="action-btn" id="water-btn"
+                        style="background: #3b82f6; width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
+                        onclick="triggerWatering()">Water</button>
                 </div>
             </details>
         </div>
@@ -420,51 +467,79 @@
 
         <!-- Settings View (Unchanged from original) -->
         <div class="grid hidden" id="view-settings">
-             <div class="card full-width" style="text-align: left; padding: 20px;">
-                <div style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
+            <div class="card full-width" style="text-align: left; padding: 20px;">
+                <div
+                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
                     Auto Watering
-                    <label class="switch"><input type="checkbox" id="cfg-water-enabled"><span class="slider"></span></label>
+                    <label class="switch"><input type="checkbox" id="cfg-water-enabled"><span
+                            class="slider"></span></label>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #475569;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label>Threshold (%)</label>
-                        <input type="number" id="cfg-water-threshold" style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                        <input type="number" id="cfg-water-threshold"
+                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label>Duration (s)</label>
-                        <input type="number" id="cfg-water-duration" step="0.1" style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                        <input type="number" id="cfg-water-duration" step="0.1"
+                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
                     </div>
                 </div>
             </div>
             <div class="card full-width" style="text-align: left; padding: 20px;">
-                <div style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
+                <div
+                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
                     Fill Light
-                    <label class="switch"><input type="checkbox" id="cfg-light-enabled"><span class="slider"></span></label>
+                    <label class="switch"><input type="checkbox" id="cfg-light-enabled"><span
+                            class="slider"></span></label>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #475569;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label>Mode</label>
-                        <select id="cfg-light-mode" onchange="toggleLightMode()" style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1; background: white;">
+                        <select id="cfg-light-mode" onchange="toggleLightMode()"
+                            style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1; background: white;">
                             <option value="fixed">Fixed Time</option>
                             <option value="sun">Sunrise & Sunset</option>
                         </select>
                     </div>
-                    <div id="cfg-light-fixed-group" style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn On</label><input type="time" id="cfg-light-on" style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn Off</label><input type="time" id="cfg-light-off" style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                    <div id="cfg-light-fixed-group"
+                        style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn
+                                On</label><input type="time" id="cfg-light-on"
+                                style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn
+                                Off</label><input type="time" id="cfg-light-off"
+                                style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
                     </div>
-                    <div id="cfg-light-sun-group" class="hidden" style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
+                    <div id="cfg-light-sun-group" class="hidden"
+                        style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
                         <div style="display: flex; gap: 10px;">
-                            <div style="flex: 1;"><label style="display: block; margin-bottom: 5px; font-size: 11px;">Latitude</label><input type="text" id="cfg-light-lat" placeholder="auto" style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
-                            <div style="flex: 1;"><label style="display: block; margin-bottom: 5px; font-size: 11px;">Longitude</label><input type="text" id="cfg-light-lng" placeholder="auto" style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                            <div style="flex: 1;"><label
+                                    style="display: block; margin-bottom: 5px; font-size: 11px;">Latitude</label><input
+                                    type="text" id="cfg-light-lat" placeholder="auto"
+                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                            </div>
+                            <div style="flex: 1;"><label
+                                    style="display: block; margin-bottom: 5px; font-size: 11px;">Longitude</label><input
+                                    type="text" id="cfg-light-lng" placeholder="auto"
+                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                            </div>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>On Offset (min)</label><input type="number" id="cfg-light-on-offset" style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Off Offset (min)</label><input type="number" id="cfg-light-off-offset" style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
-                        <div style="font-size: 11px; color: #10b981; text-align: center; margin-top: 5px;" id="cfg-light-effective-times">Currently scheduled: --:-- to --:--</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>On
+                                Offset (min)</label><input type="number" id="cfg-light-on-offset"
+                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Off
+                                Offset (min)</label><input type="number" id="cfg-light-off-offset"
+                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                        <div style="font-size: 11px; color: #10b981; text-align: center; margin-top: 5px;"
+                            id="cfg-light-effective-times">Currently scheduled: --:-- to --:--</div>
                     </div>
                 </div>
             </div>
-            <div class="card full-width" style="padding: 0; background: transparent;"><button class="action-btn" id="save-cfg-btn" style="background: #0ea5e9; margin-top: 0;" onclick="saveConfig()">Save Configuration</button></div>
+            <div class="card full-width" style="padding: 0; background: transparent;"><button class="action-btn"
+                    id="save-cfg-btn" style="background: #0ea5e9; margin-top: 0;" onclick="saveConfig()">Save
+                    Configuration</button></div>
         </div>
 
         <button class="action-btn" id="refresh-btn" onclick="fetchAllData(true)">refresh</button>
@@ -488,7 +563,7 @@
                 document.getElementById('cfg-light-sun-group').classList.remove('hidden');
             }
         }
-        
+
         async function fetchConfig() {
             const savedKey = localStorage.getItem(STORAGE_KEY) || '';
             const waterKey = localStorage.getItem('robin_water_key') || '';
@@ -496,7 +571,7 @@
                 const res = await fetch('/api/config', { headers: { 'X-Viewer-Key': savedKey, 'x-water-key': waterKey, 'X-Requested-By': 'Robin-Web' } });
                 const data = await res.json();
                 if (data.error) return;
-                
+
                 document.getElementById('cfg-water-enabled').checked = data.auto_water.enabled;
                 document.getElementById('cfg-water-threshold').value = data.auto_water.threshold;
                 document.getElementById('cfg-water-duration').value = data.auto_water.duration;
@@ -530,7 +605,7 @@
                 }
                 if (availableNodes[currentDevice]) select.value = currentDevice;
                 else if (Object.keys(availableNodes).length > 0) currentDevice = Object.keys(availableNodes)[0];
-            } catch(e) {}
+            } catch (e) { }
         }
 
         function updateURL() {
@@ -545,19 +620,38 @@
         function switchDevice(dev, pushState = false) {
             currentDevice = dev;
             document.getElementById('device-select').value = dev;
-            
+
             // clear cache for history
             for (let k in historyCache) delete historyCache[k];
+
+            const nodeInfo = availableNodes[dev] || {};
+            const hasSystem = nodeInfo.has_system;
+            const hasSettings = nodeInfo.has_settings && !!localStorage.getItem('robin_water_key');
             
+            if (hasSystem) document.getElementById('tab-system').classList.remove('hidden');
+            else document.getElementById('tab-system').classList.add('hidden');
+            
+            if (hasSettings) document.getElementById('tab-settings').classList.remove('hidden');
+            else document.getElementById('tab-settings').classList.add('hidden');
+            
+            if ((currentTab === 'system' && !hasSystem) || (currentTab === 'settings' && !hasSettings)) {
+                switchTab('environment', false, true);
+            }
+
             if (pushState) updateURL();
             fetchAllData(false);
         }
 
         function switchTab(tabName, pushState = true, skipFetch = false) {
+            const nodeInfo = availableNodes[currentDevice] || {};
+            const hasSystem = nodeInfo.has_system;
+            const hasSettings = nodeInfo.has_settings && !!localStorage.getItem('robin_water_key');
+
+            if (tabName === 'system' && !hasSystem) tabName = 'environment';
+            if (tabName === 'settings' && !hasSettings) tabName = 'environment';
+
             currentTab = tabName;
             if (pushState) updateURL();
-            const hasKey = !!localStorage.getItem(STORAGE_KEY);
-            const hasWaterKey = !!localStorage.getItem('robin_water_key');
 
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('tab-' + tabName).classList.add('active');
@@ -568,9 +662,6 @@
             document.getElementById('view-settings').classList.add('hidden');
 
             document.getElementById('view-' + tabName).classList.remove('hidden');
-
-            if (hasWaterKey) document.getElementById('tab-settings').classList.remove('hidden');
-            else if (tabName === 'settings') switchTab('environment', true);
 
             if (tabName === 'history' && !skipFetch) loadHistoryData(false);
             if (tabName === 'settings') fetchConfig();
@@ -595,7 +686,7 @@
         function renderDynamicCards(nodeData, globalData) {
             const container = document.getElementById('dynamic-cards');
             container.innerHTML = '';
-            
+
             if (!nodeData) {
                 container.innerHTML = '<div class="card full-width">no data for this node</div>';
                 return;
@@ -615,7 +706,7 @@
             if (nodeData.pressure !== undefined) {
                 container.innerHTML += `<div class="card"><div class="card-title">pressure</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
             }
-            
+
             // Light Status (global for now, or you can attach to specific node)
             // Just displaying it if it's main node for backwards compatibility visually
             if (currentDevice === 'main' && globalData.light_status) {
@@ -628,10 +719,10 @@
             // Hardware Actions (Camera / Water)
             const hasKey = !!localStorage.getItem(STORAGE_KEY);
             const hasWaterKey = !!localStorage.getItem('robin_water_key');
-            
+
             if (currentDevice === 'main' && hasKey) document.getElementById('camera-block').classList.remove('hidden');
             else document.getElementById('camera-block').classList.add('hidden');
-            
+
             if (hasWaterKey) document.getElementById('water-block').classList.remove('hidden');
             else document.getElementById('water-block').classList.add('hidden');
         }
@@ -645,7 +736,7 @@
 
                 const nodeData = data.nodes ? data.nodes[currentDevice] : {};
                 renderDynamicCards(nodeData, data);
-                
+
                 // System stats
                 if (data.system_health) {
                     document.getElementById('sys-temp').innerText = data.system_health.cpu_temperature + ' ℃';
@@ -678,7 +769,7 @@
             const waterKey = localStorage.getItem('robin_water_key');
             if (!waterKey) return;
             const statusEl = document.getElementById('light-status');
-            if(!statusEl) return;
+            if (!statusEl) return;
             const orig = statusEl.innerText; statusEl.innerText = '...';
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
@@ -703,15 +794,20 @@
                 return;
             }
             document.getElementById('chart-loading').classList.add('hidden');
-            
+
             let chartData = JSON.parse(JSON.stringify(data));
             const labels = chartData.map(d => d.time);
             const datasets = [];
-            
-            if (chartData[0].temp !== undefined) datasets.push({ label: 'temp (℃)', data: chartData.map(d => d.temp), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
-            if (chartData[0].hum !== undefined) datasets.push({ label: 'hum (%)', data: chartData.map(d => d.hum), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (chartData[0].soil !== undefined) datasets.push({ label: 'soil (%)', data: chartData.map(d => d.soil), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (chartData[0].pressure !== undefined) datasets.push({ label: 'pres (hPa)', data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
+
+            const hasTemp = chartData.some(d => d.temp !== null && d.temp !== undefined);
+            const hasHum = chartData.some(d => d.hum !== null && d.hum !== undefined);
+            const hasSoil = chartData.some(d => d.soil !== null && d.soil !== undefined);
+            const hasPres = chartData.some(d => d.pressure !== null && d.pressure !== undefined);
+
+            if (hasTemp) datasets.push({ label: 'temp (℃)', data: chartData.map(d => d.temp), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
+            if (hasHum) datasets.push({ label: 'hum (%)', data: chartData.map(d => d.hum), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasSoil) datasets.push({ label: 'soil (%)', data: chartData.map(d => d.soil), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasPres) datasets.push({ label: 'pres (hPa)', data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
 
             const ctx = document.getElementById('historyChart').getContext('2d');
             if (myChart) myChart.destroy();
@@ -731,12 +827,12 @@
 
         async function loadHistoryData(forceFetch = false) {
             const savedKey = localStorage.getItem(STORAGE_KEY) || '';
-            const reqType = currentHistType; 
+            const reqType = currentHistType;
             const cacheKey = currentDevice + '_' + reqType;
 
             if (historyCache[cacheKey]) {
                 renderHistoryUI(historyCache[cacheKey], reqType);
-                if (!forceFetch) return; 
+                if (!forceFetch) return;
             } else {
                 if (reqType === 'watering') document.getElementById('watering-log-wrapper').innerHTML = '<div class="loading-text">loading...</div>';
                 else { if (myChart) { myChart.destroy(); myChart = null; } document.getElementById('chart-loading').classList.remove('hidden'); }
@@ -749,7 +845,7 @@
                     historyCache[cacheKey] = data;
                     if (currentHistType === reqType) renderHistoryUI(data, reqType);
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
 
         /* fetchImage, fetchHDImage, closeHD unchanged... */
@@ -814,4 +910,5 @@
         };
     </script>
 </body>
+
 </html>

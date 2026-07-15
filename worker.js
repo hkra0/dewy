@@ -14,7 +14,7 @@ export default {
             if (!PI_BASE_URL) return new Response(JSON.stringify({ error: "Missing PI_BASE_URL config" }), { status: 500 });
 
             // Authorization
-            if (url.pathname === "/api/monitor" || url.pathname === "/api/history") {
+            if (url.pathname === "/api/monitor" || url.pathname === "/api/history" || url.pathname === "/api/nodes") {
                 if (clientKey !== VIEWER_MAGIC_KEY && requestedBy !== "Robin-Web") return new Response("not found", { status: 404 });
             } else if (url.pathname === "/api/image") {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404 });
@@ -63,7 +63,7 @@ export default {
             }
         }
 
-        if (url.pathname === "/" || url.pathname === "/system" || url.pathname === "/history" || url.pathname === "/settings" || url.pathname === "/sub1" || url.pathname === "/sub1/history") {
+        if (!url.pathname.startsWith("/api/")) {
             return new Response(HTML_TEMPLATE, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
         }
 
