@@ -610,7 +610,11 @@ def trigger_manual_watering(req: WaterRequest, x_bff_to_pi_token: str = Header(N
 @app.get("/api/config")
 def get_config(x_bff_to_pi_token: str = Header(None)):
     if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
-    return global_config
+    on_m, off_m = get_effective_light_times()
+    res = global_config.copy()
+    res["effective_light_on"] = f"{on_m//60:02d}:{on_m%60:02d}"
+    res["effective_light_off"] = f"{off_m//60:02d}:{off_m%60:02d}"
+    return res
 
 @app.post("/api/config")
 async def update_config(req: Request, x_bff_to_pi_token: str = Header(None)):
