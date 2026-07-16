@@ -153,6 +153,7 @@ def get_system_stats():
 def init_db():
     with db_lock:
         conn = sqlite3.connect(DB_FILE)
+        conn.execute("PRAGMA journal_mode=WAL")
         cursor = conn.cursor()
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS node_data (
@@ -177,6 +178,8 @@ def init_db():
                 soil_before REAL
             )
         ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_node_data_query ON node_data (node_id, is_anomaly, timestamp)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_watering_log_node ON watering_log (node_id, timestamp)')
         conn.commit()
         conn.close()
 
@@ -452,7 +455,7 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
             try:
                 with camera_lock:
                     if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
-                    else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "80", "--vflip", "--hflip", "--nopreview"]
+                    else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "60", "--vflip", "--hflip", "--nopreview"]
                     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             finally:
                 if needs_temp_light and global_mqtt_client:
@@ -505,16 +508,15 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_
                 
             else: # 24h
                 cursor.execute('''
-                    SELECT datetime(timestamp, 'localtime'), temperature, humidity, soil_moisture, pressure 
+                    SELECT strftime('%H:%M', timestamp, 'localtime'), temperature, humidity, soil_moisture, pressure 
                     FROM node_data 
                     WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL) 
                       AND timestamp >= datetime('now', '-24 hours')
-                    ORDER BY timestamp DESC
+                    ORDER BY timestamp ASC
                 ''', (node_id,))
                 rows = cursor.fetchall()
                 conn.close()
-                rows.reverse()
-                return [{"time": r[0].split(" ")[1][:5] if " " in r[0] else r[0], 
+                return [{"time": r[0], 
                          "temp": round(r[1], 1) if r[1] is not None else None, 
                          "hum": round(r[2], 1) if r[2] is not None else None, 
                          "soil": round(r[3], 1) if r[3] is not None else None,

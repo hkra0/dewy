@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>dewy</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -745,7 +745,6 @@
 
         function renderDynamicCards(nodeData, globalData) {
             const container = document.getElementById('dynamic-cards');
-            container.innerHTML = '';
 
             if (!nodeData) {
                 container.innerHTML = '<div class="card full-width">no data for this node</div>';
@@ -753,26 +752,29 @@
             }
 
             const formatVal = (v, unit) => (v !== undefined && v !== null) ? `${v} ${unit}` : '--';
+            let html = '';
 
             if (nodeData.temperature !== undefined) {
-                container.innerHTML += `<div class="card"><div class="card-title">temperature</div><div class="card-value" style="color: #f59e0b;">${formatVal(nodeData.temperature, '℃')}</div></div>`;
+                html += `<div class="card"><div class="card-title">temperature</div><div class="card-value" style="color: #f59e0b;">${formatVal(nodeData.temperature, '℃')}</div></div>`;
             }
             if (nodeData.humidity !== undefined) {
-                container.innerHTML += `<div class="card"><div class="card-title">humidity</div><div class="card-value" style="color: #3b82f6;">${formatVal(nodeData.humidity, '%')}</div></div>`;
+                html += `<div class="card"><div class="card-title">humidity</div><div class="card-value" style="color: #3b82f6;">${formatVal(nodeData.humidity, '%')}</div></div>`;
             }
             if (nodeData.soil_moisture !== undefined) {
-                container.innerHTML += `<div class="card"><div class="card-title">soil moisture</div><div class="card-value" style="color: #10b981;">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
+                html += `<div class="card"><div class="card-title">soil moisture</div><div class="card-value" style="color: #10b981;">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
             }
             if (nodeData.pressure !== undefined) {
-                container.innerHTML += `<div class="card"><div class="card-title">pressure</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
+                html += `<div class="card"><div class="card-title">pressure</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
             }
 
             // Light Status (global for now, or you can attach to specific node)
             // Just displaying it if it's main node for backwards compatibility visually
             if (currentDevice === 'main' && globalData.light_status) {
                 const color = globalData.light_status === 'ON' ? '#eab308' : '#64748b';
-                container.innerHTML += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
+                html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
             }
+
+            container.innerHTML = html;
 
             // Power System Health is rendered in System Tab.
 
@@ -868,7 +870,7 @@
             }
             document.getElementById('chart-loading').classList.add('hidden');
 
-            let chartData = JSON.parse(JSON.stringify(data));
+            const chartData = data;
             const labels = chartData.map(d => d.time);
             const datasets = [];
 
@@ -921,6 +923,7 @@
             } catch (e) { }
         }
 
+        let currentCamBlobUrl = null;
         async function fetchImage(forceLive = false) {
             const savedKey = localStorage.getItem(STORAGE_KEY);
             const cameraBlock = document.getElementById('camera-block');
@@ -957,7 +960,9 @@
                         camTs.style.color = '#94a3b8'; 
                     }
                 };
-                img.src = URL.createObjectURL(blob);
+                if (currentCamBlobUrl) URL.revokeObjectURL(currentCamBlobUrl);
+                currentCamBlobUrl = URL.createObjectURL(blob);
+                img.src = currentCamBlobUrl;
                 
                 if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
             } catch (e) { 
