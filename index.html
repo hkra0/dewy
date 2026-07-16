@@ -489,10 +489,10 @@
 <body>
     <div id="hd-modal">
         <div class="loader" id="hd-loader"></div>
-        <div id="hd-status">capturing hd image...</div>
+        <div id="hd-status" data-i18n="capturing_hd">capturing hd image...</div>
         <img id="hd-img" src="" alt="hd view">
         <div id="hd-timestamp" class="hidden"></div>
-        <div class="close-btn" onclick="closeHD()">close</div>
+        <div class="close-btn" onclick="closeHD()" data-i18n="close">close</div>
     </div>
 
     <div class="container">
@@ -509,10 +509,10 @@
         </div>
 
         <div class="nav">
-            <div class="nav-btn active" onclick="switchTab('environment')" id="tab-environment">environment</div>
-            <div class="nav-btn" onclick="switchTab('system')" id="tab-system">system</div>
-            <div class="nav-btn" onclick="switchTab('history')" id="tab-history">history</div>
-            <div class="nav-btn hidden" onclick="switchTab('settings')" id="tab-settings">settings</div>
+            <div class="nav-btn active" onclick="switchTab('environment')" id="tab-environment" data-i18n="env">environment</div>
+            <div class="nav-btn" onclick="switchTab('system')" id="tab-system" data-i18n="sys">system</div>
+            <div class="nav-btn" onclick="switchTab('history')" id="tab-history" data-i18n="hist">history</div>
+            <div class="nav-btn hidden" onclick="switchTab('settings')" id="tab-settings" data-i18n="settings">settings</div>
         </div>
 
         <!-- Dynamic Environment View -->
@@ -522,26 +522,26 @@
             </div>
 
             <div class="card full-width hidden" id="camera-block" style="margin-top: 15px;">
-                <div class="card-title">camera</div>
+                <div class="card-title" data-i18n="camera">camera</div>
                 <div class="camera-container"><img id="cam-img" alt="camera view" onclick="fetchHDImage()" /></div>
                 <div id="cam-timestamp"></div>
             </div>
 
             <details class="card full-width hidden" id="water-block"
                 style="margin-top: 15px; padding: 10px 15px; cursor: pointer;">
-                <summary style="font-weight: 600; color: var(--text-muted); outline: none; user-select: none;">manual watering
+                <summary style="font-weight: 600; color: var(--text-muted); outline: none; user-select: none;" data-i18n="manual_water">manual watering
                 </summary>
                 <div
                     style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; cursor: default;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="water-duration"
-                            style="font-size: 14px; color: var(--text-muted); white-space: nowrap;">Duration (s):</label>
+                            style="font-size: 14px; color: var(--text-muted); white-space: nowrap;" data-i18n="duration_s">Duration (s):</label>
                         <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5"
                             style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-main); outline: none;">
                     </div>
                     <button class="action-btn" id="water-btn"
                         style="width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
-                        onclick="triggerWatering()">Water</button>
+                        onclick="triggerWatering()" data-i18n="water_btn">Water</button>
                 </div>
             </details>
         </div>
@@ -549,19 +549,19 @@
         <!-- System View -->
         <div class="grid hidden view-section" id="view-system">
             <div class="card full-width">
-                <div class="card-title">power status</div>
+                <div class="card-title" data-i18n="power_status">power status</div>
                 <div class="card-value" style="color: #0284c7;" id="power-status">-- V / -- mA</div>
             </div>
             <div class="card">
-                <div class="card-title">cpu temp</div>
+                <div class="card-title" data-i18n="cpu_temp">cpu temp</div>
                 <div class="card-value" style="color: #e11d48;" id="sys-temp">-- ℃</div>
             </div>
             <div class="card">
-                <div class="card-title">ram used</div>
+                <div class="card-title" data-i18n="ram_used">ram used</div>
                 <div class="card-value" id="sys-ram">-- %</div>
             </div>
             <div class="card full-width">
-                <div class="card-title">disk storage used</div>
+                <div class="card-title" data-i18n="disk_used">disk storage used</div>
                 <div class="card-value" id="sys-disk">-- %</div>
             </div>
         </div>
@@ -569,15 +569,15 @@
         <!-- History View -->
         <div class="grid hidden view-section" id="view-history">
             <div class="card full-width" style="padding-bottom: 20px;">
-                <div class="card-title">environmental trends</div>
+                <div class="card-title" data-i18n="env_trends">environmental trends</div>
                 <div class="sub-nav" id="history-type-nav">
-                    <div class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')">past 24h</div>
-                    <div class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')">daily avg</div>
-                    <div class="sub-nav-btn" id="hist-watering" onclick="switchHistType('watering')">watering log</div>
+                    <div class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')" data-i18n="past_24h">past 24h</div>
+                    <div class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')" data-i18n="daily_avg">daily avg</div>
+                    <div class="sub-nav-btn" id="hist-watering" onclick="switchHistType('watering')" data-i18n="watering_log">watering log</div>
                 </div>
 
                 <div class="chart-container" id="chart-container-wrapper">
-                    <div id="chart-loading" class="loading-text hidden">loading...</div>
+                    <div id="chart-loading" class="loading-text hidden" data-i18n="chart_loading">loading...</div>
                     <canvas id="historyChart"></canvas>
                 </div>
                 <div id="watering-log-wrapper" class="hidden"></div>
@@ -589,18 +589,18 @@
             <div class="card full-width" style="text-align: left; padding: 20px;">
                 <div
                     style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
-                    Auto Watering
+                    <span data-i18n="auto_water">Auto Watering</span>
                     <label class="switch"><input type="checkbox" id="cfg-water-enabled"><span
                             class="slider"></span></label>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label>Threshold (%)</label>
+                        <label data-i18n="threshold">Threshold (%)</label>
                         <input type="number" id="cfg-water-threshold"
                             style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label>Duration (s)</label>
+                        <label data-i18n="duration">Duration (s)</label>
                         <input type="number" id="cfg-water-duration" step="0.1"
                             style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                     </div>
@@ -609,64 +609,117 @@
             <div class="card full-width" style="text-align: left; padding: 20px;">
                 <div
                     style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
-                    Fill Light
+                    <span data-i18n="fill_light">Fill Light</span>
                     <label class="switch"><input type="checkbox" id="cfg-light-enabled"><span
                             class="slider"></span></label>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label>Mode</label>
+                        <label data-i18n="mode">Mode</label>
                         <select id="cfg-light-mode" onchange="toggleLightMode()"
                             style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface-color); color: var(--text-main);">
-                            <option value="fixed">Fixed Time</option>
-                            <option value="sun">Sunrise & Sunset</option>
+                            <option value="fixed" data-i18n="fixed_time">Fixed Time</option>
+                            <option value="sun" data-i18n="sunrise_sunset">Sunrise & Sunset</option>
                         </select>
                     </div>
                     <div id="cfg-light-fixed-group"
                         style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn
-                                On</label><input type="time" id="cfg-light-on"
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label data-i18n="turn_on">Turn On</label><input type="time" id="cfg-light-on"
                                 style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn
-                                Off</label><input type="time" id="cfg-light-off"
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label data-i18n="turn_off">Turn Off</label><input type="time" id="cfg-light-off"
                                 style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
                     </div>
                     <div id="cfg-light-sun-group" class="hidden"
                         style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
                         <div style="display: flex; gap: 10px;">
                             <div style="flex: 1;"><label
-                                    style="display: block; margin-bottom: 5px; font-size: 11px;">Latitude</label><input
+                                    style="display: block; margin-bottom: 5px; font-size: 11px;" data-i18n="lat">Latitude</label><input
                                     type="text" id="cfg-light-lat" placeholder="auto"
                                     style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                             </div>
                             <div style="flex: 1;"><label
-                                    style="display: block; margin-bottom: 5px; font-size: 11px;">Longitude</label><input
+                                    style="display: block; margin-bottom: 5px; font-size: 11px;" data-i18n="lng">Longitude</label><input
                                     type="text" id="cfg-light-lng" placeholder="auto"
                                     style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                             </div>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>On
-                                Offset (min)</label><input type="number" id="cfg-light-on-offset"
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label data-i18n="on_offset">On Offset (min)</label><input type="number" id="cfg-light-on-offset"
                                 style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Off
-                                Offset (min)</label><input type="number" id="cfg-light-off-offset"
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label data-i18n="off_offset">Off Offset (min)</label><input type="number" id="cfg-light-off-offset"
                                 style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
                         <div style="font-size: 11px; color: var(--accent); text-align: center; margin-top: 5px;"
-                            id="cfg-light-effective-times">Currently scheduled: --:-- to --:--</div>
+                            id="cfg-light-effective-times" data-i18n="currently_scheduled">Currently scheduled: --:-- to --:--</div>
                     </div>
                 </div>
             </div>
             <div class="card full-width" style="padding: 0;"><button class="action-btn"
-                    id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfig()">Save Configuration</button></div>
+                    id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfig()" data-i18n="save_cfg">Save Configuration</button></div>
         </div>
 
-        <button class="action-btn" id="refresh-btn" onclick="fetchAllData(true)">refresh</button>
-        <div class="status-bar" id="update-time">not synced</div>
+        <button class="action-btn" id="refresh-btn" onclick="fetchAllData(true)" data-i18n="refresh">refresh</button>
+        <div class="status-bar" id="update-time" data-i18n="not_synced">not synced</div>
     </div>
 
 
     <div id="toast-container" class="toast-container"></div>
     <script>
+
+        const translations = {
+            en: {
+                env: "environment", sys: "system", hist: "history", settings: "settings",
+                camera: "camera", manual_water: "manual watering", duration_s: "Duration (s):", water_btn: "Water",
+                power_status: "power status", cpu_temp: "cpu temp", ram_used: "ram used", disk_used: "disk storage used",
+                env_trends: "environmental trends", past_24h: "past 24h", daily_avg: "daily avg", watering_log: "watering log", chart_loading: "loading...",
+                auto_water: "Auto Watering", threshold: "Threshold (%)", duration: "Duration (s)", fill_light: "Fill Light",
+                mode: "Mode", fixed_time: "Fixed Time", sunrise_sunset: "Sunrise & Sunset", turn_on: "Turn On", turn_off: "Turn Off",
+                lat: "Latitude", lng: "Longitude", on_offset: "On Offset (min)", off_offset: "Off Offset (min)", currently_scheduled: "Currently scheduled: {on} to {off}",
+                save_cfg: "Save Configuration", refresh: "refresh", capturing_hd: "capturing hd image...", close: "close", not_synced: "not synced",
+                saving: "saving...", cfg_saved: "Configuration Saved!", fail_save: "Failed to save configuration.",
+                no_data_node: "no data for this node", temp: "temperature", humidity: "humidity", soil_moisture: "soil moisture", pressure: "pressure",
+                light_title: "fill light", watering_cmd: "Watering Command Sent!", watering_ing: "watering...", light_on: "Light turned ON", light_off: "Light turned OFF",
+                cam_capturing: "Camera is capturing, try again later", light_fail: "Light toggle failed", no_water_records: "no watering records yet.",
+                table_duration: "Duration (s)", table_soil: "Soil (%)", table_time: "Time", no_data: "no data available.",
+                chart_temp: "temp (℃)", chart_hum: "hum (%)", chart_soil: "soil (%)", chart_pres: "pres (hPa)", syncing: "syncing...",
+                cam_offline: "⚠️ camera hardware offline or error", net_disconnect: "⚠️ network disconnected", hd_capture_est: "capturing hd image... (est. 10s+)",
+                fail_hd: "❌ failed to capture hd image.", last_synced: "last synced at {time}"
+            },
+            zh: {
+                env: "环境", sys: "系统", hist: "历史", settings: "设置",
+                camera: "相机", manual_water: "手动浇水", duration_s: "时长 (秒):", water_btn: "浇水",
+                power_status: "电源状态", cpu_temp: "处理器温度", ram_used: "内存使用率", disk_used: "存储使用率",
+                env_trends: "环境趋势", past_24h: "过去24小时", daily_avg: "日均值", watering_log: "浇水记录", chart_loading: "加载中...",
+                auto_water: "自动浇水", threshold: "湿度阈值 (%)", duration: "浇水时长 (秒)", fill_light: "补光灯",
+                mode: "模式", fixed_time: "定时", sunrise_sunset: "日出 & 日落", turn_on: "开启时间", turn_off: "关闭时间",
+                lat: "纬度", lng: "经度", on_offset: "开启偏移 (分钟)", off_offset: "关闭偏移 (分钟)", currently_scheduled: "当前计划: {on} 至 {off}",
+                save_cfg: "保存配置", refresh: "刷新", capturing_hd: "正在拍摄高清图片...", close: "关闭", not_synced: "未同步",
+                saving: "保存中...", cfg_saved: "配置已保存！", fail_save: "配置保存失败。",
+                no_data_node: "该节点暂无数据", temp: "温度", humidity: "湿度", soil_moisture: "土壤湿度", pressure: "气压",
+                light_title: "补光灯", watering_cmd: "浇水指令已发送！", watering_ing: "正在浇水...", light_on: "补光灯已开启", light_off: "补光灯已关闭",
+                cam_capturing: "相机正在拍摄中，请稍后再试", light_fail: "补光灯切换失败", no_water_records: "暂无浇水记录。",
+                table_duration: "时长 (秒)", table_soil: "土壤湿度 (%)", table_time: "时间", no_data: "暂无数据。",
+                chart_temp: "温度 (℃)", chart_hum: "湿度 (%)", chart_soil: "土壤 (%)", chart_pres: "气压 (hPa)", syncing: "同步中...",
+                cam_offline: "⚠️ 相机硬件离线或故障", net_disconnect: "⚠️ 网络已断开", hd_capture_est: "正在拍摄高清图片... (约10秒+)",
+                fail_hd: "❌ 获取高清图片失败。", last_synced: "最后同步时间: {time}"
+            }
+        };
+
+        let currentLang = navigator.language.startsWith('zh') ? 'zh' : 'en';
+        function t(key, replacements = {}) {
+            let text = translations[currentLang][key] || key;
+            for (let k in replacements) {
+                text = text.replace(`{${k}}`, replacements[k]);
+            }
+            return text;
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (key === 'currently_scheduled') return; // Handled dynamically
+                el.innerText = t(key);
+            });
+        }
+
 
         function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');
@@ -717,7 +770,7 @@
                 document.getElementById('cfg-light-off-offset').value = data.auto_light.sun_off_offset;
                 document.getElementById('cfg-light-lat').value = data.auto_light.lat || "";
                 document.getElementById('cfg-light-lng').value = data.auto_light.lng || "";
-                if (data.effective_light_on && data.effective_light_off) document.getElementById('cfg-light-effective-times').innerText = `Currently scheduled: ${data.effective_light_on} to ${data.effective_light_off}`;
+                if (data.effective_light_on && data.effective_light_off) document.getElementById('cfg-light-effective-times').innerText = `` + t('currently_scheduled', {on: data.effective_light_on, off: data.effective_light_off}) + ``;
                 toggleLightMode();
             } catch (e) { console.error(e); }
         }
@@ -729,7 +782,7 @@
             const btn = document.getElementById('save-cfg-btn');
             const originalText = btn.innerText;
             btn.disabled = true;
-            btn.innerText = 'saving...';
+            btn.innerText = t('saving');
             
             const cfg = {
                 auto_water: {
@@ -756,7 +809,7 @@
                     body: JSON.stringify(cfg)
                 });
                 if (res.ok) {
-                    showToast('Configuration Saved!', 'success');
+                    showToast(t('cfg_saved'), 'success');
                     
                     setTimeout(() => {
                         btn.innerText = originalText;
@@ -767,7 +820,7 @@
                     throw new Error('Failed');
                 }
             } catch (e) {
-                showToast('Failed to save configuration.', 'error');
+                showToast(t('fail_save'), 'error');
                 
                 setTimeout(() => {
                     btn.innerText = originalText;
@@ -882,7 +935,7 @@
             const container = document.getElementById('dynamic-cards');
 
             if (!nodeData) {
-                container.innerHTML = '<div class="card full-width">no data for this node</div>';
+                container.innerHTML = `<div class="card full-width">${t('no_data_node')}</div>`;
                 return;
             }
 
@@ -890,16 +943,16 @@
             let html = '';
 
             if (nodeData.temperature !== undefined) {
-                html += `<div class="card"><div class="card-title">temperature</div><div class="card-value" style="color: #f59e0b;">${formatVal(nodeData.temperature, '℃')}</div></div>`;
+                html += `<div class="card"><div class="card-title">` + t('temp') + `</div><div class="card-value" style="color: #f59e0b;">${formatVal(nodeData.temperature, '℃')}</div></div>`;
             }
             if (nodeData.humidity !== undefined) {
-                html += `<div class="card"><div class="card-title">humidity</div><div class="card-value" style="color: #3b82f6;">${formatVal(nodeData.humidity, '%')}</div></div>`;
+                html += `<div class="card"><div class="card-title">` + t('humidity') + `</div><div class="card-value" style="color: #3b82f6;">${formatVal(nodeData.humidity, '%')}</div></div>`;
             }
             if (nodeData.soil_moisture !== undefined) {
-                html += `<div class="card"><div class="card-title">soil moisture</div><div class="card-value" style="color: var(--accent);">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
+                html += `<div class="card"><div class="card-title">` + t('soil_moisture') + `</div><div class="card-value" style="color: var(--accent);">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
             }
             if (nodeData.pressure !== undefined) {
-                html += `<div class="card"><div class="card-title">pressure</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
+                html += `<div class="card"><div class="card-title">` + t('pressure') + `</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
             }
 
             // Light Status (global for now, or you can attach to specific node)
@@ -908,10 +961,10 @@
                 const effectiveStatus = optimisticLightStatus || globalData.light_status;
                 if (effectiveStatus && effectiveStatus !== '--') {
                     const color = effectiveStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
-                    html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${effectiveStatus}</div></div>`;
+                    html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">` + t('light_title') + `</div><div class="card-value" id="light-status" style="color: ${color};">${effectiveStatus}</div></div>`;
                 } else if (globalData.light_status) {
                     const color = globalData.light_status === 'ON' ? '#eab308' : 'var(--text-muted)';
-                    html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
+                    html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">${t('light_title')}</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
                 }
             }
 
@@ -962,7 +1015,7 @@
                     document.getElementById('power-status').innerText = '-- V / -- mA';
                 }
                 const time = new Date(data.timestamp * 1000);
-                document.getElementById('update-time').innerText = 'last synced at ' + time.toLocaleTimeString().toLowerCase();
+                document.getElementById('update-time').innerText = t('last_synced', {time: time.toLocaleTimeString().toLowerCase()});
             } catch (e) { console.error(e); }
         }
 
@@ -970,13 +1023,13 @@
             const waterKey = localStorage.getItem('robin_water_key');
             if (!waterKey) return;
             const btn = document.getElementById('water-btn');
-            btn.disabled = true; btn.innerText = 'watering...';
+            btn.disabled = true; btn.innerText = t('watering_ing');
             const duration = parseFloat(document.getElementById('water-duration').value) || 0.5;
             try {
                 const res = await fetch('/api/water', { method: 'POST', headers: { 'x-water-key': waterKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ duration, node_id: currentDevice }) });
-                if (res.ok) { showToast('Watering Command Sent!', 'success');  setTimeout(() => { btn.innerText = 'Water';  btn.disabled = false; fetchAllData(true); }, 2000); }
+                if (res.ok) { showToast(t('watering_cmd'), 'success');  setTimeout(() => { btn.innerText = t('water_btn');  btn.disabled = false; fetchAllData(true); }, 2000); }
                 else throw new Error('fail');
-            } catch (e) { showToast('Failed to save configuration.', 'error');  setTimeout(() => { btn.innerText = 'Water';  btn.disabled = false; }, 2000); }
+            } catch (e) { showToast('Failed to save configuration.', 'error');  setTimeout(() => { btn.innerText = t('water_btn');  btn.disabled = false; }, 2000); }
         }
 
         let lightToggleInProgress = false;
@@ -1000,7 +1053,7 @@
             optimisticLightStatus = newStatus;
             statusEl.innerText = newStatus;
             statusEl.style.color = newStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
-            showToast(`Light turned ${newStatus}`, 'success');
+            showToast(newStatus === 'ON' ? t('light_on') : t('light_off'), 'success');
             
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
@@ -1013,7 +1066,7 @@
                 optimisticLightStatus = isCurrentlyOn ? 'ON' : null;
                 statusEl.innerText = isCurrentlyOn ? 'ON' : 'OFF';
                 statusEl.style.color = isCurrentlyOn ? '#eab308' : 'var(--text-muted)';
-                showToast(e.message === 'camera' ? 'Camera is capturing, try again later' : 'Light toggle failed', 'error');
+                showToast(e.message === 'camera' ? t('cam_capturing') : t('light_fail'), 'error');
             }
             
             // 1s debounce
@@ -1023,9 +1076,9 @@
         function renderHistoryUI(data, type) {
             if (type === 'watering') {
                 const wrapper = document.getElementById('watering-log-wrapper');
-                if (!data || data.length === 0) { wrapper.innerHTML = '<div class="loading-text">no watering records yet.</div>'; return; }
+                if (!data || data.length === 0) { wrapper.innerHTML = `<div class="loading-text">${t('no_water_records')}</div>`; return; }
                 let html = '<div class="watering-table-wrapper"><table class="watering-table">';
-                html += '<thead><tr><th>Duration (s)</th><th>Soil (%)</th><th>Time</th></tr></thead><tbody>';
+                html += `<thead><tr><th>${t('table_duration')}</th><th>${t('table_soil')}</th><th>${t('table_time')}</th></tr></thead><tbody>`;
                 data.forEach(item => { 
                     html += `<tr><td>${item.duration}</td><td>${item.soil}</td><td class="log-time" style="color: var(--text-muted); font-size: 12px;">${item.time}</td></tr>`; 
                 });
@@ -1034,7 +1087,7 @@
             }
             if (!data || data.length === 0) {
                 if (myChart) { myChart.destroy(); myChart = null; }
-                document.getElementById('chart-loading').innerText = 'no data available.';
+                document.getElementById('chart-loading').innerText = t('no_data');
                 document.getElementById('chart-loading').classList.remove('hidden');
                 return;
             }
@@ -1049,10 +1102,10 @@
             const hasSoil = chartData.some(d => d.soil !== null && d.soil !== undefined);
             const hasPres = chartData.some(d => d.pressure !== null && d.pressure !== undefined);
 
-            if (hasTemp) datasets.push({ label: 'temp (℃)', data: chartData.map(d => d.temp), borderColor: '#f59e0b', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
-            if (hasHum) datasets.push({ label: 'hum (%)', data: chartData.map(d => d.hum), borderColor: '#3b82f6', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (hasSoil) datasets.push({ label: 'soil (%)', data: chartData.map(d => d.soil), borderColor: '#10b981', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (hasPres) datasets.push({ label: 'pres (hPa)', data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
+            if (hasTemp) datasets.push({ label: t('chart_temp'), data: chartData.map(d => d.temp), borderColor: '#f59e0b', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
+            if (hasHum) datasets.push({ label: t('chart_hum'), data: chartData.map(d => d.hum), borderColor: '#3b82f6', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: '#10b981', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
 
             const ctx = document.getElementById('historyChart').getContext('2d');
             if (myChart) myChart.destroy();
@@ -1105,7 +1158,7 @@
             const img = document.getElementById('cam-img');
             const camTs = document.getElementById('cam-timestamp');
 
-            camTs.innerText = 'syncing...'; 
+            camTs.innerText = t('syncing'); 
             camTs.style.color = '#94a3b8'; 
             isCameraSyncing = true;
             
@@ -1116,7 +1169,7 @@
                 });
                 
                 if (!res.ok) { 
-                    camTs.innerText = '⚠️ camera hardware offline or error';
+                    camTs.innerText = t('cam_offline');
                     camTs.style.color = '#ef4444';
                     if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
                     return; 
@@ -1139,7 +1192,7 @@
                 
                 if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
             } catch (e) { 
-                camTs.innerText = '⚠️ network disconnected';
+                camTs.innerText = t('net_disconnect');
                 camTs.style.color = '#ef4444'; 
                 if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
             } finally {
@@ -1176,7 +1229,7 @@
             }
 
             statusText.style.display = 'block';
-            statusText.innerText = 'capturing hd image... (est. 10s+)';
+            statusText.innerText = t('hd_capture_est');
             loader.style.display = 'block';
             modal.style.display = 'flex';
 
@@ -1226,7 +1279,7 @@
             } catch (e) {
                 loader.style.display = 'none';
                 statusText.style.display = 'block';
-                statusText.innerText = '❌ failed to capture hd image.';
+                statusText.innerText = t('fail_hd');
                 statusText.style.color = '#ef4444';
             } finally {
                 isHDSyncing = false;
@@ -1236,7 +1289,7 @@
 
         async function fetchAllData(forceLive = false) {
             const btn = document.getElementById('refresh-btn');
-            if (btn) btn.innerText = 'syncing...';
+            if (btn) btn.innerText = t('syncing');
             
             const tasks = [fetchSensorData()];
             const nodeInfo = availableNodes[currentDevice] || {};
@@ -1247,7 +1300,7 @@
             
             await Promise.allSettled(tasks);
             
-            if (btn) btn.innerText = 'refresh';
+            if (btn) btn.innerText = t('refresh');
         }
 
         function checkMagicLink() {
@@ -1275,6 +1328,7 @@
 
         window.onload = async () => {
             checkMagicLink();
+            applyTranslations();
             await initNodes();
             parseURLAndNavigate();
             fetchAllData(true);
