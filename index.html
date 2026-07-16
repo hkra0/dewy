@@ -276,6 +276,43 @@
             font-weight: 500;
         }
 
+        .watering-table-wrapper {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--surface-color);
+            margin-top: 15px;
+        }
+        .watering-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 13px;
+        }
+        .watering-table th {
+            position: sticky;
+            top: 0;
+            background: var(--nav-bg);
+            padding: 10px 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+            z-index: 10;
+        }
+        .watering-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+            font-weight: 500;
+        }
+        .watering-table tr:last-child td {
+            border-bottom: none;
+        }
+        .watering-table tbody tr:hover {
+            background: var(--nav-bg);
+        }
+
         /* Charts */
         .chart-container {
             position: relative;
@@ -300,14 +337,29 @@
         .camera-container {
             position: relative;
             width: 100%;
-            background: #000;
-            border-radius: 10px;
+            background: var(--nav-bg);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
             overflow: hidden;
             margin-top: 10px;
             aspect-ratio: 4/3;
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+        .camera-container::before {
+            content: "Loading camera...";
+            position: absolute;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 0;
+            animation: pulse 1.5s infinite ease-in-out;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 0.3; }
+            100% { opacity: 0.6; }
         }
 
         #cam-img {
@@ -317,6 +369,12 @@
             display: block;
             cursor: zoom-in;
             transition: opacity 0.3s;
+            z-index: 1;
+            position: relative;
+            opacity: 0;
+        }
+        #cam-img[src]:not([src=""]) {
+            opacity: 1;
         }
         #cam-img:hover { opacity: 0.9; }
 
@@ -961,9 +1019,12 @@
             if (type === 'watering') {
                 const wrapper = document.getElementById('watering-log-wrapper');
                 if (!data || data.length === 0) { wrapper.innerHTML = '<div class="loading-text">no watering records yet.</div>'; return; }
-                let html = '<div class="log-list">';
-                data.forEach(item => { html += `<div class="log-item"><div class="log-detail">Pumped ${item.duration}s (soil: ${item.soil}%)</div><div class="log-time">${item.time}</div></div>`; });
-                wrapper.innerHTML = html + '</div>';
+                let html = '<div class="watering-table-wrapper"><table class="watering-table">';
+                html += '<thead><tr><th>Duration (s)</th><th>Soil (%)</th><th>Time</th></tr></thead><tbody>';
+                data.forEach(item => { 
+                    html += `<tr><td>${item.duration}</td><td>${item.soil}</td><td class="log-time" style="color: var(--text-muted); font-size: 12px;">${item.time}</td></tr>`; 
+                });
+                wrapper.innerHTML = html + '</tbody></table></div>';
                 return;
             }
             if (!data || data.length === 0) {
