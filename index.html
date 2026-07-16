@@ -844,10 +844,16 @@
             }
 
             // Light Status (global for now, or you can attach to specific node)
-            // Just displaying it if it's main node for backwards compatibility visually
-            if (currentDevice === 'main' && globalData.light_status) {
-                const color = globalData.light_status === 'ON' ? '#eab308' : 'var(--text-muted)';
-                html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
+            // Use optimistic status if available to prevent polling from reverting manual toggles
+            if (currentDevice === 'main') {
+                const effectiveStatus = optimisticLightStatus || globalData.light_status;
+                if (effectiveStatus && effectiveStatus !== '--') {
+                    const color = effectiveStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
+                    html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${effectiveStatus}</div></div>`;
+                } else if (globalData.light_status) {
+                    const color = globalData.light_status === 'ON' ? '#eab308' : 'var(--text-muted)';
+                    html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
+                }
             }
 
             container.innerHTML = html;
@@ -915,6 +921,7 @@
         }
 
         let lightToggleInProgress = false;
+        let optimisticLightStatus = null;
 
         async function toggleLight() {
             if (lightToggleInProgress) return;
@@ -925,27 +932,29 @@
             
             lightToggleInProgress = true;
             
-            const orig = statusEl.innerText;
-            const isCurrentlyOn = orig.trim() === 'ON';
+            const currentStatus = optimisticLightStatus || statusEl.innerText.trim();
+            const isCurrentlyOn = currentStatus === 'ON';
             const newStatus = isCurrentlyOn ? 'OFF' : 'ON';
-            showToast(`Light turned ${newStatus}`, 'success');
             
-            // Optimistic update
+            // Pure optimistic update — no server refresh needed
+            optimisticLightStatus = newStatus;
             statusEl.innerText = newStatus;
             statusEl.style.color = newStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
+            showToast(`Light turned ${newStatus}`, 'success');
             
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
                 if (!res.ok) throw new Error('fail');
-                // Confirm backend state after a delay
-                setTimeout(() => { fetchSensorData(); lightToggleInProgress = false; }, 2000);
             } catch (e) {
-                // Revert on failure
-                statusEl.innerText = orig;
+                // Revert optimistic state on failure
+                optimisticLightStatus = isCurrentlyOn ? 'ON' : null;
+                statusEl.innerText = isCurrentlyOn ? 'ON' : 'OFF';
                 statusEl.style.color = isCurrentlyOn ? '#eab308' : 'var(--text-muted)';
                 showToast('Light toggle failed', 'error');
-                lightToggleInProgress = false;
             }
+            
+            // 1s debounce
+            setTimeout(() => { lightToggleInProgress = false; }, 1000);
         }
 
         function renderHistoryUI(data, type) {
