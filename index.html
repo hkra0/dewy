@@ -4,197 +4,318 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
     <title>dewy</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <style>
+        :root {
+            color-scheme: light dark;
+            --nav-bg: #e6f4ea;
+            --border-hover: #a8d5ba;
+            --toast-bg: #1d1d1d;
+            --toast-text: #ffffff;
+            --bg-color: #f2f6f3;
+            --surface-color: #ffffff;
+            --text-main: rgba(0, 0, 0, 0.9);
+            --text-muted: rgba(0, 0, 0, 0.55);
+            --accent: #188038;
+            --accent-hover: #137333;
+            --accent-blue: #1a73e8;
+            --accent-blue-hover: #174ea6;
+            --danger: #d93025;
+            --border: #ceead6;
+            --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.03);
+            --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.1);
+            --radius-md: 12px;
+            --radius-lg: 20px;
+        }
+
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #0d1f14;
+                --surface-color: #152e1e;
+                --nav-bg: #1e402a;
+                --text-main: rgba(255, 255, 255, 0.95);
+                --text-muted: rgba(255, 255, 255, 0.65);
+                --border: #2e4f37;
+                --border-hover: #437851;
+                --accent: #81c995;
+                --accent-hover: #a5d6a7;
+                --toast-bg: #e8f5e9;
+                --toast-text: #0d1f14;
+                --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
+                --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.5);
+                --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6);
+                color-scheme: dark;
+            }
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
             padding: 20px;
-            background-color: #f4f7f6;
+            background-color: var(--bg-color);
+            color: var(--text-main);
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
         .container {
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
-            background: #ffffff;
-            padding: 25px;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            background: var(--surface-color);
+            padding: 30px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
             margin-top: 20px;
+            box-sizing: border-box;
+            border: 1px solid rgba(255,255,255,0.5);
         }
 
-        h1 {
-            font-size: 20px;
-            color: #2c3e50;
-            margin-top: 0;
-            text-align: center;
-            margin-bottom: 20px;
-            user-select: none;
+        @media (max-width: 600px) {
+            body {
+                padding: 0;
+                background-color: var(--surface-color);
+            }
+            .container {
+                margin-top: 0;
+                padding: 20px 15px;
+                border-radius: 0;
+                border: none;
+                box-shadow: none;
+                min-height: 100vh;
+            }
         }
 
+        /* Nav */
         .nav {
             display: flex;
-            background: #f1f5f9;
-            border-radius: 12px;
-            padding: 4px;
-            margin-bottom: 20px;
+            background: var(--nav-bg);
+            border-radius: var(--radius-md);
+            padding: 6px;
+            margin-bottom: 25px;
         }
 
         .nav-btn {
             flex: 1;
-            padding: 10px 0;
+            padding: 12px 0;
             text-align: center;
-            font-size: 13px;
-            font-weight: bold;
-            color: #64748b;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
             cursor: pointer;
             border-radius: 8px;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             user-select: none;
         }
 
         .nav-btn.active {
-            background: #ffffff;
-            color: #0f172a;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            background: var(--surface-color);
+            color: var(--text-main);
+            box-shadow: var(--shadow-sm);
         }
 
+        /* Grid & Cards */
         .grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
+            gap: 12px;
         }
 
         .card {
-            background: #f8fafc;
-            padding: 15px;
-            border-radius: 12px;
+            background: var(--surface-color);
+            padding: 12px;
+            border-radius: var(--radius-md);
             text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid var(--border);
+            transition: box-shadow 0.3s ease, border-color 0.3s ease;
         }
 
         .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            box-shadow: var(--shadow-md);
+            border-color: var(--border-hover);
         }
 
         .card-title {
-            font-size: 11px;
-            color: #64748b;
-            margin-bottom: 5px;
-            text-transform: lowercase;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .card-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #0f172a;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-main);
         }
 
         .full-width {
             grid-column: span 2;
         }
 
-        .sub-nav {
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            margin-top: 10px;
-            margin-bottom: 5px;
-            flex-wrap: wrap;
+        /* View Transition wrapper */
+        .view-section {
+            animation: fadeIn 0.4s ease-out forwards;
         }
-
-        .sub-nav-btn {
-            font-size: 11px;
-            color: #94a3b8;
-            padding: 4px 12px;
-            border-radius: 12px;
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            cursor: pointer;
-            transition: all 0.2s;
-            user-select: none;
-        }
-
-        .sub-nav-btn:hover {
-            border-color: #cbd5e1;
-            color: #64748b;
-        }
-
-        .sub-nav-btn.active {
-            background: #10b981;
-            color: white;
-            border-color: #10b981;
-            font-weight: bold;
-        }
-
-        .status-bar {
-            margin-top: 20px;
-            font-size: 12px;
-            color: #94a3b8;
-            text-align: center;
-        }
-
-        button.action-btn {
-            width: 100%;
-            padding: 12px;
-            background: #10b981;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 20px;
-            transition: background 0.2s;
-        }
-
-        button.action-btn:hover {
-            background: #059669;
-        }
-
-        .camera-container {
-            position: relative;
-            width: 100%;
-            background: #f1f5f9;
-            border-radius: 8px;
-            overflow: hidden;
-            margin-top: 10px;
-        }
-
-        #cam-img {
-            width: 100%;
-            height: auto;
-            border-radius: 8px;
-            display: block;
-            cursor: zoom-in;
-            transition: opacity 0.2s;
-        }
-
-        #cam-img:hover {
-            opacity: 0.9;
-        }
-
-        #cam-timestamp {
-            font-size: 11px;
-            color: #94a3b8;
-            margin-top: 8px;
-            font-weight: normal;
-            min-height: 14px;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .hidden {
             display: none !important;
         }
 
+        /* Sub Nav */
+        .sub-nav {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .sub-nav-btn {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            padding: 6px 14px;
+            border-radius: var(--radius-md);
+            background: var(--surface-color);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .sub-nav-btn:hover {
+            border-color: var(--border-hover);
+            color: var(--text-main);
+        }
+
+        .sub-nav-btn.active {
+            background: var(--accent);
+            color: #ffffff;
+            border-color: var(--accent);
+        }
+
+        /* Buttons */
+        button.action-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: #ffffff;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        button.action-btn:hover {
+            background: var(--accent-hover);
+        }
+        button.action-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Status & Logs */
+        .status-bar {
+            margin-top: 25px;
+            font-size: 12px;
+            color: var(--text-muted);
+            text-align: center;
+            font-weight: 500;
+        }
+
+        #watering-log-wrapper {
+            position: relative;
+        }
+
+        .log-item {
+            padding: 12px 8px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            text-align: left;
+            transition: all 0.2s ease;
+        }
+        .log-item:last-child {
+            border-bottom: none;
+        }
+        .log-item:hover {
+            background: var(--nav-bg);
+            border-radius: 6px;
+        }
+
+        .log-time {
+            font-weight: 500;
+            color: var(--text-muted);
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .log-detail {
+            color: var(--text-main);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .watering-table-wrapper {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--surface-color);
+            margin-top: 15px;
+        }
+        .watering-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 13px;
+        }
+        .watering-table th {
+            position: sticky;
+            top: 0;
+            background: var(--nav-bg);
+            padding: 10px 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+            z-index: 10;
+        }
+        .watering-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+            font-weight: 500;
+        }
+        .watering-table tr:last-child td {
+            border-bottom: none;
+        }
+        .watering-table tbody tr:hover {
+            background: var(--nav-bg);
+        }
+
+        /* Charts */
         .chart-container {
             position: relative;
             width: 100%;
-            height: 280px;
-            margin-top: 10px;
+            height: 300px;
+            margin-top: 15px;
         }
 
         .loading-text {
@@ -204,261 +325,255 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #94a3b8;
-            font-size: 12px;
+            color: var(--text-muted);
+            font-size: 14px;
             font-weight: 500;
         }
 
-        #watering-log-wrapper {
-            height: 280px;
-            overflow-y: auto;
-            padding: 5px;
-            margin-top: 15px;
+        /* Camera */
+        .camera-container {
             position: relative;
+            width: 100%;
+            background: var(--nav-bg);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            margin-top: 10px;
+            aspect-ratio: 4/3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .camera-container::before {
+            content: "Loading camera...";
+            position: absolute;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 0;
+            animation: pulse 1.5s infinite ease-in-out;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 0.3; }
+            100% { opacity: 0.6; }
         }
 
-        .log-list {
+        #cam-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            cursor: zoom-in;
+            transition: opacity 0.3s;
+            z-index: 1;
+            position: relative;
+            opacity: 0;
+        }
+        #cam-img[src]:not([src=""]) {
+            opacity: 1;
+        }
+        #cam-img:hover { opacity: 0.9; }
+
+        #cam-timestamp {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 10px;
+            font-weight: 500;
+            min-height: 14px;
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             display: flex;
             flex-direction: column;
             gap: 10px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        .toast {
+            background: var(--toast-bg);
+            color: var(--toast-text);
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            animation: toastEnter 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards, toastExit 0.3s 2.7s ease-in forwards;
+            pointer-events: auto;
+            text-align: center;
+        }
+        .toast.success { background: var(--accent); }
+        .toast.error { background: var(--danger); }
+        
+        @keyframes toastEnter {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toastExit {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(10px); }
         }
 
-        .log-item {
-            background: #f8fafc;
-            padding: 12px 15px;
-            border-radius: 8px;
-            border-left: 4px solid #3b82f6;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            text-align: left;
+        /* Skeleton Loader */
+        .skeleton {
+            background: linear-gradient(90deg, #e2e8f0 25%, #cbd5e1 50%, #e2e8f0 75%);
+            background-size: 200% 100%;
+            animation: skeletonLoading 1.5s infinite;
+            border-radius: 4px;
+            color: transparent !important;
+        }
+        @keyframes skeletonLoading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
 
-        .log-time {
-            font-weight: bold;
-            color: #334155;
-            font-size: 13px;
-        }
-
-        .log-detail {
-            color: #64748b;
-            font-size: 11px;
-        }
+        /* Toggles */
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border); transition: .3s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: #ffffff; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input:checked + .slider { background-color: var(--accent); }
+        input:checked + .slider:before { transform: translateX(20px); }
 
         /* Modal */
         #hd-modal {
             display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(15, 23, 42, 0.9);
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
             z-index: 1000;
             align-items: center;
             justify-content: center;
             flex-direction: column;
-            backdrop-filter: blur(5px);
+            backdrop-filter: blur(8px);
+            animation: fadeIn 0.3s;
         }
-
         #hd-img {
-            max-width: 95%;
-            max-height: 80vh;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            max-width: 95%; max-height: 80vh;
+            border-radius: var(--radius-md);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
             object-fit: contain;
             transition: opacity 0.3s;
         }
-
-        #hd-status {
-            color: #f8fafc;
-            margin-bottom: 15px;
-            font-size: 13px;
-            letter-spacing: 0.5px;
-        }
-
-        #hd-timestamp {
-            color: #94a3b8;
-            font-size: 11px;
-            margin-top: 12px;
-            font-weight: normal;
-        }
-
+        #hd-status { color: var(--text-main); margin-bottom: 15px; font-size: 14px; font-weight: 500; }
+        #hd-timestamp { color: var(--text-muted); font-size: 12px; margin-top: 15px; font-weight: 500; }
         .loader {
             border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid #10b981;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 12px;
+            border-top: 3px solid var(--accent);
+            border-radius: 50%; width: 28px; height: 28px;
+            animation: spin 1s linear infinite; margin-bottom: 15px;
         }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
+        @keyframes spin { 100% { transform: rotate(360deg); } }
         .close-btn {
-            margin-top: 20px;
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-            padding: 10px 24px;
-            border-radius: 20px;
-            cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            font-size: 13px;
-            transition: background 0.2s;
+            margin-top: 25px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff; padding: 12px 28px;
+            border-radius: 30px; cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 14px; font-weight: 500;
+            transition: all 0.2s;
         }
-
-        .close-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-        }
-
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 40px;
-            height: 22px;
-        }
-
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #cbd5e1;
-            transition: .3s;
-            border-radius: 22px;
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .3s;
-            border-radius: 50%;
-        }
-
-        input:checked+.slider {
-            background-color: #10b981;
-        }
-
-        input:checked+.slider:before {
-            transform: translateX(18px);
-        }
-    </style>
+        .close-btn:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-1px); }
+</style>
 </head>
 
 <body>
     <div id="hd-modal">
         <div class="loader" id="hd-loader"></div>
-        <div id="hd-status">capturing hd image...</div>
+        <div id="hd-status" data-i18n="capturing_hd">capturing hd image...</div>
         <img id="hd-img" src="" alt="hd view">
         <div id="hd-timestamp" class="hidden"></div>
-        <div class="close-btn" onclick="closeHD()">close</div>
+        <div class="close-btn" onclick="closeHD()" data-i18n="close">close</div>
     </div>
 
     <div class="container">
         <div class="header" style="text-align: center; margin-bottom: 22px;">
-            <h1 style="margin: 0; font-size: 24px; color: #1e293b; letter-spacing: -0.5px;">🌱 dewy</h1>
+            <h1 style="margin: 0; font-size: 24px; color: var(--text-main); letter-spacing: -0.5px;">🌱 dewy</h1>
             <div style="display: inline-block; position: relative; margin-top: 8px;">
                 <select id="device-select" onchange="switchDevice(this.value, true)"
-                    style="appearance: none; -webkit-appearance: none; background: #e2e8f0; color: #475569; padding: 4px 28px 4px 14px; border-radius: 16px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); text-align: center;">
+                    style="appearance: none; -webkit-appearance: none; background: var(--nav-bg); color: var(--text-muted); padding: 4px 28px 4px 14px; border-radius: 16px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); text-align: center;">
                     <option value="main">Loading...</option>
                 </select>
                 <span
-                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b; font-size: 9px;">▼</span>
+                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted); font-size: 9px;">▼</span>
             </div>
         </div>
 
         <div class="nav">
-            <div class="nav-btn active" onclick="switchTab('environment')" id="tab-environment">environment</div>
-            <div class="nav-btn" onclick="switchTab('system')" id="tab-system">system</div>
-            <div class="nav-btn" onclick="switchTab('history')" id="tab-history">history</div>
-            <div class="nav-btn hidden" onclick="switchTab('settings')" id="tab-settings">settings</div>
+            <div class="nav-btn active" onclick="switchTab('environment')" id="tab-environment" data-i18n="env">environment</div>
+            <div class="nav-btn" onclick="switchTab('system')" id="tab-system" data-i18n="sys">system</div>
+            <div class="nav-btn" onclick="switchTab('history')" id="tab-history" data-i18n="hist">history</div>
+            <div class="nav-btn hidden" onclick="switchTab('settings')" id="tab-settings" data-i18n="settings">settings</div>
         </div>
 
         <!-- Dynamic Environment View -->
-        <div id="view-environment">
+        <div id="view-environment" class="view-section">
             <div class="grid" id="dynamic-cards">
                 <!-- Cards will be injected here -->
             </div>
 
             <div class="card full-width hidden" id="camera-block" style="margin-top: 15px;">
-                <div class="card-title">camera</div>
+                <div class="card-title" data-i18n="camera">camera</div>
                 <div class="camera-container"><img id="cam-img" alt="camera view" onclick="fetchHDImage()" /></div>
                 <div id="cam-timestamp"></div>
             </div>
 
             <details class="card full-width hidden" id="water-block"
                 style="margin-top: 15px; padding: 10px 15px; cursor: pointer;">
-                <summary style="font-weight: 600; color: #64748b; outline: none; user-select: none;">manual watering
+                <summary style="font-weight: 600; color: var(--text-muted); outline: none; user-select: none;" data-i18n="manual_water">manual watering
                 </summary>
                 <div
                     style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; cursor: default;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="water-duration"
-                            style="font-size: 14px; color: #64748b; white-space: nowrap;">Duration (s):</label>
+                            style="font-size: 14px; color: var(--text-muted); white-space: nowrap;" data-i18n="duration_s">Duration (s):</label>
                         <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5"
-                            style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
+                            style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-main); outline: none;">
                     </div>
                     <button class="action-btn" id="water-btn"
-                        style="background: #3b82f6; width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
-                        onclick="triggerWatering()">Water</button>
+                        style="width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
+                        onclick="triggerWatering()" data-i18n="water_btn">Water</button>
                 </div>
             </details>
         </div>
 
         <!-- System View -->
-        <div class="grid hidden" id="view-system">
+        <div class="grid hidden view-section" id="view-system">
             <div class="card full-width">
-                <div class="card-title">power status</div>
+                <div class="card-title" data-i18n="power_status">power status</div>
                 <div class="card-value" style="color: #0284c7;" id="power-status">-- V / -- mA</div>
             </div>
             <div class="card">
-                <div class="card-title">cpu temp</div>
+                <div class="card-title" data-i18n="cpu_temp">cpu temp</div>
                 <div class="card-value" style="color: #e11d48;" id="sys-temp">-- ℃</div>
             </div>
             <div class="card">
-                <div class="card-title">ram used</div>
+                <div class="card-title" data-i18n="ram_used">ram used</div>
                 <div class="card-value" id="sys-ram">-- %</div>
             </div>
             <div class="card full-width">
-                <div class="card-title">disk storage used</div>
+                <div class="card-title" data-i18n="disk_used">disk storage used</div>
                 <div class="card-value" id="sys-disk">-- %</div>
             </div>
         </div>
 
         <!-- History View -->
-        <div class="grid hidden" id="view-history">
+        <div class="grid hidden view-section" id="view-history">
             <div class="card full-width" style="padding-bottom: 20px;">
-                <div class="card-title">environmental trends</div>
+                <div class="card-title" data-i18n="env_trends">environmental trends</div>
                 <div class="sub-nav" id="history-type-nav">
-                    <div class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')">past 24h</div>
-                    <div class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')">daily avg</div>
-                    <div class="sub-nav-btn" id="hist-watering" onclick="switchHistType('watering')">watering log</div>
+                    <div class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')" data-i18n="past_24h">past 24h</div>
+                    <div class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')" data-i18n="daily_avg">daily avg</div>
+                    <div class="sub-nav-btn" id="hist-watering" onclick="switchHistType('watering')" data-i18n="watering_log">watering log</div>
                 </div>
 
                 <div class="chart-container" id="chart-container-wrapper">
-                    <div id="chart-loading" class="loading-text hidden">loading...</div>
+                    <div id="chart-loading" class="loading-text hidden" data-i18n="chart_loading">loading...</div>
                     <canvas id="historyChart"></canvas>
                 </div>
                 <div id="watering-log-wrapper" class="hidden"></div>
@@ -466,87 +581,155 @@
         </div>
 
         <!-- Settings View (Unchanged from original) -->
-        <div class="grid hidden" id="view-settings">
+        <div class="grid hidden view-section" id="view-settings">
             <div class="card full-width" style="text-align: left; padding: 20px;">
                 <div
-                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
-                    Auto Watering
+                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
+                    <span data-i18n="auto_water">Auto Watering</span>
                     <label class="switch"><input type="checkbox" id="cfg-water-enabled"><span
                             class="slider"></span></label>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #475569;">
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label>Threshold (%)</label>
+                        <label data-i18n="threshold">Threshold (%)</label>
                         <input type="number" id="cfg-water-threshold"
-                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label>Duration (s)</label>
+                        <label data-i18n="duration">Duration (s)</label>
                         <input type="number" id="cfg-water-duration" step="0.1"
-                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                     </div>
                 </div>
             </div>
             <div class="card full-width" style="text-align: left; padding: 20px;">
                 <div
-                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
-                    Fill Light
+                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
+                    <span data-i18n="fill_light">Fill Light</span>
                     <label class="switch"><input type="checkbox" id="cfg-light-enabled"><span
                             class="slider"></span></label>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #475569;">
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label>Mode</label>
+                        <label data-i18n="mode">Mode</label>
                         <select id="cfg-light-mode" onchange="toggleLightMode()"
-                            style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1; background: white;">
-                            <option value="fixed">Fixed Time</option>
-                            <option value="sun">Sunrise & Sunset</option>
+                            style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface-color); color: var(--text-main);">
+                            <option value="fixed" data-i18n="fixed_time">Fixed Time</option>
+                            <option value="sun" data-i18n="sunrise_sunset">Sunrise & Sunset</option>
                         </select>
                     </div>
                     <div id="cfg-light-fixed-group"
                         style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn
-                                On</label><input type="time" id="cfg-light-on"
-                                style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn
-                                Off</label><input type="time" id="cfg-light-off"
-                                style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label data-i18n="turn_on">Turn On</label><input type="time" id="cfg-light-on"
+                                style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label data-i18n="turn_off">Turn Off</label><input type="time" id="cfg-light-off"
+                                style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
                     </div>
                     <div id="cfg-light-sun-group" class="hidden"
                         style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
                         <div style="display: flex; gap: 10px;">
                             <div style="flex: 1;"><label
-                                    style="display: block; margin-bottom: 5px; font-size: 11px;">Latitude</label><input
+                                    style="display: block; margin-bottom: 5px; font-size: 11px;" data-i18n="lat">Latitude</label><input
                                     type="text" id="cfg-light-lat" placeholder="auto"
-                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                             </div>
                             <div style="flex: 1;"><label
-                                    style="display: block; margin-bottom: 5px; font-size: 11px;">Longitude</label><input
+                                    style="display: block; margin-bottom: 5px; font-size: 11px;" data-i18n="lng">Longitude</label><input
                                     type="text" id="cfg-light-lng" placeholder="auto"
-                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                             </div>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>On
-                                Offset (min)</label><input type="number" id="cfg-light-on-offset"
-                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label>Off
-                                Offset (min)</label><input type="number" id="cfg-light-off-offset"
-                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
-                        <div style="font-size: 11px; color: #10b981; text-align: center; margin-top: 5px;"
-                            id="cfg-light-effective-times">Currently scheduled: --:-- to --:--</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label data-i18n="on_offset">On Offset (min)</label><input type="number" id="cfg-light-on-offset"
+                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;"><label data-i18n="off_offset">Off Offset (min)</label><input type="number" id="cfg-light-off-offset"
+                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
+                        <div style="font-size: 11px; color: var(--accent); text-align: center; margin-top: 5px;"
+                            id="cfg-light-effective-times" data-i18n="currently_scheduled">Currently scheduled: --:-- to --:--</div>
                     </div>
                 </div>
             </div>
-            <div class="card full-width" style="padding: 0; background: transparent;"><button class="action-btn"
-                    id="save-cfg-btn" style="background: #0ea5e9; margin-top: 0;" onclick="saveConfig()">Save
-                    Configuration</button></div>
+            <div class="card full-width" style="padding: 0;"><button class="action-btn"
+                    id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfig()" data-i18n="save_cfg">Save Configuration</button></div>
         </div>
 
-        <button class="action-btn" id="refresh-btn" onclick="fetchAllData(true)">refresh</button>
-        <div class="status-bar" id="update-time">not synced</div>
+        <button class="action-btn" id="refresh-btn" onclick="fetchAllData(true)" data-i18n="refresh">refresh</button>
+        <div class="status-bar" id="update-time" data-i18n="not_synced">not synced</div>
     </div>
 
+
+    <div id="toast-container" class="toast-container"></div>
     <script>
+
+        const translations = {
+            en: {
+                env: "environment", sys: "system", hist: "history", settings: "settings",
+                camera: "camera", manual_water: "manual watering", duration_s: "Duration (s):", water_btn: "Water",
+                power_status: "power status", cpu_temp: "cpu temp", ram_used: "ram used", disk_used: "disk storage used",
+                env_trends: "environmental trends", past_24h: "past 24h", daily_avg: "daily avg", watering_log: "watering log", chart_loading: "loading...",
+                auto_water: "Auto Watering", threshold: "Threshold (%)", duration: "Duration (s)", fill_light: "Fill Light",
+                mode: "Mode", fixed_time: "Fixed Time", sunrise_sunset: "Sunrise & Sunset", turn_on: "Turn On", turn_off: "Turn Off",
+                lat: "Latitude", lng: "Longitude", on_offset: "On Offset (min)", off_offset: "Off Offset (min)", currently_scheduled: "Currently scheduled: {on} to {off}",
+                save_cfg: "Save Configuration", refresh: "refresh", capturing_hd: "capturing hd image...", close: "close", not_synced: "not synced",
+                saving: "saving...", cfg_saved: "Configuration Saved!", fail_save: "Failed to save configuration.",
+                no_data_node: "no data for this node", temp: "temperature", humidity: "humidity", soil_moisture: "soil moisture", pressure: "pressure",
+                light_title: "fill light", watering_cmd: "Watering Command Sent!", watering_ing: "watering...", light_on: "Light turned ON", light_off: "Light turned OFF",
+                cam_capturing: "Camera is capturing, try again later", light_fail: "Light toggle failed", no_water_records: "no watering records yet.",
+                table_duration: "Duration (s)", table_soil: "Soil (%)", table_time: "Time", no_data: "no data available.",
+                chart_temp: "temp (℃)", chart_hum: "hum (%)", chart_soil: "soil (%)", chart_pres: "pres (hPa)", syncing: "syncing...",
+                cam_offline: "⚠️ camera hardware offline or error", net_disconnect: "⚠️ network disconnected", hd_capture_est: "capturing hd image... (est. 10s+)",
+                fail_hd: "❌ failed to capture hd image.", last_synced: "last synced at {time}"
+            },
+            zh: {
+                env: "环境", sys: "系统", hist: "历史", settings: "设置",
+                camera: "相机", manual_water: "手动浇水", duration_s: "时长 (秒):", water_btn: "浇水",
+                power_status: "电源状态", cpu_temp: "处理器温度", ram_used: "内存使用率", disk_used: "存储使用率",
+                env_trends: "环境趋势", past_24h: "过去24小时", daily_avg: "日均值", watering_log: "浇水记录", chart_loading: "加载中...",
+                auto_water: "自动浇水", threshold: "湿度阈值 (%)", duration: "浇水时长 (秒)", fill_light: "补光灯",
+                mode: "模式", fixed_time: "定时", sunrise_sunset: "日出 & 日落", turn_on: "开启时间", turn_off: "关闭时间",
+                lat: "纬度", lng: "经度", on_offset: "开启偏移 (分钟)", off_offset: "关闭偏移 (分钟)", currently_scheduled: "当前计划: {on} 至 {off}",
+                save_cfg: "保存配置", refresh: "刷新", capturing_hd: "正在拍摄高清图片...", close: "关闭", not_synced: "未同步",
+                saving: "保存中...", cfg_saved: "配置已保存！", fail_save: "配置保存失败。",
+                no_data_node: "该节点暂无数据", temp: "温度", humidity: "湿度", soil_moisture: "土壤湿度", pressure: "气压",
+                light_title: "补光灯", watering_cmd: "浇水指令已发送！", watering_ing: "正在浇水...", light_on: "补光灯已开启", light_off: "补光灯已关闭",
+                cam_capturing: "相机正在拍摄中，请稍后再试", light_fail: "补光灯切换失败", no_water_records: "暂无浇水记录。",
+                table_duration: "时长 (秒)", table_soil: "土壤湿度 (%)", table_time: "时间", no_data: "暂无数据。",
+                chart_temp: "温度 (℃)", chart_hum: "湿度 (%)", chart_soil: "土壤 (%)", chart_pres: "气压 (hPa)", syncing: "同步中...",
+                cam_offline: "⚠️ 相机硬件离线或故障", net_disconnect: "⚠️ 网络已断开", hd_capture_est: "正在拍摄高清图片... (约10秒+)",
+                fail_hd: "❌ 获取高清图片失败。", last_synced: "最后同步时间: {time}"
+            }
+        };
+
+        let currentLang = navigator.language.startsWith('zh') ? 'zh' : 'en';
+        function t(key, replacements = {}) {
+            let text = translations[currentLang][key] || key;
+            for (let k in replacements) {
+                text = text.replace(`{${k}}`, replacements[k]);
+            }
+            return text;
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (key === 'currently_scheduled') return; // Handled dynamically
+                el.innerText = t(key);
+            });
+        }
+
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerText = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 3000);
+        }
+
         const STORAGE_KEY = 'robin_viewer_key';
         let sessionHDSrc = null, sessionHDTime = null, sessionHDEpoch = 0, myChart = null;
         let currentTab = 'environment', currentHistType = '24h', currentDevice = 'main';
@@ -583,7 +766,7 @@
                 document.getElementById('cfg-light-off-offset').value = data.auto_light.sun_off_offset;
                 document.getElementById('cfg-light-lat').value = data.auto_light.lat || "";
                 document.getElementById('cfg-light-lng').value = data.auto_light.lng || "";
-                if (data.effective_light_on && data.effective_light_off) document.getElementById('cfg-light-effective-times').innerText = `Currently scheduled: ${data.effective_light_on} to ${data.effective_light_off}`;
+                if (data.effective_light_on && data.effective_light_off) document.getElementById('cfg-light-effective-times').innerText = `` + t('currently_scheduled', {on: data.effective_light_on, off: data.effective_light_off}) + ``;
                 toggleLightMode();
             } catch (e) { console.error(e); }
         }
@@ -595,7 +778,7 @@
             const btn = document.getElementById('save-cfg-btn');
             const originalText = btn.innerText;
             btn.disabled = true;
-            btn.innerText = 'saving...';
+            btn.innerText = t('saving');
             
             const cfg = {
                 auto_water: {
@@ -622,22 +805,22 @@
                     body: JSON.stringify(cfg)
                 });
                 if (res.ok) {
-                    btn.innerText = '✅ Saved';
-                    btn.style.background = '#10b981';
+                    showToast(t('cfg_saved'), 'success');
+                    
                     setTimeout(() => {
                         btn.innerText = originalText;
-                        btn.style.background = '#0ea5e9';
+                        
                         btn.disabled = false;
                     }, 2000);
                 } else {
                     throw new Error('Failed');
                 }
             } catch (e) {
-                btn.innerText = '❌ Error';
-                btn.style.background = '#ef4444';
+                showToast(t('fail_save'), 'error');
+                
                 setTimeout(() => {
                     btn.innerText = originalText;
-                    btn.style.background = '#0ea5e9';
+                    
                     btn.disabled = false;
                 }, 2000);
             }
@@ -678,8 +861,9 @@
             for (let k in historyCache) delete historyCache[k];
 
             const nodeInfo = availableNodes[dev] || {};
-            const hasSystem = nodeInfo.has_system;
-            const hasSettings = nodeInfo.has_settings && !!localStorage.getItem('robin_water_key');
+            const hasSystem = nodeInfo.type === 'local';
+            const hasPump = nodeInfo.actuators && ('pump' in nodeInfo.actuators);
+            const hasSettings = nodeInfo.actuators && ('pump' in nodeInfo.actuators || 'light' in nodeInfo.actuators) && !!localStorage.getItem('robin_water_key');
             
             if (hasSystem) document.getElementById('tab-system').classList.remove('hidden');
             else document.getElementById('tab-system').classList.add('hidden');
@@ -687,14 +871,14 @@
             if (hasSettings) document.getElementById('tab-settings').classList.remove('hidden');
             else document.getElementById('tab-settings').classList.add('hidden');
             
-            if (nodeInfo.has_pump) document.getElementById('hist-watering').classList.remove('hidden');
+            if (hasPump) document.getElementById('hist-watering').classList.remove('hidden');
             else document.getElementById('hist-watering').classList.add('hidden');
 
             if ((currentTab === 'system' && !hasSystem) || (currentTab === 'settings' && !hasSettings)) {
                 switchTab('environment', false, true);
             }
             
-            if (currentHistType === 'watering' && !nodeInfo.has_pump) {
+            if (currentHistType === 'watering' && !hasPump) {
                 switchHistType('24h');
             }
 
@@ -704,8 +888,8 @@
 
         function switchTab(tabName, pushState = true, skipFetch = false) {
             const nodeInfo = availableNodes[currentDevice] || {};
-            const hasSystem = nodeInfo.has_system;
-            const hasSettings = nodeInfo.has_settings && !!localStorage.getItem('robin_water_key');
+            const hasSystem = nodeInfo.type === 'local';
+            const hasSettings = nodeInfo.actuators && ('pump' in nodeInfo.actuators || 'light' in nodeInfo.actuators) && !!localStorage.getItem('robin_water_key');
 
             if (tabName === 'system' && !hasSystem) tabName = 'environment';
             if (tabName === 'settings' && !hasSettings) tabName = 'environment';
@@ -745,46 +929,63 @@
 
         function renderDynamicCards(nodeData, globalData) {
             const container = document.getElementById('dynamic-cards');
-            container.innerHTML = '';
 
             if (!nodeData) {
-                container.innerHTML = '<div class="card full-width">no data for this node</div>';
+                container.innerHTML = `<div class="card full-width">${t('no_data_node')}</div>`;
                 return;
             }
 
             const formatVal = (v, unit) => (v !== undefined && v !== null) ? `${v} ${unit}` : '--';
+            let html = '';
 
             if (nodeData.temperature !== undefined) {
-                container.innerHTML += `<div class="card"><div class="card-title">temperature</div><div class="card-value" style="color: #f59e0b;">${formatVal(nodeData.temperature, '℃')}</div></div>`;
+                html += `<div class="card"><div class="card-title">` + t('temp') + `</div><div class="card-value" style="color: #f59e0b;">${formatVal(nodeData.temperature, '℃')}</div></div>`;
             }
             if (nodeData.humidity !== undefined) {
-                container.innerHTML += `<div class="card"><div class="card-title">humidity</div><div class="card-value" style="color: #3b82f6;">${formatVal(nodeData.humidity, '%')}</div></div>`;
+                html += `<div class="card"><div class="card-title">` + t('humidity') + `</div><div class="card-value" style="color: #3b82f6;">${formatVal(nodeData.humidity, '%')}</div></div>`;
             }
             if (nodeData.soil_moisture !== undefined) {
-                container.innerHTML += `<div class="card"><div class="card-title">soil moisture</div><div class="card-value" style="color: #10b981;">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
+                html += `<div class="card"><div class="card-title">` + t('soil_moisture') + `</div><div class="card-value" style="color: var(--accent);">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
             }
             if (nodeData.pressure !== undefined) {
-                container.innerHTML += `<div class="card"><div class="card-title">pressure</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
+                html += `<div class="card"><div class="card-title">` + t('pressure') + `</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
             }
 
             // Light Status (global for now, or you can attach to specific node)
-            // Just displaying it if it's main node for backwards compatibility visually
-            if (currentDevice === 'main' && globalData.light_status) {
-                const color = globalData.light_status === 'ON' ? '#eab308' : '#64748b';
-                container.innerHTML += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
+            // Use optimistic status if available to prevent polling from reverting manual toggles
+            if (currentDevice === 'main') {
+                const effectiveStatus = optimisticLightStatus || globalData.light_status;
+                if (effectiveStatus && effectiveStatus !== '--') {
+                    const color = effectiveStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
+                    html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">` + t('light_title') + `</div><div class="card-value" id="light-status" style="color: ${color};">${effectiveStatus}</div></div>`;
+                } else if (globalData.light_status) {
+                    const color = globalData.light_status === 'ON' ? '#eab308' : 'var(--text-muted)';
+                    html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">${t('light_title')}</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
+                }
             }
+
+            container.innerHTML = html;
 
             // Power System Health is rendered in System Tab.
 
             // Hardware Actions (Camera / Water)
             const hasKey = !!localStorage.getItem(STORAGE_KEY);
             const hasWaterKey = !!localStorage.getItem('robin_water_key');
+            const nodeInfo = availableNodes[currentDevice] || {};
+            const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
+            const hasPump = nodeInfo.actuators && ('pump' in nodeInfo.actuators);
 
-            if (currentDevice === 'main' && hasKey) document.getElementById('camera-block').classList.remove('hidden');
-            else document.getElementById('camera-block').classList.add('hidden');
+            if (hasKey && hasCamera) {
+                document.getElementById('camera-block').classList.remove('hidden');
+            } else {
+                document.getElementById('camera-block').classList.add('hidden');
+            }
 
-            if (hasWaterKey) document.getElementById('water-block').classList.remove('hidden');
-            else document.getElementById('water-block').classList.add('hidden');
+            if (hasWaterKey && hasPump) {
+                document.getElementById('water-block').classList.remove('hidden');
+            } else {
+                document.getElementById('water-block').classList.add('hidden');
+            }
         }
 
         async function fetchSensorData() {
@@ -810,7 +1011,7 @@
                     document.getElementById('power-status').innerText = '-- V / -- mA';
                 }
                 const time = new Date(data.timestamp * 1000);
-                document.getElementById('update-time').innerText = 'last synced at ' + time.toLocaleTimeString().toLowerCase();
+                document.getElementById('update-time').innerText = t('last_synced', {time: time.toLocaleTimeString().toLowerCase()});
             } catch (e) { console.error(e); }
         }
 
@@ -818,57 +1019,77 @@
             const waterKey = localStorage.getItem('robin_water_key');
             if (!waterKey) return;
             const btn = document.getElementById('water-btn');
-            btn.disabled = true; btn.innerText = 'watering...';
+            btn.disabled = true; btn.innerText = t('watering_ing');
             const duration = parseFloat(document.getElementById('water-duration').value) || 0.5;
             try {
                 const res = await fetch('/api/water', { method: 'POST', headers: { 'x-water-key': waterKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ duration, node_id: currentDevice }) });
-                if (res.ok) { btn.innerText = '✅ Success'; btn.style.background = '#10b981'; setTimeout(() => { btn.innerText = 'Water'; btn.style.background = '#3b82f6'; btn.disabled = false; fetchAllData(true); }, 2000); }
+                if (res.ok) { showToast(t('watering_cmd'), 'success');  setTimeout(() => { btn.innerText = t('water_btn');  btn.disabled = false; fetchAllData(true); }, 2000); }
                 else throw new Error('fail');
-            } catch (e) { btn.innerText = '❌ Error'; btn.style.background = '#ef4444'; setTimeout(() => { btn.innerText = 'Water'; btn.style.background = '#3b82f6'; btn.disabled = false; }, 2000); }
+            } catch (e) { showToast('Failed to save configuration.', 'error');  setTimeout(() => { btn.innerText = t('water_btn');  btn.disabled = false; }, 2000); }
         }
 
+        let lightToggleInProgress = false;
+        let optimisticLightStatus = null;
+
         async function toggleLight() {
+            if (isCameraSyncing || isHDSyncing) return;
+            if (lightToggleInProgress) return;
             const waterKey = localStorage.getItem('robin_water_key');
             if (!waterKey) return;
             const statusEl = document.getElementById('light-status');
             if (!statusEl) return;
             
-            const orig = statusEl.innerText;
-            const isCurrentlyOn = orig.trim() === 'ON';
+            lightToggleInProgress = true;
+            
+            const currentStatus = optimisticLightStatus || statusEl.innerText.trim();
+            const isCurrentlyOn = currentStatus === 'ON';
             const newStatus = isCurrentlyOn ? 'OFF' : 'ON';
             
-            // Optimistic update
+            // Pure optimistic update — no server refresh needed
+            optimisticLightStatus = newStatus;
             statusEl.innerText = newStatus;
-            statusEl.style.color = newStatus === 'ON' ? '#eab308' : '#64748b';
+            statusEl.style.color = newStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
+            showToast(newStatus === 'ON' ? t('light_on') : t('light_off'), 'success');
             
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
-                if (!res.ok) throw new Error('fail');
+                if (!res.ok) {
+                    if (res.status === 409) throw new Error('camera');
+                    throw new Error('fail');
+                }
             } catch (e) {
-                // Revert on failure
-                statusEl.innerText = orig;
-                statusEl.style.color = isCurrentlyOn ? '#eab308' : '#64748b';
+                // Revert optimistic state on failure
+                optimisticLightStatus = isCurrentlyOn ? 'ON' : null;
+                statusEl.innerText = isCurrentlyOn ? 'ON' : 'OFF';
+                statusEl.style.color = isCurrentlyOn ? '#eab308' : 'var(--text-muted)';
+                showToast(e.message === 'camera' ? t('cam_capturing') : t('light_fail'), 'error');
             }
+            
+            // 1s debounce
+            setTimeout(() => { lightToggleInProgress = false; }, 1000);
         }
 
         function renderHistoryUI(data, type) {
             if (type === 'watering') {
                 const wrapper = document.getElementById('watering-log-wrapper');
-                if (!data || data.length === 0) { wrapper.innerHTML = '<div class="loading-text">no watering records yet.</div>'; return; }
-                let html = '<div class="log-list">';
-                data.forEach(item => { html += `<div class="log-item"><div class="log-time">💧 ${item.time}</div><div class="log-detail">pumped ${item.duration}s (soil was ${item.soil}%)</div></div>`; });
-                wrapper.innerHTML = html + '</div>';
+                if (!data || data.length === 0) { wrapper.innerHTML = `<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">${t('no_water_records')}</div>`; return; }
+                let html = '<div class="watering-table-wrapper"><table class="watering-table">';
+                html += `<thead><tr><th>${t('table_duration')}</th><th>${t('table_soil')}</th><th>${t('table_time')}</th></tr></thead><tbody>`;
+                data.forEach(item => { 
+                    html += `<tr><td>${item.duration}</td><td>${item.soil}</td><td class="log-time" style="color: var(--text-muted); font-size: 12px;">${item.time}</td></tr>`; 
+                });
+                wrapper.innerHTML = html + '</tbody></table></div>';
                 return;
             }
             if (!data || data.length === 0) {
                 if (myChart) { myChart.destroy(); myChart = null; }
-                document.getElementById('chart-loading').innerText = 'no data available.';
+                document.getElementById('chart-loading').innerText = t('no_data');
                 document.getElementById('chart-loading').classList.remove('hidden');
                 return;
             }
             document.getElementById('chart-loading').classList.add('hidden');
 
-            let chartData = JSON.parse(JSON.stringify(data));
+            const chartData = data;
             const labels = chartData.map(d => d.time);
             const datasets = [];
 
@@ -877,10 +1098,10 @@
             const hasSoil = chartData.some(d => d.soil !== null && d.soil !== undefined);
             const hasPres = chartData.some(d => d.pressure !== null && d.pressure !== undefined);
 
-            if (hasTemp) datasets.push({ label: 'temp (℃)', data: chartData.map(d => d.temp), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
-            if (hasHum) datasets.push({ label: 'hum (%)', data: chartData.map(d => d.hum), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (hasSoil) datasets.push({ label: 'soil (%)', data: chartData.map(d => d.soil), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (hasPres) datasets.push({ label: 'pres (hPa)', data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
+            if (hasTemp) datasets.push({ label: t('chart_temp'), data: chartData.map(d => d.temp), borderColor: '#f59e0b', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
+            if (hasHum) datasets.push({ label: t('chart_hum'), data: chartData.map(d => d.hum), borderColor: '#3b82f6', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: '#10b981', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
 
             const ctx = document.getElementById('historyChart').getContext('2d');
             if (myChart) myChart.destroy();
@@ -888,6 +1109,7 @@
                 type: 'line', data: { labels: labels, datasets: datasets },
                 options: {
                     responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                    plugins: { tooltip: { titleColor: 'var(--toast-text)', bodyColor: 'var(--toast-text)', backgroundColor: 'var(--toast-bg)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8 } },
                     scales: {
                         x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
                         y: { type: 'linear', display: true, position: 'left', ticks: { font: { size: 10 } } },
@@ -907,7 +1129,7 @@
                 renderHistoryUI(historyCache[cacheKey], reqType);
                 if (!forceFetch) return;
             } else {
-                if (reqType === 'watering') document.getElementById('watering-log-wrapper').innerHTML = '<div class="loading-text">loading...</div>';
+                if (reqType === 'watering') document.getElementById('watering-log-wrapper').innerHTML = '<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">loading...</div>';
                 else { if (myChart) { myChart.destroy(); myChart = null; } document.getElementById('chart-loading').classList.remove('hidden'); }
             }
 
@@ -921,6 +1143,8 @@
             } catch (e) { }
         }
 
+        let currentCamBlobUrl = null;
+        let isCameraSyncing = false;
         async function fetchImage(forceLive = false) {
             const savedKey = localStorage.getItem(STORAGE_KEY);
             const cameraBlock = document.getElementById('camera-block');
@@ -930,8 +1154,9 @@
             const img = document.getElementById('cam-img');
             const camTs = document.getElementById('cam-timestamp');
 
-            camTs.innerText = 'syncing...'; 
+            camTs.innerText = t('syncing'); 
             camTs.style.color = '#94a3b8'; 
+            isCameraSyncing = true;
             
             try {
                 const endpoint = forceLive ? '/api/image?live=true&t=' : '/api/image?t=';
@@ -940,7 +1165,7 @@
                 });
                 
                 if (!res.ok) { 
-                    camTs.innerText = '⚠️ camera hardware offline or error';
+                    camTs.innerText = t('cam_offline');
                     camTs.style.color = '#ef4444';
                     if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
                     return; 
@@ -957,15 +1182,21 @@
                         camTs.style.color = '#94a3b8'; 
                     }
                 };
-                img.src = URL.createObjectURL(blob);
+                if (currentCamBlobUrl) URL.revokeObjectURL(currentCamBlobUrl);
+                currentCamBlobUrl = URL.createObjectURL(blob);
+                img.src = currentCamBlobUrl;
                 
                 if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
             } catch (e) { 
-                camTs.innerText = '⚠️ network disconnected';
+                camTs.innerText = t('net_disconnect');
                 camTs.style.color = '#ef4444'; 
                 if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
+            } finally {
+                isCameraSyncing = false;
             }
         }
+        
+        let isHDSyncing = false;
         async function fetchHDImage() {
             const savedKey = localStorage.getItem(STORAGE_KEY);
             if (!savedKey) return;
@@ -994,10 +1225,11 @@
             }
 
             statusText.style.display = 'block';
-            statusText.innerText = 'capturing hd image... (est. 10s+)';
+            statusText.innerText = t('hd_capture_est');
             loader.style.display = 'block';
             modal.style.display = 'flex';
 
+            isHDSyncing = true;
             if (sessionHDSrc) {
                 hdImg.src = sessionHDSrc;
                 hdImg.style.display = 'block';
@@ -1043,23 +1275,28 @@
             } catch (e) {
                 loader.style.display = 'none';
                 statusText.style.display = 'block';
-                statusText.innerText = '❌ failed to capture hd image.';
+                statusText.innerText = t('fail_hd');
                 statusText.style.color = '#ef4444';
+            } finally {
+                isHDSyncing = false;
             }
         }
         function closeHD() { document.getElementById('hd-modal').style.display = 'none'; }
 
         async function fetchAllData(forceLive = false) {
             const btn = document.getElementById('refresh-btn');
-            if (btn) btn.innerText = 'syncing...';
+            if (btn) btn.innerText = t('syncing');
             
             const tasks = [fetchSensorData()];
-            if (currentTab === 'environment') tasks.push(fetchImage(forceLive));
+            const nodeInfo = availableNodes[currentDevice] || {};
+            const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
+
+            if (currentTab === 'environment' && hasCamera) tasks.push(fetchImage(forceLive));
             if (currentTab === 'history') tasks.push(loadHistoryData(true));
             
             await Promise.allSettled(tasks);
             
-            if (btn) btn.innerText = 'refresh';
+            if (btn) btn.innerText = t('refresh');
         }
 
         function checkMagicLink() {
@@ -1087,9 +1324,17 @@
 
         window.onload = async () => {
             checkMagicLink();
+            applyTranslations();
             await initNodes();
             parseURLAndNavigate();
             fetchAllData(true);
+            
+            // Auto refresh every 30 seconds
+            setInterval(() => {
+                if (document.visibilityState === 'visible') {
+                    fetchAllData(false);
+                }
+            }, 30000);
         };
     </script>
 </body>

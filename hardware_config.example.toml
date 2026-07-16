@@ -42,6 +42,9 @@ driver = "INA219_UPS"
 bus = 1
 address = "0x43"
 
+[nodes.main.sensors.camera]
+driver = "dummy"
+
 # ---- Actuators ----
 [nodes.main.actuators.pump]
 driver = "GPIO_Relay"

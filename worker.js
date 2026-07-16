@@ -47,14 +47,17 @@ export default {
 
                 if (!piResponse.ok) return new Response(url.pathname === "/api/image" ? "offline" : JSON.stringify({ error: "cannot connect to pi" }), { status: piResponse.status });
 
-                const responseHeaders = new Headers(piResponse.headers);
+                const responseHeaders = new Headers();
                 responseHeaders.set("Access-Control-Allow-Origin", "*");
                 if (url.pathname === "/api/image") {
                     responseHeaders.set("Content-Type", "image/jpeg");
                     responseHeaders.set("Cache-Control", "no-store");
                     responseHeaders.set("Access-Control-Expose-Headers", "X-Image-Timestamp");
+                    const imgTs = piResponse.headers.get("X-Image-Timestamp");
+                    if (imgTs) responseHeaders.set("X-Image-Timestamp", imgTs);
                 } else {
                     responseHeaders.set("Content-Type", "application/json");
+                    responseHeaders.set("Vary", "Accept-Encoding");
                 }
                 
                 return new Response(piResponse.body, { status: piResponse.status, headers: responseHeaders });

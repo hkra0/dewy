@@ -6,7 +6,7 @@ import sqlite3
 import json
 import urllib.request
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -41,7 +41,9 @@ hardware_manager = HardwareManager(DATA_DIR)
 
 global_mqtt_client = None
 light_status = "--"
-camera_light_active = False
+manual_override = False
+manual_override_until = None
+camera_in_progress = False
 
 mqtt_topic_to_node = {}
 for n_id, info in hardware_manager.mqtt_nodes.items():
@@ -91,6 +93,34 @@ def save_config(cfg):
     try:
         with open(CONFIG_FILE, "w") as f: json.dump(cfg, f, indent=4)
     except: pass
+
+def compute_next_boundary(now, on_minutes, off_minutes):
+    """计算距离下一个定时切换边界的 datetime。
+    
+    用于确定 manual_override 的有效期：用户手动操作后，
+    覆盖将持续到下一个「开→关」或「关→开」的定时边界。
+    """
+    current_minutes = now.hour * 60 + now.minute
+    
+    # 收集所有边界时间点（分钟值）
+    boundaries = [on_minutes, off_minutes]
+    
+    # 找到下一个大于当前时间的边界
+    next_boundary = None
+    for b in sorted(boundaries):
+        if b > current_minutes:
+            next_boundary = b
+            break
+    
+    if next_boundary is None:
+        # 所有边界都在今天之前，取明天最早的边界
+        next_boundary = min(boundaries)
+        target = now.replace(hour=next_boundary // 60, minute=next_boundary % 60, second=0, microsecond=0)
+        target += timedelta(days=1)
+    else:
+        target = now.replace(hour=next_boundary // 60, minute=next_boundary % 60, second=0, microsecond=0)
+    
+    return target
 
 def fetch_ip_location():
     try:
@@ -153,6 +183,7 @@ def get_system_stats():
 def init_db():
     with db_lock:
         conn = sqlite3.connect(DB_FILE)
+        conn.execute("PRAGMA journal_mode=WAL")
         cursor = conn.cursor()
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS node_data (
@@ -177,6 +208,8 @@ def init_db():
                 soil_before REAL
             )
         ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_node_data_query ON node_data (node_id, is_anomaly, timestamp)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_watering_log_node ON watering_log (node_id, timestamp)')
         conn.commit()
         conn.close()
 
@@ -239,6 +272,7 @@ def trigger_watering(node_id, soil_before, duration=None):
         return False
 
 def background_logger():
+    global manual_override, manual_override_until, light_status
     init_db()
     while True:
         try:
@@ -254,10 +288,26 @@ def background_logger():
                     is_light_time = time_val >= on_time or time_val < off_time
                     
                 if global_mqtt_client:
-                    cmd = "a1" if is_light_time else "b1"
-                    l_node = global_config["auto_light"]["node_id"]
-                    l_act = global_config["auto_light"]["actuator_id"]
-                    hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command=cmd)
+                    # 检查手动覆盖是否过期
+                    if manual_override:
+                        if manual_override_until and now >= manual_override_until:
+                            manual_override = False
+                            manual_override_until = None
+                            print(f"[{now.strftime('%H:%M:%S')}] 🔄 手动覆盖已到期，恢复定时控制")
+                        else:
+                            # 用户手动控制中，跳过定时指令
+                            pass
+                    
+                    if not manual_override:
+                        # 仅在灯状态与目标不一致时才发送指令（避免重复发送）
+                        desired = "ON" if is_light_time else "OFF"
+                        if light_status != desired:
+                            cmd = "a1" if is_light_time else "b1"
+                            l_node = global_config["auto_light"]["node_id"]
+                            l_act = global_config["auto_light"]["actuator_id"]
+                            hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command=cmd)
+                            light_status = desired
+                            print(f"[{now.strftime('%H:%M:%S')}] 💡 定时灯控: {desired}")
             
             node_data_to_save = []
             
@@ -341,11 +391,9 @@ def on_mqtt_message(client, userdata, msg):
                 if hasattr(actuator, "topic") and actuator.topic == topic:
                     info = data.get("information", "")
                     if "n1" in info:
-                        if not camera_light_active:
-                            light_status = "ON"
+                        light_status = "ON"
                     elif "f1" in info:
-                        if not camera_light_active:
-                            light_status = "OFF"
+                        light_status = "OFF"
                     return
         
         # 更新传感器节点数据
@@ -380,22 +428,7 @@ def start_background_logger():
 @app.get("/api/nodes")
 def get_nodes(x_bff_to_pi_token: str = Header(None)):
     if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
-    nodes_info = {}
-    for node_id, config in hardware_manager.nodes.items():
-        node_type = config.get("type", "unknown")
-        has_system = (node_type == "local")
-        actuators = config.get("actuators", {})
-        has_settings = ("pump" in actuators or "light" in actuators)
-        has_pump = ("pump" in actuators)
-        
-        nodes_info[node_id] = {
-            "type": node_type,
-            "description": config.get("description", f"Node {node_id}"),
-            "has_system": has_system,
-            "has_settings": has_settings,
-            "has_pump": has_pump
-        }
-    return nodes_info
+    return hardware_manager.nodes
 
 @app.get("/api/monitor")
 def get_monitor_data(x_bff_to_pi_token: str = Header(None)):
@@ -425,24 +458,18 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
     if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
     target_path = TMP_IMG_HQ_PATH if hq else TMP_IMG_PATH
     if live:
+        global camera_in_progress
+        camera_in_progress = True
         try:
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
             
-            now = datetime.now()
-            time_val = now.hour * 60 + now.minute
-            on_time, off_time = get_effective_light_times()
-            if on_time < off_time:
-                is_light_time = on_time <= time_val < off_time
-            else:
-                is_light_time = time_val >= on_time or time_val < off_time
-                
-            global camera_light_active
-            needs_temp_light = (not is_light_time) and (light_status != "ON")
-            if needs_temp_light and global_mqtt_client:
-                camera_light_active = True
+            # 判断是否需要临时补光拍照（灯当前未开启时）
+            needs_temp_light = (light_status != "ON") and global_mqtt_client
+            l_node = global_config["auto_light"]["node_id"]
+            l_act = global_config["auto_light"]["actuator_id"]
+            
+            if needs_temp_light:
                 duration = 4 if hq else 2
-                l_node = global_config["auto_light"]["node_id"]
-                l_act = global_config["auto_light"]["actuator_id"]
                 try:
                     hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, duration=duration)
                     time.sleep(0.6)
@@ -452,18 +479,16 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
             try:
                 with camera_lock:
                     if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
-                    else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "80", "--vflip", "--hflip", "--nopreview"]
+                    else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "60", "--vflip", "--hflip", "--nopreview"]
                     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             finally:
-                if needs_temp_light and global_mqtt_client:
-                    try:
-                        hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command="b1")
-                    except Exception:
-                        pass
-                    time.sleep(0.5)
-                    camera_light_active = False
+                # 临时补光结束后关灯，使用 duration 模式的继电器会自动关闭
+                # 此处无需手动发关灯指令，也不修改 light_status 或 manual_override
+                pass
         except Exception:
             pass
+        finally:
+            camera_in_progress = False
     if os.path.exists(target_path):
         img_timestamp = str(int(os.path.getmtime(target_path)))
         return FileResponse(target_path, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Image-Timestamp": img_timestamp})
@@ -505,16 +530,15 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_
                 
             else: # 24h
                 cursor.execute('''
-                    SELECT datetime(timestamp, 'localtime'), temperature, humidity, soil_moisture, pressure 
+                    SELECT strftime('%H:%M', timestamp, 'localtime'), temperature, humidity, soil_moisture, pressure 
                     FROM node_data 
                     WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL) 
                       AND timestamp >= datetime('now', '-24 hours')
-                    ORDER BY timestamp DESC
+                    ORDER BY timestamp ASC
                 ''', (node_id,))
                 rows = cursor.fetchall()
                 conn.close()
-                rows.reverse()
-                return [{"time": r[0].split(" ")[1][:5] if " " in r[0] else r[0], 
+                return [{"time": r[0], 
                          "temp": round(r[1], 1) if r[1] is not None else None, 
                          "hum": round(r[2], 1) if r[2] is not None else None, 
                          "soil": round(r[3], 1) if r[3] is not None else None,
@@ -568,18 +592,27 @@ def toggle_manual_light(x_bff_to_pi_token: str = Header(None)):
     if x_bff_to_pi_token != PI_SECRET_TOKEN: 
         raise HTTPException(status_code=403, detail="Forbidden")
     
-    global light_status
+    global light_status, manual_override, manual_override_until
     if not global_mqtt_client:
         raise HTTPException(status_code=500, detail="MQTT not connected")
+    if camera_in_progress:
+        raise HTTPException(status_code=409, detail="Camera capture in progress")
         
     new_cmd = "a1" if light_status != "ON" else "b1"
     
-    # 强制预更新状态，防止因继电器状态未及时上报导致死锁
+    # 设置手动覆盖，持续到下一个定时切换边界
+    now = datetime.now()
+    on_time, off_time = get_effective_light_times()
+    manual_override = True
+    manual_override_until = compute_next_boundary(now, on_time, off_time)
+    
+    # 预更新状态
     light_status = "ON" if new_cmd == "a1" else "OFF"
+    print(f"[{now.strftime('%H:%M:%S')}] 🔧 手动切灯: {light_status}，覆盖至 {manual_override_until.strftime('%H:%M')}")
     
     l_node = global_config["auto_light"]["node_id"]
     l_act = global_config["auto_light"]["actuator_id"]
-    success = hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command=new_cmd)
+    success = hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command=new_cmd, retain=True)
     
     if success:
         return {"status": "success"}
