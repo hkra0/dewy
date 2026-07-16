@@ -44,6 +44,7 @@ light_status = "--"
 manual_override = False
 manual_override_until = None
 camera_in_progress = False
+ignore_light_feedback_until = 0
 
 mqtt_topic_to_node = {}
 for n_id, info in hardware_manager.mqtt_nodes.items():
@@ -390,10 +391,11 @@ def on_mqtt_message(client, userdata, msg):
             for actuator in acts.values():
                 if hasattr(actuator, "topic") and actuator.topic == topic:
                     info = data.get("information", "")
-                    if "n1" in info:
-                        light_status = "ON"
-                    elif "f1" in info:
-                        light_status = "OFF"
+                    if time.time() > ignore_light_feedback_until:
+                        if "n1" in info:
+                            light_status = "ON"
+                        elif "f1" in info:
+                            light_status = "OFF"
                     return
         
         # 更新传感器节点数据
@@ -458,7 +460,7 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
     if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
     target_path = TMP_IMG_HQ_PATH if hq else TMP_IMG_PATH
     if live:
-        global camera_in_progress
+        global camera_in_progress, ignore_light_feedback_until
         camera_in_progress = True
         try:
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -470,6 +472,7 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
             
             if needs_temp_light:
                 duration = 4 if hq else 2
+                ignore_light_feedback_until = time.time() + duration + 3
                 try:
                     hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, duration=duration)
                     time.sleep(0.6)
