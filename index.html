@@ -388,7 +388,7 @@
             display: none;
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(15, 23, 42, 0.95);
+            background: rgba(0, 0, 0, 0.85);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -479,7 +479,7 @@
                             style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-main); outline: none;">
                     </div>
                     <button class="action-btn" id="water-btn"
-                        style="background: #3b82f6; width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
+                        style="width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
                         onclick="triggerWatering()">Water</button>
                 </div>
             </details>
@@ -590,14 +590,13 @@
                         <div style="display: flex; justify-content: space-between; align-items: center;"><label>Off
                                 Offset (min)</label><input type="number" id="cfg-light-off-offset"
                                 style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
-                        <div style="font-size: 11px; color: #10b981; text-align: center; margin-top: 5px;"
+                        <div style="font-size: 11px; color: var(--accent); text-align: center; margin-top: 5px;"
                             id="cfg-light-effective-times">Currently scheduled: --:-- to --:--</div>
                     </div>
                 </div>
             </div>
-            <div class="card full-width" style="padding: 0; background: transparent;"><button class="action-btn"
-                    id="save-cfg-btn" style="background: #0ea5e9; margin-top: 0;" onclick="saveConfig()">Save
-                    Configuration</button></div>
+            <div class="card full-width" style="padding: 0;"><button class="action-btn"
+                    id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfig()">Save Configuration</button></div>
         </div>
 
         <button class="action-btn" id="refresh-btn" onclick="fetchAllData(true)">refresh</button>
@@ -836,7 +835,7 @@
                 html += `<div class="card"><div class="card-title">humidity</div><div class="card-value" style="color: #3b82f6;">${formatVal(nodeData.humidity, '%')}</div></div>`;
             }
             if (nodeData.soil_moisture !== undefined) {
-                html += `<div class="card"><div class="card-title">soil moisture</div><div class="card-value" style="color: #10b981;">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
+                html += `<div class="card"><div class="card-title">soil moisture</div><div class="card-value" style="color: var(--accent);">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
             }
             if (nodeData.pressure !== undefined) {
                 html += `<div class="card"><div class="card-title">pressure</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
@@ -964,10 +963,10 @@
             const hasSoil = chartData.some(d => d.soil !== null && d.soil !== undefined);
             const hasPres = chartData.some(d => d.pressure !== null && d.pressure !== undefined);
 
-            if (hasTemp) datasets.push({ label: 'temp (℃)', data: chartData.map(d => d.temp), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.2)', fill: true, tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
-            if (hasHum) datasets.push({ label: 'hum (%)', data: chartData.map(d => d.hum), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', fill: true, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (hasSoil) datasets.push({ label: 'soil (%)', data: chartData.map(d => d.soil), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.2)', fill: true, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (hasPres) datasets.push({ label: 'pres (hPa)', data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.2)', fill: true, tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
+            if (hasTemp) datasets.push({ label: 'temp (℃)', data: chartData.map(d => d.temp), borderColor: '#f59e0b', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
+            if (hasHum) datasets.push({ label: 'hum (%)', data: chartData.map(d => d.hum), borderColor: '#3b82f6', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasSoil) datasets.push({ label: 'soil (%)', data: chartData.map(d => d.soil), borderColor: '#10b981', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasPres) datasets.push({ label: 'pres (hPa)', data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
 
             const ctx = document.getElementById('historyChart').getContext('2d');
             if (myChart) myChart.destroy();
