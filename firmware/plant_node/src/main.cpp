@@ -113,7 +113,8 @@ void reconnect() {
 
 void setup() {
   Serial.begin(115200);
-  delay(1);
+  delay(3000); // 等待3秒，让电脑有足够的时间识别 USB 串口
+  Serial.println("\n========== ESP32 启动 ==========");
 
   // 0. 初始化雾化器引脚
   pinMode(ATOMIZER_PIN, OUTPUT);
