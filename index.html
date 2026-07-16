@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
     <title>dewy</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,6 +12,11 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <style>
         :root {
+            color-scheme: light dark;
+            --nav-bg: #f1f5f9;
+            --border-hover: #cbd5e1;
+            --toast-bg: #1e293b;
+            --toast-text: #ffffff;
             --bg-color: #f8fafc;
             --surface-color: #ffffff;
             --text-main: #0f172a;
@@ -26,6 +32,25 @@
             --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.08);
             --radius-md: 12px;
             --radius-lg: 20px;
+        }
+
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #0f172a;
+                --surface-color: var(--text-main);
+                --nav-bg: #334155;
+                --text-main: #f8fafc;
+                --text-muted: #94a3b8;
+                --border: #475569;
+                --border-hover: #64748b;
+                --toast-bg: #f8fafc;
+                --toast-text: #0f172a;
+                --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.3);
+                --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.4);
+                --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+                color-scheme: dark;
+            }
         }
 
         body {
@@ -54,7 +79,7 @@
         /* Nav */
         .nav {
             display: flex;
-            background: #f1f5f9;
+            background: var(--nav-bg);
             border-radius: var(--radius-md);
             padding: 6px;
             margin-bottom: 25px;
@@ -87,18 +112,17 @@
         }
 
         .card {
-            background: #f8fafc;
+            background: var(--surface-color);
             padding: 20px;
             border-radius: var(--radius-md);
             text-align: center;
             border: 1px solid var(--border);
-            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+            transition: box-shadow 0.3s ease, border-color 0.3s ease;
         }
 
         .card:hover {
-            transform: translateY(-3px);
             box-shadow: var(--shadow-md);
-            border-color: #cbd5e1;
+            border-color: var(--border-hover);
         }
 
         .card-title {
@@ -157,13 +181,13 @@
         }
 
         .sub-nav-btn:hover {
-            border-color: #cbd5e1;
+            border-color: var(--border-hover);
             color: var(--text-main);
         }
 
         .sub-nav-btn.active {
             background: var(--accent);
-            color: white;
+            color: #ffffff;
             border-color: var(--accent);
         }
 
@@ -172,7 +196,7 @@
             width: 100%;
             padding: 14px;
             background: var(--accent);
-            color: white;
+            color: #ffffff;
             border: none;
             border-radius: 10px;
             font-size: 15px;
@@ -298,8 +322,8 @@
             pointer-events: none;
         }
         .toast {
-            background: #1e293b;
-            color: white;
+            background: var(--toast-bg);
+            color: var(--toast-text);
             padding: 12px 24px;
             border-radius: 30px;
             font-size: 14px;
@@ -337,8 +361,8 @@
         /* Toggles */
         .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 24px; }
-        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border); transition: .3s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: #ffffff; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         input:checked + .slider { background-color: var(--accent); }
         input:checked + .slider:before { transform: translateX(20px); }
 
@@ -362,7 +386,7 @@
             object-fit: contain;
             transition: opacity 0.3s;
         }
-        #hd-status { color: #f8fafc; margin-bottom: 15px; font-size: 14px; font-weight: 500; }
+        #hd-status { color: var(--text-main); margin-bottom: 15px; font-size: 14px; font-weight: 500; }
         #hd-timestamp { color: var(--text-muted); font-size: 12px; margin-top: 15px; font-weight: 500; }
         .loader {
             border: 3px solid rgba(255, 255, 255, 0.1);
@@ -374,7 +398,7 @@
         .close-btn {
             margin-top: 25px;
             background: rgba(255, 255, 255, 0.1);
-            color: white; padding: 12px 28px;
+            color: #ffffff; padding: 12px 28px;
             border-radius: 30px; cursor: pointer;
             border: 1px solid rgba(255, 255, 255, 0.2);
             font-size: 14px; font-weight: 500;
@@ -395,14 +419,14 @@
 
     <div class="container">
         <div class="header" style="text-align: center; margin-bottom: 22px;">
-            <h1 style="margin: 0; font-size: 24px; color: #1e293b; letter-spacing: -0.5px;">🌱 dewy</h1>
+            <h1 style="margin: 0; font-size: 24px; color: var(--text-main); letter-spacing: -0.5px;">🌱 dewy</h1>
             <div style="display: inline-block; position: relative; margin-top: 8px;">
                 <select id="device-select" onchange="switchDevice(this.value, true)"
-                    style="appearance: none; -webkit-appearance: none; background: #e2e8f0; color: #475569; padding: 4px 28px 4px 14px; border-radius: 16px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); text-align: center;">
+                    style="appearance: none; -webkit-appearance: none; background: var(--nav-bg); color: var(--text-muted); padding: 4px 28px 4px 14px; border-radius: 16px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); text-align: center;">
                     <option value="main">Loading...</option>
                 </select>
                 <span
-                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b; font-size: 9px;">▼</span>
+                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted); font-size: 9px;">▼</span>
             </div>
         </div>
 
@@ -427,15 +451,15 @@
 
             <details class="card full-width hidden" id="water-block"
                 style="margin-top: 15px; padding: 10px 15px; cursor: pointer;">
-                <summary style="font-weight: 600; color: #64748b; outline: none; user-select: none;">manual watering
+                <summary style="font-weight: 600; color: var(--text-muted); outline: none; user-select: none;">manual watering
                 </summary>
                 <div
                     style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; cursor: default;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="water-duration"
-                            style="font-size: 14px; color: #64748b; white-space: nowrap;">Duration (s):</label>
+                            style="font-size: 14px; color: var(--text-muted); white-space: nowrap;">Duration (s):</label>
                         <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5"
-                            style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
+                            style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-main); outline: none;">
                     </div>
                     <button class="action-btn" id="water-btn"
                         style="background: #3b82f6; width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
@@ -486,36 +510,36 @@
         <div class="grid hidden view-section" id="view-settings">
             <div class="card full-width" style="text-align: left; padding: 20px;">
                 <div
-                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
+                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
                     Auto Watering
                     <label class="switch"><input type="checkbox" id="cfg-water-enabled"><span
                             class="slider"></span></label>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #475569;">
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label>Threshold (%)</label>
                         <input type="number" id="cfg-water-threshold"
-                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label>Duration (s)</label>
                         <input type="number" id="cfg-water-duration" step="0.1"
-                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                     </div>
                 </div>
             </div>
             <div class="card full-width" style="text-align: left; padding: 20px;">
                 <div
-                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
+                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
                     Fill Light
                     <label class="switch"><input type="checkbox" id="cfg-light-enabled"><span
                             class="slider"></span></label>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #475569;">
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label>Mode</label>
                         <select id="cfg-light-mode" onchange="toggleLightMode()"
-                            style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1; background: white;">
+                            style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface-color); color: var(--text-main);">
                             <option value="fixed">Fixed Time</option>
                             <option value="sun">Sunrise & Sunset</option>
                         </select>
@@ -524,10 +548,10 @@
                         style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn
                                 On</label><input type="time" id="cfg-light-on"
-                                style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                                style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
                         <div style="display: flex; justify-content: space-between; align-items: center;"><label>Turn
                                 Off</label><input type="time" id="cfg-light-off"
-                                style="padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                                style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
                     </div>
                     <div id="cfg-light-sun-group" class="hidden"
                         style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
@@ -535,20 +559,20 @@
                             <div style="flex: 1;"><label
                                     style="display: block; margin-bottom: 5px; font-size: 11px;">Latitude</label><input
                                     type="text" id="cfg-light-lat" placeholder="auto"
-                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                             </div>
                             <div style="flex: 1;"><label
                                     style="display: block; margin-bottom: 5px; font-size: 11px;">Longitude</label><input
                                     type="text" id="cfg-light-lng" placeholder="auto"
-                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;">
+                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
                             </div>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center;"><label>On
                                 Offset (min)</label><input type="number" id="cfg-light-on-offset"
-                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
                         <div style="display: flex; justify-content: space-between; align-items: center;"><label>Off
                                 Offset (min)</label><input type="number" id="cfg-light-off-offset"
-                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #cbd5e1;"></div>
+                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);"></div>
                         <div style="font-size: 11px; color: #10b981; text-align: center; margin-top: 5px;"
                             id="cfg-light-effective-times">Currently scheduled: --:-- to --:--</div>
                     </div>
@@ -804,7 +828,7 @@
             // Light Status (global for now, or you can attach to specific node)
             // Just displaying it if it's main node for backwards compatibility visually
             if (currentDevice === 'main' && globalData.light_status) {
-                const color = globalData.light_status === 'ON' ? '#eab308' : '#64748b';
+                const color = globalData.light_status === 'ON' ? '#eab308' : 'var(--text-muted)';
                 html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">fill light</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
             }
 
@@ -885,7 +909,7 @@
             
             // Optimistic update
             statusEl.innerText = newStatus;
-            statusEl.style.color = newStatus === 'ON' ? '#eab308' : '#64748b';
+            statusEl.style.color = newStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
             
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
@@ -893,7 +917,7 @@
             } catch (e) {
                 // Revert on failure
                 statusEl.innerText = orig;
-                statusEl.style.color = isCurrentlyOn ? '#eab308' : '#64748b';
+                statusEl.style.color = isCurrentlyOn ? '#eab308' : 'var(--text-muted)';
             }
         }
 
@@ -934,7 +958,7 @@
                 type: 'line', data: { labels: labels, datasets: datasets },
                 options: {
                     responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-                    plugins: { tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8 } },
+                    plugins: { tooltip: { titleColor: 'var(--toast-text)', bodyColor: 'var(--toast-text)', backgroundColor: 'var(--toast-bg)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8 } },
                     scales: {
                         x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
                         y: { type: 'linear', display: true, position: 'left', ticks: { font: { size: 10 } } },
