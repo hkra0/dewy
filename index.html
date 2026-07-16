@@ -5,116 +5,152 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>dewy</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <style>
+        :root {
+            --bg-color: #f8fafc;
+            --surface-color: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --accent: #10b981;
+            --accent-hover: #059669;
+            --accent-blue: #3b82f6;
+            --accent-blue-hover: #2563eb;
+            --danger: #ef4444;
+            --border: #e2e8f0;
+            --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.02);
+            --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.08);
+            --radius-md: 12px;
+            --radius-lg: 20px;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
             padding: 20px;
-            background-color: #f4f7f6;
+            background-color: var(--bg-color);
+            color: var(--text-main);
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
         .container {
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
-            background: #ffffff;
-            padding: 25px;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            background: var(--surface-color);
+            padding: 30px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
             margin-top: 20px;
+            box-sizing: border-box;
+            border: 1px solid rgba(255,255,255,0.5);
         }
 
-        h1 {
-            font-size: 20px;
-            color: #2c3e50;
-            margin-top: 0;
-            text-align: center;
-            margin-bottom: 20px;
-            user-select: none;
-        }
-
+        /* Nav */
         .nav {
             display: flex;
             background: #f1f5f9;
-            border-radius: 12px;
-            padding: 4px;
-            margin-bottom: 20px;
+            border-radius: var(--radius-md);
+            padding: 6px;
+            margin-bottom: 25px;
         }
 
         .nav-btn {
             flex: 1;
-            padding: 10px 0;
+            padding: 12px 0;
             text-align: center;
-            font-size: 13px;
-            font-weight: bold;
-            color: #64748b;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
             cursor: pointer;
             border-radius: 8px;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             user-select: none;
         }
 
         .nav-btn.active {
-            background: #ffffff;
-            color: #0f172a;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            background: var(--surface-color);
+            color: var(--text-main);
+            box-shadow: var(--shadow-sm);
         }
 
+        /* Grid & Cards */
         .grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
+            gap: 16px;
         }
 
         .card {
             background: #f8fafc;
-            padding: 15px;
-            border-radius: 12px;
+            padding: 20px;
+            border-radius: var(--radius-md);
             text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid var(--border);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
         }
 
         .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-md);
+            border-color: #cbd5e1;
         }
 
         .card-title {
-            font-size: 11px;
-            color: #64748b;
-            margin-bottom: 5px;
-            text-transform: lowercase;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .card-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #0f172a;
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--text-main);
         }
 
         .full-width {
             grid-column: span 2;
         }
 
+        /* View Transition wrapper */
+        .view-section {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Sub Nav */
         .sub-nav {
             display: flex;
-            gap: 8px;
+            gap: 10px;
             justify-content: center;
             margin-top: 10px;
-            margin-bottom: 5px;
+            margin-bottom: 10px;
             flex-wrap: wrap;
         }
 
         .sub-nav-btn {
-            font-size: 11px;
-            color: #94a3b8;
-            padding: 4px 12px;
-            border-radius: 12px;
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            padding: 6px 14px;
+            border-radius: var(--radius-md);
+            background: var(--surface-color);
+            border: 1px solid var(--border);
             cursor: pointer;
             transition: all 0.2s;
             user-select: none;
@@ -122,79 +158,87 @@
 
         .sub-nav-btn:hover {
             border-color: #cbd5e1;
-            color: #64748b;
+            color: var(--text-main);
         }
 
         .sub-nav-btn.active {
-            background: #10b981;
+            background: var(--accent);
             color: white;
-            border-color: #10b981;
-            font-weight: bold;
+            border-color: var(--accent);
         }
 
-        .status-bar {
-            margin-top: 20px;
-            font-size: 12px;
-            color: #94a3b8;
-            text-align: center;
-        }
-
+        /* Buttons */
         button.action-btn {
             width: 100%;
-            padding: 12px;
-            background: #10b981;
+            padding: 14px;
+            background: var(--accent);
             color: white;
             border: none;
-            border-radius: 8px;
-            font-weight: bold;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
             cursor: pointer;
             margin-top: 20px;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.1s;
         }
 
         button.action-btn:hover {
-            background: #059669;
+            background: var(--accent-hover);
+        }
+        button.action-btn:active {
+            transform: scale(0.98);
         }
 
-        .camera-container {
-            position: relative;
-            width: 100%;
-            background: #f1f5f9;
-            border-radius: 8px;
-            overflow: hidden;
-            margin-top: 10px;
+        /* Status & Logs */
+        .status-bar {
+            margin-top: 25px;
+            font-size: 12px;
+            color: var(--text-muted);
+            text-align: center;
+            font-weight: 500;
         }
 
-        #cam-img {
-            width: 100%;
-            height: auto;
-            border-radius: 8px;
-            display: block;
-            cursor: zoom-in;
-            transition: opacity 0.2s;
+        #watering-log-wrapper {
+            height: 280px;
+            overflow-y: auto;
+            padding: 5px;
+            margin-top: 15px;
         }
 
-        #cam-img:hover {
-            opacity: 0.9;
+        .log-item {
+            background: var(--surface-color);
+            padding: 14px 16px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent-blue);
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            text-align: left;
+            transition: transform 0.2s;
+        }
+        .log-item:hover {
+            transform: translateX(4px);
         }
 
-        #cam-timestamp {
-            font-size: 11px;
-            color: #94a3b8;
-            margin-top: 8px;
-            font-weight: normal;
-            min-height: 14px;
+        .log-time {
+            font-weight: 600;
+            color: var(--text-main);
+            font-size: 13px;
         }
 
-        .hidden {
-            display: none !important;
+        .log-detail {
+            color: var(--text-muted);
+            font-size: 12px;
         }
 
+        /* Charts */
         .chart-container {
             position: relative;
             width: 100%;
-            height: 280px;
-            margin-top: 10px;
+            height: 300px;
+            margin-top: 15px;
         }
 
         .loading-text {
@@ -204,167 +248,140 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #94a3b8;
-            font-size: 12px;
+            color: var(--text-muted);
+            font-size: 14px;
             font-weight: 500;
         }
 
-        #watering-log-wrapper {
-            height: 280px;
-            overflow-y: auto;
-            padding: 5px;
-            margin-top: 15px;
+        /* Camera */
+        .camera-container {
             position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+            aspect-ratio: 4/3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .log-list {
+        #cam-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            cursor: zoom-in;
+            transition: opacity 0.3s;
+        }
+        #cam-img:hover { opacity: 0.9; }
+
+        #cam-timestamp {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 10px;
+            font-weight: 500;
+            min-height: 14px;
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             display: flex;
             flex-direction: column;
             gap: 10px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        .toast {
+            background: #1e293b;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            animation: toastEnter 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards, toastExit 0.3s 2.7s ease-in forwards;
+            pointer-events: auto;
+            text-align: center;
+        }
+        .toast.success { background: var(--accent); }
+        .toast.error { background: var(--danger); }
+        
+        @keyframes toastEnter {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toastExit {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(10px); }
         }
 
-        .log-item {
-            background: #f8fafc;
-            padding: 12px 15px;
-            border-radius: 8px;
-            border-left: 4px solid #3b82f6;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            text-align: left;
+        /* Skeleton Loader */
+        .skeleton {
+            background: linear-gradient(90deg, #e2e8f0 25%, #cbd5e1 50%, #e2e8f0 75%);
+            background-size: 200% 100%;
+            animation: skeletonLoading 1.5s infinite;
+            border-radius: 4px;
+            color: transparent !important;
+        }
+        @keyframes skeletonLoading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
 
-        .log-time {
-            font-weight: bold;
-            color: #334155;
-            font-size: 13px;
-        }
-
-        .log-detail {
-            color: #64748b;
-            font-size: 11px;
-        }
+        /* Toggles */
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input:checked + .slider { background-color: var(--accent); }
+        input:checked + .slider:before { transform: translateX(20px); }
 
         /* Modal */
         #hd-modal {
             display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(15, 23, 42, 0.9);
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95);
             z-index: 1000;
             align-items: center;
             justify-content: center;
             flex-direction: column;
-            backdrop-filter: blur(5px);
+            backdrop-filter: blur(8px);
+            animation: fadeIn 0.3s;
         }
-
         #hd-img {
-            max-width: 95%;
-            max-height: 80vh;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            max-width: 95%; max-height: 80vh;
+            border-radius: var(--radius-md);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
             object-fit: contain;
             transition: opacity 0.3s;
         }
-
-        #hd-status {
-            color: #f8fafc;
-            margin-bottom: 15px;
-            font-size: 13px;
-            letter-spacing: 0.5px;
-        }
-
-        #hd-timestamp {
-            color: #94a3b8;
-            font-size: 11px;
-            margin-top: 12px;
-            font-weight: normal;
-        }
-
+        #hd-status { color: #f8fafc; margin-bottom: 15px; font-size: 14px; font-weight: 500; }
+        #hd-timestamp { color: var(--text-muted); font-size: 12px; margin-top: 15px; font-weight: 500; }
         .loader {
             border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid #10b981;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 12px;
+            border-top: 3px solid var(--accent);
+            border-radius: 50%; width: 28px; height: 28px;
+            animation: spin 1s linear infinite; margin-bottom: 15px;
         }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
+        @keyframes spin { 100% { transform: rotate(360deg); } }
         .close-btn {
-            margin-top: 20px;
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-            padding: 10px 24px;
-            border-radius: 20px;
-            cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            font-size: 13px;
-            transition: background 0.2s;
+            margin-top: 25px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white; padding: 12px 28px;
+            border-radius: 30px; cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 14px; font-weight: 500;
+            transition: all 0.2s;
         }
-
-        .close-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-        }
-
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 40px;
-            height: 22px;
-        }
-
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #cbd5e1;
-            transition: .3s;
-            border-radius: 22px;
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .3s;
-            border-radius: 50%;
-        }
-
-        input:checked+.slider {
-            background-color: #10b981;
-        }
-
-        input:checked+.slider:before {
-            transform: translateX(18px);
-        }
-    </style>
+        .close-btn:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-1px); }
+</style>
 </head>
 
 <body>
@@ -397,7 +414,7 @@
         </div>
 
         <!-- Dynamic Environment View -->
-        <div id="view-environment">
+        <div id="view-environment" class="view-section">
             <div class="grid" id="dynamic-cards">
                 <!-- Cards will be injected here -->
             </div>
@@ -428,7 +445,7 @@
         </div>
 
         <!-- System View -->
-        <div class="grid hidden" id="view-system">
+        <div class="grid hidden view-section" id="view-system">
             <div class="card full-width">
                 <div class="card-title">power status</div>
                 <div class="card-value" style="color: #0284c7;" id="power-status">-- V / -- mA</div>
@@ -448,7 +465,7 @@
         </div>
 
         <!-- History View -->
-        <div class="grid hidden" id="view-history">
+        <div class="grid hidden view-section" id="view-history">
             <div class="card full-width" style="padding-bottom: 20px;">
                 <div class="card-title">environmental trends</div>
                 <div class="sub-nav" id="history-type-nav">
@@ -466,7 +483,7 @@
         </div>
 
         <!-- Settings View (Unchanged from original) -->
-        <div class="grid hidden" id="view-settings">
+        <div class="grid hidden view-section" id="view-settings">
             <div class="card full-width" style="text-align: left; padding: 20px;">
                 <div
                     style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
@@ -546,7 +563,23 @@
         <div class="status-bar" id="update-time">not synced</div>
     </div>
 
+
+    <div id="toast-container" class="toast-container"></div>
     <script>
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerText = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 3000);
+        }
+
         const STORAGE_KEY = 'robin_viewer_key';
         let sessionHDSrc = null, sessionHDTime = null, sessionHDEpoch = 0, myChart = null;
         let currentTab = 'environment', currentHistType = '24h', currentDevice = 'main';
@@ -622,22 +655,22 @@
                     body: JSON.stringify(cfg)
                 });
                 if (res.ok) {
-                    btn.innerText = '✅ Saved';
-                    btn.style.background = '#10b981';
+                    showToast('Configuration Saved!', 'success');
+                    
                     setTimeout(() => {
                         btn.innerText = originalText;
-                        btn.style.background = '#0ea5e9';
+                        
                         btn.disabled = false;
                     }, 2000);
                 } else {
                     throw new Error('Failed');
                 }
             } catch (e) {
-                btn.innerText = '❌ Error';
-                btn.style.background = '#ef4444';
+                showToast('Failed to save configuration.', 'error');
+                
                 setTimeout(() => {
                     btn.innerText = originalText;
-                    btn.style.background = '#0ea5e9';
+                    
                     btn.disabled = false;
                 }, 2000);
             }
@@ -834,9 +867,9 @@
             const duration = parseFloat(document.getElementById('water-duration').value) || 0.5;
             try {
                 const res = await fetch('/api/water', { method: 'POST', headers: { 'x-water-key': waterKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ duration, node_id: currentDevice }) });
-                if (res.ok) { btn.innerText = '✅ Success'; btn.style.background = '#10b981'; setTimeout(() => { btn.innerText = 'Water'; btn.style.background = '#3b82f6'; btn.disabled = false; fetchAllData(true); }, 2000); }
+                if (res.ok) { showToast('Watering Command Sent!', 'success');  setTimeout(() => { btn.innerText = 'Water';  btn.disabled = false; fetchAllData(true); }, 2000); }
                 else throw new Error('fail');
-            } catch (e) { btn.innerText = '❌ Error'; btn.style.background = '#ef4444'; setTimeout(() => { btn.innerText = 'Water'; btn.style.background = '#3b82f6'; btn.disabled = false; }, 2000); }
+            } catch (e) { showToast('Failed to save configuration.', 'error');  setTimeout(() => { btn.innerText = 'Water';  btn.disabled = false; }, 2000); }
         }
 
         async function toggleLight() {
@@ -846,7 +879,7 @@
             if (!statusEl) return;
             
             const orig = statusEl.innerText;
-            const isCurrentlyOn = orig.trim() === 'ON';
+            const isCurrentlyOn = orig.trim() === 'ON';\n            showToast(`Light turned ${newStatus}`, 'success');
             const newStatus = isCurrentlyOn ? 'OFF' : 'ON';
             
             // Optimistic update
@@ -889,10 +922,10 @@
             const hasSoil = chartData.some(d => d.soil !== null && d.soil !== undefined);
             const hasPres = chartData.some(d => d.pressure !== null && d.pressure !== undefined);
 
-            if (hasTemp) datasets.push({ label: 'temp (℃)', data: chartData.map(d => d.temp), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
-            if (hasHum) datasets.push({ label: 'hum (%)', data: chartData.map(d => d.hum), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (hasSoil) datasets.push({ label: 'soil (%)', data: chartData.map(d => d.soil), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-            if (hasPres) datasets.push({ label: 'pres (hPa)', data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
+            if (hasTemp) datasets.push({ label: 'temp (℃)', data: chartData.map(d => d.temp), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.2)', fill: true, tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
+            if (hasHum) datasets.push({ label: 'hum (%)', data: chartData.map(d => d.hum), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', fill: true, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasSoil) datasets.push({ label: 'soil (%)', data: chartData.map(d => d.soil), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.2)', fill: true, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+            if (hasPres) datasets.push({ label: 'pres (hPa)', data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.2)', fill: true, tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
 
             const ctx = document.getElementById('historyChart').getContext('2d');
             if (myChart) myChart.destroy();
@@ -900,6 +933,7 @@
                 type: 'line', data: { labels: labels, datasets: datasets },
                 options: {
                     responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                    plugins: { tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8 } },
                     scales: {
                         x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
                         y: { type: 'linear', display: true, position: 'left', ticks: { font: { size: 10 } } },
@@ -1108,6 +1142,13 @@
             await initNodes();
             parseURLAndNavigate();
             fetchAllData(true);
+            
+            // Auto refresh every 30 seconds
+            setInterval(() => {
+                if (document.visibilityState === 'visible') {
+                    fetchAllData(false);
+                }
+            }, 30000);
         };
     </script>
 </body>
