@@ -45,6 +45,7 @@ manual_override = False
 manual_override_until = None
 camera_in_progress = False
 ignore_light_feedback_until = 0
+power_save_mode = False
 
 mqtt_topic_to_node = {}
 for n_id, info in hardware_manager.mqtt_nodes.items():
@@ -55,15 +56,33 @@ mqtt_latest_data = {n_id: {"data": {}, "updated": False} for n_id in hardware_ma
 local_latest_data = {n_id: {} for n_id in hardware_manager.local_sensors}
 
 def local_sensor_updater():
+    global power_save_mode
     while True:
         try:
             for node_id in hardware_manager.local_sensors:
                 data = hardware_manager.read_local_node(node_id)
                 if data:
                     local_latest_data[node_id] = data
+            
+            # 检查电源状态进行省电模式切换
+            if "main" in local_latest_data:
+                current = local_latest_data["main"].get("current", 0)
+                if current is not None:
+                    if current < -100 and not power_save_mode:
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ UPS 正在放电 (电流: {current}mA)，即将进入省电模式...")
+                        power_save_mode = True
+                        subprocess.run(["/home/hkra/dewy/power_saver.sh", "enable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    elif current > 0 and power_save_mode:
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔌 市电恢复 (电流: {current}mA)，退出省电模式...")
+                        power_save_mode = False
+                        subprocess.run(["/home/hkra/dewy/power_saver.sh", "disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             pass
-        time.sleep(2.0)
+        
+        if power_save_mode:
+            time.sleep(60.0)
+        else:
+            time.sleep(2.0)
 # ==================== 软件配置管理 ====================
 DEFAULT_CONFIG = {
     "auto_water": {"enabled": True, "duration": 0.5, "threshold": 50.0, "node_id": "main"},
@@ -321,7 +340,7 @@ def background_logger():
                     node_data_to_save.append(data)
                 
                 # 自动浇水逻辑判断
-                if global_config["auto_water"]["enabled"] and global_config["auto_water"]["node_id"] == node_id:
+                if not power_save_mode and global_config["auto_water"]["enabled"] and global_config["auto_water"]["node_id"] == node_id:
                     if now.hour == 6 and can_water_now(node_id):
                         soil_pct = data.get("soil_moisture")
                         if soil_pct is not None and soil_pct < global_config["auto_water"]["threshold"]:
@@ -360,8 +379,11 @@ def background_logger():
         
         now = datetime.now()
         seconds_passed = now.minute * 60 + now.second + now.microsecond / 1_000_000
-        sleep_sec = 600 - (seconds_passed % 600)
-        if sleep_sec < 1: sleep_sec += 600
+        
+        # 如果是省电模式，则将 10 分钟归档对齐改为 1 小时 (3600秒) 对齐
+        align_interval = 3600 if power_save_mode else 600
+        sleep_sec = align_interval - (seconds_passed % align_interval)
+        if sleep_sec < 1: sleep_sec += align_interval
         time.sleep(sleep_sec)
 
 def on_mqtt_connect(client, userdata, flags, reason_code, properties):
