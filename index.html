@@ -240,6 +240,7 @@
         }
 
         #watering-log-wrapper {
+            position: relative;
             height: 280px;
             overflow-y: auto;
             padding: 5px;
@@ -982,6 +983,10 @@
         let optimisticLightStatus = null;
 
         async function toggleLight() {
+            if (isCameraSyncing || isHDSyncing) {
+                showToast('Camera is capturing, try again later', 'error');
+                return;
+            }
             if (lightToggleInProgress) return;
             const waterKey = localStorage.getItem('robin_water_key');
             if (!waterKey) return;
@@ -1002,13 +1007,16 @@
             
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
-                if (!res.ok) throw new Error('fail');
+                if (!res.ok) {
+                    if (res.status === 409) throw new Error('camera');
+                    throw new Error('fail');
+                }
             } catch (e) {
                 // Revert optimistic state on failure
                 optimisticLightStatus = isCurrentlyOn ? 'ON' : null;
                 statusEl.innerText = isCurrentlyOn ? 'ON' : 'OFF';
                 statusEl.style.color = isCurrentlyOn ? '#eab308' : 'var(--text-muted)';
-                showToast('Light toggle failed', 'error');
+                showToast(e.message === 'camera' ? 'Camera is capturing, try again later' : 'Light toggle failed', 'error');
             }
             
             // 1s debounce
@@ -1090,6 +1098,7 @@
         }
 
         let currentCamBlobUrl = null;
+        let isCameraSyncing = false;
         async function fetchImage(forceLive = false) {
             const savedKey = localStorage.getItem(STORAGE_KEY);
             const cameraBlock = document.getElementById('camera-block');
@@ -1101,6 +1110,7 @@
 
             camTs.innerText = 'syncing...'; 
             camTs.style.color = '#94a3b8'; 
+            isCameraSyncing = true;
             
             try {
                 const endpoint = forceLive ? '/api/image?live=true&t=' : '/api/image?t=';
@@ -1135,8 +1145,12 @@
                 camTs.innerText = '⚠️ network disconnected';
                 camTs.style.color = '#ef4444'; 
                 if (currentTab === 'environment') cameraBlock.classList.remove('hidden');
+            } finally {
+                isCameraSyncing = false;
             }
         }
+        
+        let isHDSyncing = false;
         async function fetchHDImage() {
             const savedKey = localStorage.getItem(STORAGE_KEY);
             if (!savedKey) return;
@@ -1169,6 +1183,7 @@
             loader.style.display = 'block';
             modal.style.display = 'flex';
 
+            isHDSyncing = true;
             if (sessionHDSrc) {
                 hdImg.src = sessionHDSrc;
                 hdImg.style.display = 'block';
@@ -1216,6 +1231,8 @@
                 statusText.style.display = 'block';
                 statusText.innerText = '❌ failed to capture hd image.';
                 statusText.style.color = '#ef4444';
+            } finally {
+                isHDSyncing = false;
             }
         }
         function closeHD() { document.getElementById('hd-modal').style.display = 'none'; }

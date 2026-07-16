@@ -43,6 +43,7 @@ global_mqtt_client = None
 light_status = "--"
 manual_override = False
 manual_override_until = None
+camera_in_progress = False
 
 mqtt_topic_to_node = {}
 for n_id, info in hardware_manager.mqtt_nodes.items():
@@ -457,6 +458,8 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
     if x_bff_to_pi_token != PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
     target_path = TMP_IMG_HQ_PATH if hq else TMP_IMG_PATH
     if live:
+        global camera_in_progress
+        camera_in_progress = True
         try:
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
             
@@ -484,6 +487,8 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
                 pass
         except Exception:
             pass
+        finally:
+            camera_in_progress = False
     if os.path.exists(target_path):
         img_timestamp = str(int(os.path.getmtime(target_path)))
         return FileResponse(target_path, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Image-Timestamp": img_timestamp})
@@ -590,6 +595,8 @@ def toggle_manual_light(x_bff_to_pi_token: str = Header(None)):
     global light_status, manual_override, manual_override_until
     if not global_mqtt_client:
         raise HTTPException(status_code=500, detail="MQTT not connected")
+    if camera_in_progress:
+        raise HTTPException(status_code=409, detail="Camera capture in progress")
         
     new_cmd = "a1" if light_status != "ON" else "b1"
     
