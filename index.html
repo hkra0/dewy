@@ -678,8 +678,9 @@
             for (let k in historyCache) delete historyCache[k];
 
             const nodeInfo = availableNodes[dev] || {};
-            const hasSystem = nodeInfo.has_system;
-            const hasSettings = nodeInfo.has_settings && !!localStorage.getItem('robin_water_key');
+            const hasSystem = nodeInfo.type === 'local';
+            const hasPump = nodeInfo.actuators && ('pump' in nodeInfo.actuators);
+            const hasSettings = nodeInfo.actuators && ('pump' in nodeInfo.actuators || 'light' in nodeInfo.actuators) && !!localStorage.getItem('robin_water_key');
             
             if (hasSystem) document.getElementById('tab-system').classList.remove('hidden');
             else document.getElementById('tab-system').classList.add('hidden');
@@ -687,14 +688,14 @@
             if (hasSettings) document.getElementById('tab-settings').classList.remove('hidden');
             else document.getElementById('tab-settings').classList.add('hidden');
             
-            if (nodeInfo.has_pump) document.getElementById('hist-watering').classList.remove('hidden');
+            if (hasPump) document.getElementById('hist-watering').classList.remove('hidden');
             else document.getElementById('hist-watering').classList.add('hidden');
 
             if ((currentTab === 'system' && !hasSystem) || (currentTab === 'settings' && !hasSettings)) {
                 switchTab('environment', false, true);
             }
             
-            if (currentHistType === 'watering' && !nodeInfo.has_pump) {
+            if (currentHistType === 'watering' && !hasPump) {
                 switchHistType('24h');
             }
 
@@ -704,8 +705,8 @@
 
         function switchTab(tabName, pushState = true, skipFetch = false) {
             const nodeInfo = availableNodes[currentDevice] || {};
-            const hasSystem = nodeInfo.has_system;
-            const hasSettings = nodeInfo.has_settings && !!localStorage.getItem('robin_water_key');
+            const hasSystem = nodeInfo.type === 'local';
+            const hasSettings = nodeInfo.actuators && ('pump' in nodeInfo.actuators || 'light' in nodeInfo.actuators) && !!localStorage.getItem('robin_water_key');
 
             if (tabName === 'system' && !hasSystem) tabName = 'environment';
             if (tabName === 'settings' && !hasSettings) tabName = 'environment';
@@ -781,12 +782,21 @@
             // Hardware Actions (Camera / Water)
             const hasKey = !!localStorage.getItem(STORAGE_KEY);
             const hasWaterKey = !!localStorage.getItem('robin_water_key');
+            const nodeInfo = availableNodes[currentDevice] || {};
+            const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
+            const hasPump = nodeInfo.actuators && ('pump' in nodeInfo.actuators);
 
-            if (currentDevice === 'main' && hasKey) document.getElementById('camera-block').classList.remove('hidden');
-            else document.getElementById('camera-block').classList.add('hidden');
+            if (hasKey && hasCamera) {
+                document.getElementById('camera-block').classList.remove('hidden');
+            } else {
+                document.getElementById('camera-block').classList.add('hidden');
+            }
 
-            if (hasWaterKey) document.getElementById('water-block').classList.remove('hidden');
-            else document.getElementById('water-block').classList.add('hidden');
+            if (hasWaterKey && hasPump) {
+                document.getElementById('water-block').classList.remove('hidden');
+            } else {
+                document.getElementById('water-block').classList.add('hidden');
+            }
         }
 
         async function fetchSensorData() {
@@ -1059,7 +1069,10 @@
             if (btn) btn.innerText = 'syncing...';
             
             const tasks = [fetchSensorData()];
-            if (currentTab === 'environment') tasks.push(fetchImage(forceLive));
+            const nodeInfo = availableNodes[currentDevice] || {};
+            const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
+
+            if (currentTab === 'environment' && hasCamera) tasks.push(fetchImage(forceLive));
             if (currentTab === 'history') tasks.push(loadHistoryData(true));
             
             await Promise.allSettled(tasks);
