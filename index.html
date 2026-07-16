@@ -241,10 +241,6 @@
 
         #watering-log-wrapper {
             position: relative;
-            height: 280px;
-            overflow-y: auto;
-            padding: 5px;
-            margin-top: 15px;
         }
 
         .log-item {
@@ -1076,7 +1072,7 @@
         function renderHistoryUI(data, type) {
             if (type === 'watering') {
                 const wrapper = document.getElementById('watering-log-wrapper');
-                if (!data || data.length === 0) { wrapper.innerHTML = `<div class="loading-text">${t('no_water_records')}</div>`; return; }
+                if (!data || data.length === 0) { wrapper.innerHTML = `<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">${t('no_water_records')}</div>`; return; }
                 let html = '<div class="watering-table-wrapper"><table class="watering-table">';
                 html += `<thead><tr><th>${t('table_duration')}</th><th>${t('table_soil')}</th><th>${t('table_time')}</th></tr></thead><tbody>`;
                 data.forEach(item => { 
@@ -1133,7 +1129,7 @@
                 renderHistoryUI(historyCache[cacheKey], reqType);
                 if (!forceFetch) return;
             } else {
-                if (reqType === 'watering') document.getElementById('watering-log-wrapper').innerHTML = '<div class="loading-text">loading...</div>';
+                if (reqType === 'watering') document.getElementById('watering-log-wrapper').innerHTML = '<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">loading...</div>';
                 else { if (myChart) { myChart.destroy(); myChart = null; } document.getElementById('chart-loading').classList.remove('hidden'); }
             }
 
