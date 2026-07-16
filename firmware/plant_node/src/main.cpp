@@ -11,11 +11,38 @@
 #define SDA_PIN 13
 #define SCL_PIN 12
 
+// 雾化器引脚定义
+#define ATOMIZER_PIN 11
+
 // 传感器与网络对象初始化
 Adafruit_AHTX0 aht;
 Adafruit_BMP280 bmp;
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+unsigned long lastSendTime = 0;
+
+// MQTT 消息接收回调函数
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("收到消息 [");
+  Serial.print(topic);
+  Serial.print("] ");
+  String msg = "";
+  for (unsigned int i = 0; i < length; i++) {
+    msg += (char)payload[i];
+  }
+  Serial.println(msg);
+
+  if (String(topic) == "device/esp32/atomizer/set") {
+    if (msg == "ON" || msg == "1" || msg == "on") {
+      digitalWrite(ATOMIZER_PIN, HIGH);
+      Serial.println("-> 执行：开启雾化器");
+    } else if (msg == "OFF" || msg == "0" || msg == "off") {
+      digitalWrite(ATOMIZER_PIN, LOW);
+      Serial.println("-> 执行：关闭雾化器");
+    }
+  }
+}
 
 void setup_wifi() {
   delay(10);
@@ -73,6 +100,8 @@ void reconnect() {
     // 建立连接
     if (client.connect(MQTT_CLIENT_ID)) {
       Serial.println("✅ 已连接到 MQTT!");
+      // 连接成功后订阅雾化器控制主题
+      client.subscribe("device/esp32/atomizer/set");
     } else {
       Serial.print("❌ 失败, 错误码 rc=");
       Serial.print(client.state());
@@ -86,8 +115,15 @@ void setup() {
   Serial.begin(115200);
   delay(1);
 
+  // 0. 初始化雾化器引脚
+  pinMode(ATOMIZER_PIN, OUTPUT);
+  digitalWrite(ATOMIZER_PIN, LOW); // 默认关闭
+
   // 1. 初始化 WiFi 和网络
   setup_wifi();
+
+  // 设置 MQTT 回调
+  client.setCallback(callback);
 
   // 2. 初始化 I2C 总线
   Wire.begin(SDA_PIN, SCL_PIN);
@@ -117,33 +153,37 @@ void loop() {
   if (!client.connected()) {
     reconnect();
   }
-  client.loop(); // 维持 MQTT 心跳
+  client.loop(); // 维持 MQTT 心跳并处理接收到的订阅消息
 
-  // --- 读取传感器数据 ---
-  sensors_event_t humidity, temp;
-  aht.getEvent(&humidity, &temp); // 读取 AHT20
+  unsigned long now = millis();
+  // 每 5秒采集并发送一次数据（非阻塞方式）
+  if (now - lastSendTime > 5000) {
+    lastSendTime = now;
 
-  float air_pressure = bmp.readPressure() / 100.0F; // 读取 BMP280 气压 (转换为 hPa)
-  
-  // 为了准确反映环境温度，这里采用 AHT20 的温度数据，BMP280 负责提供气压
-  float current_temp = temp.temperature; 
-  float current_hum = humidity.relative_humidity;
+    // --- 读取传感器数据 ---
+    sensors_event_t humidity, temp;
+    aht.getEvent(&humidity, &temp); // 读取 AHT20
 
-  // --- 使用 ArduinoJson 打包数据 ---
-  StaticJsonDocument<200> doc;
-  doc["temperature"] = serialized(String(current_temp, 2)); // 保留两位小数
-  doc["humidity"] = serialized(String(current_hum, 2));
-  doc["pressure"] = serialized(String(air_pressure, 2));
+    float air_pressure = bmp.readPressure() / 100.0F; // 读取 BMP280 气压 (转换为 hPa)
+    
+    // 为了准确反映环境温度，这里采用 AHT20 的温度数据，BMP280 负责提供气压
+    float current_temp = temp.temperature; 
+    float current_hum = humidity.relative_humidity;
 
-  char jsonBuffer[512];
-  serializeJson(doc, jsonBuffer);
+    // --- 使用 ArduinoJson 打包数据 ---
+    StaticJsonDocument<200> doc;
+    doc["temperature"] = serialized(String(current_temp, 2)); // 保留两位小数
+    doc["humidity"] = serialized(String(current_hum, 2));
+    doc["pressure"] = serialized(String(air_pressure, 2));
 
-  // --- 发送数据到 MQTT ---
-  Serial.print("正在发布数据: ");
-  Serial.println(jsonBuffer);
-  
-  // 发布到 sensor/esp32/env_data 主题
-  client.publish("sensor/esp32/env_data", jsonBuffer);
+    char jsonBuffer[512];
+    serializeJson(doc, jsonBuffer);
 
-  delay(5000); // 每 5秒采集并发送一次
+    // --- 发送数据到 MQTT ---
+    Serial.print("正在发布数据: ");
+    Serial.println(jsonBuffer);
+    
+    // 发布到 sensor/esp32/env_data 主题
+    client.publish("sensor/esp32/env_data", jsonBuffer);
+  }
 }
