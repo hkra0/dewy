@@ -879,8 +879,9 @@
             if (!statusEl) return;
             
             const orig = statusEl.innerText;
-            const isCurrentlyOn = orig.trim() === 'ON';\n            showToast(`Light turned ${newStatus}`, 'success');
+            const isCurrentlyOn = orig.trim() === 'ON';
             const newStatus = isCurrentlyOn ? 'OFF' : 'ON';
+            showToast(`Light turned ${newStatus}`, 'success');
             
             // Optimistic update
             statusEl.innerText = newStatus;
