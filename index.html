@@ -983,10 +983,7 @@
         let optimisticLightStatus = null;
 
         async function toggleLight() {
-            if (isCameraSyncing || isHDSyncing) {
-                showToast('Camera is capturing, try again later', 'error');
-                return;
-            }
+            if (isCameraSyncing || isHDSyncing) return;
             if (lightToggleInProgress) return;
             const waterKey = localStorage.getItem('robin_water_key');
             if (!waterKey) return;
