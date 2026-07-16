@@ -914,11 +914,16 @@
             } catch (e) { showToast('Failed to save configuration.', 'error');  setTimeout(() => { btn.innerText = 'Water';  btn.disabled = false; }, 2000); }
         }
 
+        let lightToggleInProgress = false;
+
         async function toggleLight() {
+            if (lightToggleInProgress) return;
             const waterKey = localStorage.getItem('robin_water_key');
             if (!waterKey) return;
             const statusEl = document.getElementById('light-status');
             if (!statusEl) return;
+            
+            lightToggleInProgress = true;
             
             const orig = statusEl.innerText;
             const isCurrentlyOn = orig.trim() === 'ON';
@@ -932,10 +937,14 @@
             try {
                 const res = await fetch('/api/light', { method: 'POST', headers: { 'x-water-key': waterKey } });
                 if (!res.ok) throw new Error('fail');
+                // Confirm backend state after a delay
+                setTimeout(() => { fetchSensorData(); lightToggleInProgress = false; }, 2000);
             } catch (e) {
                 // Revert on failure
                 statusEl.innerText = orig;
                 statusEl.style.color = isCurrentlyOn ? '#eab308' : 'var(--text-muted)';
+                showToast('Light toggle failed', 'error');
+                lightToggleInProgress = false;
             }
         }
 
