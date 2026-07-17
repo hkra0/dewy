@@ -57,6 +57,15 @@ local_latest_data = {n_id: {} for n_id in hardware_manager.local_sensors}
 
 def local_sensor_updater():
     global power_save_mode
+
+    # 防止因耗尽电量关机导致 rfkill (wifi/蓝牙禁用) 状态被 systemd 持久化。
+    # 每次启动程序时，强制执行一次恢复正常模式的操作。
+    try:
+        subprocess.run(["/home/hkra/dewy/power_saver.sh", "disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 系统启动，初始化电源模式为正常...")
+    except Exception as e:
+        print(f"初始化省电模式状态失败: {e}")
+
     while True:
         try:
             for node_id in hardware_manager.local_sensors:
