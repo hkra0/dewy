@@ -332,19 +332,27 @@ def background_logger():
                             hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command=cmd)
                             light_status = desired
                         else:
-                            # 用户手动控制中，跳过定时指令
-                            pass
-                    
-                    if not manual_override:
-                        # 仅在灯状态与目标不一致时才发送指令（避免重复发送）
-                        desired = "ON" if is_light_time else "OFF"
-                        if light_status != desired:
-                            cmd = "a1" if is_light_time else "b1"
+                            # 用户手动控制中，为防止硬件意外丢失手动状态（例如被拍照临时改动后未恢复），
+                            # 持续强制向硬件同步当前已设定的手动状态
+                            cmd = "a1" if light_status == "ON" else "b1"
                             l_node = global_config["auto_light"]["node_id"]
                             l_act = global_config["auto_light"]["actuator_id"]
                             hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command=cmd)
-                            light_status = desired
+                    
+                    if not manual_override:
+                        desired = "ON" if is_light_time else "OFF"
+                        
+                        # 仅在预期状态变化时打印日志，避免日志刷屏
+                        if light_status != desired:
                             print(f"[{now.strftime('%H:%M:%S')}] 💡 定时灯控: {desired}")
+                            light_status = desired
+                            
+                        # 定时任务：为了防止硬件漏接指令或物理状态被意外改变，
+                        # 无论缓存状态如何，每10分钟始终强制下发一次目标状态，实现状态自愈。
+                        cmd = "a1" if desired == "ON" else "b1"
+                        l_node = global_config["auto_light"]["node_id"]
+                        l_act = global_config["auto_light"]["actuator_id"]
+                        hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command=cmd)
             
             node_data_to_save = []
             
