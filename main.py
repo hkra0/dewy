@@ -323,6 +323,14 @@ def background_logger():
                             manual_override = False
                             manual_override_until = None
                             print(f"[{now.strftime('%H:%M:%S')}] 🔄 手动覆盖已到期，恢复定时控制")
+                            
+                            # 强制同步状态，避免继电器物理状态与软件状态不一致导致无法触发
+                            desired = "ON" if is_light_time else "OFF"
+                            cmd = "a1" if desired == "ON" else "b1"
+                            l_node = global_config["auto_light"]["node_id"]
+                            l_act = global_config["auto_light"]["actuator_id"]
+                            hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=global_mqtt_client, command=cmd)
+                            light_status = desired
                         else:
                             # 用户手动控制中，跳过定时指令
                             pass
@@ -392,8 +400,7 @@ def background_logger():
         # 如果是省电模式，则将 10 分钟归档对齐改为 1 小时 (3600秒) 对齐
         align_interval = 3600 if power_save_mode else 600
         sleep_sec = align_interval - (seconds_passed % align_interval)
-        if sleep_sec < 1: sleep_sec += align_interval
-        time.sleep(sleep_sec)
+        time.sleep(max(0.1, sleep_sec))
 
 def on_mqtt_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
