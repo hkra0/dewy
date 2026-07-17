@@ -1103,18 +1103,27 @@
             if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: '#10b981', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
             if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
 
+            const computedStyle = getComputedStyle(document.documentElement);
+            const textColor = computedStyle.getPropertyValue('--text-muted').trim() || '#666';
+            const tooltipBg = computedStyle.getPropertyValue('--surface-color').trim() || 'rgba(0,0,0,0.8)';
+            const tooltipText = computedStyle.getPropertyValue('--text-main').trim() || '#fff';
+            const gridColor = computedStyle.getPropertyValue('--border').trim() || 'rgba(0,0,0,0.1)';
+
             const ctx = document.getElementById('historyChart').getContext('2d');
             if (myChart) myChart.destroy();
             myChart = new Chart(ctx, {
                 type: 'line', data: { labels: labels, datasets: datasets },
                 options: {
                     responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-                    plugins: { tooltip: { titleColor: 'var(--toast-text)', bodyColor: 'var(--toast-text)', backgroundColor: 'var(--toast-bg)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8 } },
+                    plugins: { 
+                        legend: { labels: { color: textColor } },
+                        tooltip: { titleColor: tooltipText, bodyColor: tooltipText, backgroundColor: tooltipBg, titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8, borderColor: gridColor, borderWidth: 1 } 
+                    },
                     scales: {
-                        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
-                        y: { type: 'linear', display: true, position: 'left', ticks: { font: { size: 10 } } },
-                        y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
-                        y2: { type: 'linear', display: false, grid: { drawOnChartArea: false } }
+                        x: { grid: { display: false, color: gridColor }, ticks: { color: textColor, maxTicksLimit: 6, font: { size: 10 } } },
+                        y: { type: 'linear', display: true, position: 'left', grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
+                        y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false, color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
+                        y2: { type: 'linear', display: false, grid: { drawOnChartArea: false, color: gridColor } }
                     }
                 }
             });
