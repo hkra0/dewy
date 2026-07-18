@@ -55,8 +55,29 @@ for n_id, info in hardware_manager.mqtt_nodes.items():
 mqtt_latest_data = {n_id: {"data": {}, "updated": False} for n_id in hardware_manager.mqtt_nodes}
 local_latest_data = {n_id: {} for n_id in hardware_manager.local_sensors}
 
+def is_wifi_connected():
+    import socket
+    try:
+        with open("/sys/class/net/wlan0/carrier", "r") as f:
+            if f.read().strip() == "1":
+                return True
+    except Exception:
+        pass
+    try:
+        socket.create_connection(("223.5.5.5", 53), timeout=2)
+        return True
+    except OSError:
+        pass
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=2)
+        return True
+    except OSError:
+        return False
+
 def local_sensor_updater():
     global power_save_mode
+    
+    ups_discharge_start_time = None
 
     # 防止因耗尽电量关机导致 rfkill (wifi/蓝牙禁用) 状态被 systemd 持久化。
     # 每次启动程序时，强制执行一次恢复正常模式的操作。
@@ -77,14 +98,27 @@ def local_sensor_updater():
             if "main" in local_latest_data:
                 current = local_latest_data["main"].get("current", 0)
                 if current is not None:
-                    if current < -100 and not power_save_mode:
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ UPS 正在放电 (电流: {current}mA)，即将进入省电模式...")
-                        power_save_mode = True
-                        subprocess.run(["/home/hkra/dewy/power_saver.sh", "enable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    elif current > 0 and power_save_mode:
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔌 市电恢复 (电流: {current}mA)，退出省电模式...")
-                        power_save_mode = False
-                        subprocess.run(["/home/hkra/dewy/power_saver.sh", "disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    # 持续放电判定
+                    if current < -300:
+                        if ups_discharge_start_time is None:
+                            ups_discharge_start_time = time.time()
+                    else:
+                        ups_discharge_start_time = None
+
+                    if not power_save_mode:
+                        # 长期处于小于-300ma (120秒) 且没有 wifi 连接
+                        if ups_discharge_start_time and (time.time() - ups_discharge_start_time) > 120:
+                            if not is_wifi_connected():
+                                print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ UPS 长期放电 (电流: {current}mA) 且无网络，即将进入省电模式...")
+                                power_save_mode = True
+                                subprocess.run(["/home/hkra/dewy/power_saver.sh", "enable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    elif power_save_mode:
+                        # 退出省电模式: 电流恢复到波动区间 (>-100mA) 或网络恢复
+                        if current > -100 or is_wifi_connected():
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔌 电源或网络恢复 (电流: {current}mA)，退出省电模式...")
+                            power_save_mode = False
+                            ups_discharge_start_time = None
+                            subprocess.run(["/home/hkra/dewy/power_saver.sh", "disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             pass
         
