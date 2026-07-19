@@ -55,8 +55,29 @@ for n_id, info in hardware_manager.mqtt_nodes.items():
 mqtt_latest_data = {n_id: {"data": {}, "updated": False} for n_id in hardware_manager.mqtt_nodes}
 local_latest_data = {n_id: {} for n_id in hardware_manager.local_sensors}
 
+def is_wifi_connected():
+    import socket
+    try:
+        with open("/sys/class/net/wlan0/carrier", "r") as f:
+            if f.read().strip() == "1":
+                return True
+    except Exception:
+        pass
+    try:
+        socket.create_connection(("223.5.5.5", 53), timeout=2)
+        return True
+    except OSError:
+        pass
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=2)
+        return True
+    except OSError:
+        return False
+
 def local_sensor_updater():
     global power_save_mode
+    
+    ups_discharge_start_time = None
 
     # 省电模式切换的连续确认计数器，避免传感器噪声导致误触发
     CONFIRM_THRESHOLD = 3
@@ -82,26 +103,33 @@ def local_sensor_updater():
             if "main" in local_latest_data:
                 current = local_latest_data["main"].get("current", 0)
                 if current is not None:
-                    if current < -250 and not power_save_mode:
-                        power_save_enter_count += 1
-                        power_save_exit_count = 0
-                        if power_save_enter_count >= CONFIRM_THRESHOLD:
-                            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ UPS 正在放电 (电流: {current}mA)，连续 {CONFIRM_THRESHOLD} 次确认，进入省电模式...")
-                            power_save_mode = True
-                            power_save_enter_count = 0
-                            subprocess.run(["/home/hkra/dewy/power_saver.sh", "enable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    elif current > -100 and power_save_mode:
-                        power_save_exit_count += 1
-                        power_save_enter_count = 0
-                        if power_save_exit_count >= CONFIRM_THRESHOLD:
-                            print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔌 市电恢复 (电流: {current}mA)，连续 {CONFIRM_THRESHOLD} 次确认，退出省电模式...")
-                            power_save_mode = False
-                            power_save_exit_count = 0
-                            subprocess.run(["/home/hkra/dewy/power_saver.sh", "disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    # 持续放电判定
+                    if current < -300:
+                        if ups_discharge_start_time is None:
+                            ups_discharge_start_time = time.time()
                     else:
-                        # 电流在死区内，重置计数器
-                        power_save_enter_count = 0
-                        power_save_exit_count = 0
+                        ups_discharge_start_time = None
+
+                    if not power_save_mode:
+                        # 长期处于小于-300ma (120秒) 且没有 wifi 连接
+                        if ups_discharge_start_time and (time.time() - ups_discharge_start_time) > 120:
+                            if not is_wifi_connected():
+                                print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ UPS 长期放电 (电流: {current}mA) 且无网络，即将进入省电模式...")
+                                power_save_mode = True
+                                power_save_exit_count = 0
+                                subprocess.run(["/home/hkra/dewy/power_saver.sh", "enable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    elif power_save_mode:
+                        # 退出省电模式: 电流恢复到波动区间 (>-100mA) 或网络恢复，增加防抖确认
+                        if current > -100 or is_wifi_connected():
+                            power_save_exit_count += 1
+                            if power_save_exit_count >= CONFIRM_THRESHOLD:
+                                print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔌 电源或网络恢复 (电流: {current}mA)，连续 {CONFIRM_THRESHOLD} 次确认，退出省电模式...")
+                                power_save_mode = False
+                                power_save_exit_count = 0
+                                ups_discharge_start_time = None
+                                subprocess.run(["/home/hkra/dewy/power_saver.sh", "disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        else:
+                            power_save_exit_count = 0
         except Exception as e:
             pass
         
