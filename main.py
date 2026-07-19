@@ -81,7 +81,6 @@ def local_sensor_updater():
 
     # 省电模式切换的连续确认计数器，避免传感器噪声导致误触发
     CONFIRM_THRESHOLD = 3
-    power_save_enter_count = 0
     power_save_exit_count = 0
 
     # 防止因耗尽电量关机导致 rfkill (wifi/蓝牙禁用) 状态被 systemd 持久化。
