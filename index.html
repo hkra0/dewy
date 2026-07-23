@@ -1069,7 +1069,7 @@
             setTimeout(() => { lightToggleInProgress = false; }, 1000);
         }
 
-        function renderHistoryUI(data, type) {
+        function renderHistoryUI(data, type, animate = false) {
             if (type === 'watering') {
                 const wrapper = document.getElementById('watering-log-wrapper');
                 if (!data || data.length === 0) { wrapper.innerHTML = `<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">${t('no_water_records')}</div>`; return; }
@@ -1126,7 +1126,12 @@
                 myChart.options.scales.y1.ticks.color = textColor;
                 myChart.options.scales.y1.grid.color = gridColor;
                 
-                myChart.update('none');
+                if (animate || myChart.lastReqType !== type) {
+                    myChart.update();
+                } else {
+                    myChart.update('none');
+                }
+                myChart.lastReqType = type;
                 return;
             }
 
@@ -1147,16 +1152,26 @@
                     }
                 }
             });
+            myChart.lastReqType = type;
         }
+
+        let historyFetchTime = {};
 
         async function loadHistoryData(forceFetch = false) {
             const savedKey = localStorage.getItem(STORAGE_KEY) || '';
             const reqType = currentHistType;
             const cacheKey = currentDevice + '_' + reqType;
 
+            let animateUpdate = false;
+            
             if (historyCache[cacheKey]) {
+                const lastFetch = historyFetchTime[cacheKey] || 0;
+                if (Date.now() - lastFetch > 30 * 60 * 1000) {
+                    animateUpdate = true;
+                }
+                
                 if (!forceFetch) {
-                    renderHistoryUI(historyCache[cacheKey], reqType);
+                    renderHistoryUI(historyCache[cacheKey], reqType, animateUpdate);
                     return;
                 }
             } else {
@@ -1169,7 +1184,8 @@
                 const data = await res.json();
                 if (!data.error) {
                     historyCache[cacheKey] = data;
-                    if (currentHistType === reqType) renderHistoryUI(data, reqType);
+                    historyFetchTime[cacheKey] = Date.now();
+                    if (currentHistType === reqType) renderHistoryUI(data, reqType, animateUpdate);
                 }
             } catch (e) { }
         }
