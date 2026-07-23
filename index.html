@@ -1109,8 +1109,28 @@
             const tooltipText = computedStyle.getPropertyValue('--text-main').trim() || '#fff';
             const gridColor = computedStyle.getPropertyValue('--border').trim() || 'rgba(0,0,0,0.1)';
 
+            if (myChart) {
+                myChart.data.labels = labels;
+                myChart.data.datasets = datasets;
+                
+                myChart.options.plugins.legend.labels.color = textColor;
+                myChart.options.plugins.tooltip.titleColor = tooltipText;
+                myChart.options.plugins.tooltip.bodyColor = tooltipText;
+                myChart.options.plugins.tooltip.backgroundColor = tooltipBg;
+                myChart.options.plugins.tooltip.borderColor = gridColor;
+                
+                myChart.options.scales.x.ticks.color = textColor;
+                myChart.options.scales.x.grid.color = gridColor;
+                myChart.options.scales.y.ticks.color = textColor;
+                myChart.options.scales.y.grid.color = gridColor;
+                myChart.options.scales.y1.ticks.color = textColor;
+                myChart.options.scales.y1.grid.color = gridColor;
+                
+                myChart.update('none');
+                return;
+            }
+
             const ctx = document.getElementById('historyChart').getContext('2d');
-            if (myChart) myChart.destroy();
             myChart = new Chart(ctx, {
                 type: 'line', data: { labels: labels, datasets: datasets },
                 options: {
@@ -1135,8 +1155,10 @@
             const cacheKey = currentDevice + '_' + reqType;
 
             if (historyCache[cacheKey]) {
-                renderHistoryUI(historyCache[cacheKey], reqType);
-                if (!forceFetch) return;
+                if (!forceFetch) {
+                    renderHistoryUI(historyCache[cacheKey], reqType);
+                    return;
+                }
             } else {
                 if (reqType === 'watering') document.getElementById('watering-log-wrapper').innerHTML = '<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">loading...</div>';
                 else { if (myChart) { myChart.destroy(); myChart = null; } document.getElementById('chart-loading').classList.remove('hidden'); }
