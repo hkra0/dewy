@@ -1,4 +1,6 @@
 import HTML_TEMPLATE from "./index.html";
+import CSS_TEMPLATE from "./style.css";
+import JS_TEMPLATE from "./app.js";
 export default {
     async fetch(request, env, ctx) {
         const PI_BASE_URL = env?.PI_BASE_URL;
@@ -66,6 +68,13 @@ export default {
             }
         }
 
+        
+        if (url.pathname === "/style.css") {
+            return new Response(CSS_TEMPLATE, { headers: { "Content-Type": "text/css;charset=UTF-8" } });
+        }
+        if (url.pathname === "/app.js") {
+            return new Response(JS_TEMPLATE, { headers: { "Content-Type": "application/javascript;charset=UTF-8" } });
+        }
         if (!url.pathname.startsWith("/api/")) {
             return new Response(HTML_TEMPLATE, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
         }
