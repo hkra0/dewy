@@ -1,0 +1,47 @@
+import json
+import time
+import core.state as state
+
+def on_mqtt_connect(client, userdata, flags, reason_code, properties):
+    if reason_code == 0:
+        print("✅ 已成功连接到本地 MQTT Broker")
+        topics = state.hardware_manager.get_mqtt_topics()
+        for t in topics:
+            client.subscribe(t)
+            
+        # 主动查询所有配置的 mqtt relay 状态
+        for n_id, acts in state.hardware_manager.actuators.items():
+            for a_id, actuator in acts.items():
+                if hasattr(actuator, "topic"):
+                    client.publish(actuator.topic, json.dumps({"command": "q1"}))
+    else:
+        print(f"❌ 连接失败，返回码: {reason_code}")
+
+def on_mqtt_message(client, userdata, msg):
+    try:
+        payload = msg.payload.decode("utf-8")
+        data = json.loads(payload)
+        topic = msg.topic
+        
+        # 判断是否为某个继电器的反馈
+        for acts in state.hardware_manager.actuators.values():
+            for actuator in acts.values():
+                if hasattr(actuator, "topic") and actuator.topic == topic:
+                    info = data.get("information", "")
+                    if time.time() > state.ignore_light_feedback_until:
+                        if "n1" in info:
+                            state.light_status = "ON"
+                        elif "f1" in info:
+                            state.light_status = "OFF"
+                    return
+        
+        # 更新传感器节点数据
+        if topic in state.mqtt_topic_to_node:
+            node_id = state.mqtt_topic_to_node[topic]
+            state.mqtt_latest_data[node_id]["data"]["temperature"] = data.get("temperature")
+            state.mqtt_latest_data[node_id]["data"]["humidity"] = data.get("humidity")
+            state.mqtt_latest_data[node_id]["data"]["pressure"] = data.get("pressure")
+            state.mqtt_latest_data[node_id]["updated"] = True
+            
+    except Exception as e:
+        pass
