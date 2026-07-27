@@ -39,7 +39,7 @@ const translations = {
             }
         };
 
-        let currentLang = navigator.language.startsWith('zh') ? 'zh' : 'en';
+        let currentLang = (typeof navigator !== 'undefined' && navigator.language && navigator.language.startsWith('zh')) ? 'zh' : 'en';
         function t(key, replacements = {}) {
             let text = translations[currentLang][key] || key;
             for (let k in replacements) {

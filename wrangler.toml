@@ -12,8 +12,8 @@ compatibility_date = "2024-03-20"
 
 [[rules]]
 type = "Text"
-globs = ["**/*.html", "**/*.css", "app.js"]
-fallback = false
+globs = ["**/*.html", "**/*.css", "**/app.js"]
+fallthrough = true
 
 [observability.logs]
 enabled = false
