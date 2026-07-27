@@ -205,6 +205,9 @@ const translations = {
             const hasPump = nodeInfo.actuators && ('pump' in nodeInfo.actuators);
             const hasSettings = nodeInfo.actuators && ('pump' in nodeInfo.actuators || 'light' in nodeInfo.actuators) && !!localStorage.getItem('robin_water_key');
             
+            const hasKey = !!localStorage.getItem(STORAGE_KEY);
+            const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
+            
             if (hasSystem) document.getElementById('tab-system').classList.remove('hidden');
             else document.getElementById('tab-system').classList.add('hidden');
             
@@ -214,11 +217,17 @@ const translations = {
             if (hasPump) document.getElementById('hist-watering').classList.remove('hidden');
             else document.getElementById('hist-watering').classList.add('hidden');
 
+            if (hasKey && hasCamera) document.getElementById('hist-photos').classList.remove('hidden');
+            else document.getElementById('hist-photos').classList.add('hidden');
+
             if ((currentTab === 'system' && !hasSystem) || (currentTab === 'settings' && !hasSettings)) {
                 switchTab('environment', false, true);
             }
             
             if (currentHistType === 'watering' && !hasPump) {
+                switchHistType('24h');
+            }
+            if (currentHistType === 'photos' && !(hasKey && hasCamera)) {
                 switchHistType('24h');
             }
 
@@ -327,8 +336,13 @@ const translations = {
 
             if (hasKey && hasCamera) {
                 document.getElementById('camera-block').classList.remove('hidden');
+                const pBtn = document.getElementById('hist-photos');
+                if (pBtn) pBtn.classList.remove('hidden');
             } else {
                 document.getElementById('camera-block').classList.add('hidden');
+                const pBtn = document.getElementById('hist-photos');
+                if (pBtn) pBtn.classList.add('hidden');
+                if (currentHistType === 'photos') switchHistType('24h');
             }
 
             if (hasWaterKey && hasPump) {
@@ -734,11 +748,15 @@ const translations = {
         let tlLastFetchTime = 0;
 
         async function loadPhotoTimeline(forceFetch = false) {
+            const savedKey = localStorage.getItem(STORAGE_KEY) || '';
+            const nodeInfo = availableNodes[currentDevice] || {};
+            const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
+            if (!savedKey || !hasCamera) return;
+
             if (!forceFetch && tlPhotos.length > 0 && Date.now() - tlLastFetchTime < 300000) {
                 renderTimelineFrame(tlCurrentIdx);
                 return;
             }
-            const savedKey = localStorage.getItem(STORAGE_KEY) || '';
             try {
                 const res = await fetch('/api/photos', {
                     headers: { 'X-Viewer-Key': savedKey }
