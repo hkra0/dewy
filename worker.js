@@ -18,7 +18,7 @@ export default {
             // Authorization
             if (url.pathname === "/api/monitor" || url.pathname === "/api/history" || url.pathname === "/api/nodes") {
                 if (clientKey !== VIEWER_MAGIC_KEY && requestedBy !== "Robin-Web") return new Response("not found", { status: 404 });
-            } else if (url.pathname === "/api/image") {
+            } else if (url.pathname === "/api/image" || url.pathname === "/api/photos" || url.pathname.startsWith("/api/photos/")) {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404 });
             } else if (url.pathname === "/api/water" || url.pathname === "/api/light" || url.pathname === "/api/config") {
                 if (url.pathname !== "/api/config" && request.method !== "POST") return new Response("method not allowed", { status: 405 });
@@ -47,16 +47,22 @@ export default {
                     body: request.method === "POST" ? request.body : undefined
                 });
 
-                if (!piResponse.ok) return new Response(url.pathname === "/api/image" ? "offline" : JSON.stringify({ error: "cannot connect to pi" }), { status: piResponse.status });
+                const isImageEndpoint = url.pathname === "/api/image";
+                const isPhotoFile = url.pathname.startsWith("/api/photos/");
+                if (!piResponse.ok) return new Response((isImageEndpoint || isPhotoFile) ? "offline" : JSON.stringify({ error: "cannot connect to pi" }), { status: piResponse.status });
 
                 const responseHeaders = new Headers();
                 responseHeaders.set("Access-Control-Allow-Origin", "*");
-                if (url.pathname === "/api/image") {
+                if (isImageEndpoint) {
                     responseHeaders.set("Content-Type", "image/jpeg");
                     responseHeaders.set("Cache-Control", "no-store");
                     responseHeaders.set("Access-Control-Expose-Headers", "X-Image-Timestamp");
                     const imgTs = piResponse.headers.get("X-Image-Timestamp");
                     if (imgTs) responseHeaders.set("X-Image-Timestamp", imgTs);
+                } else if (isPhotoFile) {
+                    const piCt = piResponse.headers.get("Content-Type") || "image/jpeg";
+                    responseHeaders.set("Content-Type", piCt);
+                    responseHeaders.set("Cache-Control", "public, max-age=86400");
                 } else {
                     responseHeaders.set("Content-Type", "application/json");
                     responseHeaders.set("Vary", "Accept-Encoding");

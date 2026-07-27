@@ -15,7 +15,8 @@ const translations = {
                 table_duration: "Duration (s)", table_soil: "Soil (%)", table_time: "Time", no_data: "no data available.",
                 chart_temp: "temp (℃)", chart_hum: "hum (%)", chart_soil: "soil (%)", chart_pres: "pres (hPa)", syncing: "syncing...",
                 cam_offline: "⚠️ camera hardware offline or error", net_disconnect: "⚠️ network disconnected", hd_capture_est: "capturing hd image... (est. 10s+)",
-                fail_hd: "❌ failed to capture hd image.", last_synced: "last synced at {time}"
+                fail_hd: "❌ failed to capture hd image.", last_synced: "last synced at {time}",
+                photo_log: "photo log", no_photos: "no photos yet"
             },
             zh: {
                 env: "环境", sys: "系统", hist: "历史", settings: "设置",
@@ -33,7 +34,8 @@ const translations = {
                 table_duration: "时长 (秒)", table_soil: "土壤湿度 (%)", table_time: "时间", no_data: "暂无数据。",
                 chart_temp: "温度 (℃)", chart_hum: "湿度 (%)", chart_soil: "土壤 (%)", chart_pres: "气压 (hPa)", syncing: "同步中...",
                 cam_offline: "⚠️ 相机硬件离线或故障", net_disconnect: "⚠️ 网络已断开", hd_capture_est: "正在拍摄高清图片... (约10秒+)",
-                fail_hd: "❌ 获取高清图片失败。", last_synced: "最后同步时间: {time}"
+                fail_hd: "❌ 获取高清图片失败。", last_synced: "最后同步时间: {time}",
+                photo_log: "照片记录", no_photos: "暂无照片"
             }
         };
 
@@ -258,11 +260,21 @@ const translations = {
             if (type === 'watering') {
                 document.getElementById('chart-container-wrapper').classList.add('hidden');
                 document.getElementById('watering-log-wrapper').classList.remove('hidden');
+                document.getElementById('photo-timeline-wrapper').classList.add('hidden');
+            } else if (type === 'photos') {
+                document.getElementById('chart-container-wrapper').classList.add('hidden');
+                document.getElementById('watering-log-wrapper').classList.add('hidden');
+                document.getElementById('photo-timeline-wrapper').classList.remove('hidden');
             } else {
                 document.getElementById('chart-container-wrapper').classList.remove('hidden');
                 document.getElementById('watering-log-wrapper').classList.add('hidden');
+                document.getElementById('photo-timeline-wrapper').classList.add('hidden');
             }
-            loadHistoryData(false);
+            if (type === 'photos') {
+                loadPhotoTimeline(false);
+            } else {
+                loadHistoryData(false);
+            }
         }
 
         function renderDynamicCards(nodeData, globalData) {
@@ -496,6 +508,10 @@ const translations = {
         let historyFetchTime = {};
 
         async function loadHistoryData(forceFetch = false) {
+            if (currentHistType === 'photos') {
+                loadPhotoTimeline(forceFetch);
+                return;
+            }
             const savedKey = localStorage.getItem(STORAGE_KEY) || '';
             const reqType = currentHistType;
             const cacheKey = currentDevice + '_' + reqType;
@@ -705,6 +721,206 @@ const translations = {
             }
             switchDevice(initialDev, false);
             switchTab(initialTab, false, true);
+        }
+
+        // ========== Photo Timeline Player ==========
+        let tlPhotos = [];
+        let tlCurrentIdx = 0;
+        let tlPlaying = false;
+        let tlInterval = null;
+        let tlSpeed = 500;
+        const tlThumbCache = new Map();
+        const tlFetching = new Set();
+        let tlLastFetchTime = 0;
+
+        async function loadPhotoTimeline(forceFetch = false) {
+            if (!forceFetch && tlPhotos.length > 0 && Date.now() - tlLastFetchTime < 300000) {
+                renderTimelineFrame(tlCurrentIdx);
+                return;
+            }
+            const savedKey = localStorage.getItem(STORAGE_KEY) || '';
+            try {
+                const res = await fetch('/api/photos', {
+                    headers: { 'X-Viewer-Key': savedKey }
+                });
+                if (res.ok) {
+                    const list = await res.json();
+                    // Reverse to chronological order (oldest -> newest for timeline play)
+                    tlPhotos = list.reverse();
+                    tlLastFetchTime = Date.now();
+                }
+            } catch (e) {
+                console.error("Failed to load photo list", e);
+            }
+
+            const imgEl = document.getElementById('timeline-img');
+            const dateEl = document.getElementById('timeline-date');
+            const emptyEl = document.getElementById('timeline-empty');
+            const slider = document.getElementById('tl-slider');
+            const counter = document.getElementById('tl-counter');
+
+            if (tlPhotos.length === 0) {
+                imgEl.src = "";
+                dateEl.innerText = "";
+                emptyEl.style.display = 'block';
+                slider.max = "0";
+                slider.value = "0";
+                counter.innerText = "0 / 0";
+                if (tlPlaying) toggleTimelinePlay();
+                return;
+            }
+
+            emptyEl.style.display = 'none';
+            slider.min = "0";
+            slider.max = String(tlPhotos.length - 1);
+            if (tlCurrentIdx >= tlPhotos.length || tlCurrentIdx === 0) {
+                tlCurrentIdx = tlPhotos.length - 1; // Default to newest photo
+            }
+            renderTimelineFrame(tlCurrentIdx);
+        }
+
+        async function fetchThumb(date) {
+            if (tlThumbCache.has(date) || tlFetching.has(date)) return;
+            tlFetching.add(date);
+            try {
+                const savedKey = localStorage.getItem(STORAGE_KEY) || '';
+                const res = await fetch(`/api/photos/${date}?thumb=1`, {
+                    headers: { 'X-Viewer-Key': savedKey }
+                });
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    tlThumbCache.set(date, url);
+                    // Maintain max cache size of 20
+                    if (tlThumbCache.size > 20) {
+                        const oldestKey = tlThumbCache.keys().next().value;
+                        if (oldestKey !== tlPhotos[tlCurrentIdx]?.date) {
+                            URL.revokeObjectURL(tlThumbCache.get(oldestKey));
+                            tlThumbCache.delete(oldestKey);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error(`Failed to fetch thumb for ${date}`, e);
+            } finally {
+                tlFetching.delete(date);
+            }
+        }
+
+        async function renderTimelineFrame(idx) {
+            if (idx < 0 || idx >= tlPhotos.length) return;
+            tlCurrentIdx = idx;
+            const photo = tlPhotos[idx];
+
+            document.getElementById('tl-slider').value = idx;
+            document.getElementById('tl-counter').innerText = `${idx + 1} / ${tlPhotos.length}`;
+            document.getElementById('timeline-date').innerText = photo.date;
+
+            const imgEl = document.getElementById('timeline-img');
+            if (tlThumbCache.has(photo.date)) {
+                imgEl.src = tlThumbCache.get(photo.date);
+            } else {
+                await fetchThumb(photo.date);
+                if (tlThumbCache.has(photo.date) && tlCurrentIdx === idx) {
+                    imgEl.src = tlThumbCache.get(photo.date);
+                }
+            }
+
+            // Preload 6 frames ahead
+            for (let step = 1; step <= 6; step++) {
+                const nextIdx = (idx + step) % tlPhotos.length;
+                if (!tlThumbCache.has(tlPhotos[nextIdx].date)) {
+                    fetchThumb(tlPhotos[nextIdx].date);
+                }
+            }
+        }
+
+        function toggleTimelinePlay() {
+            const btn = document.getElementById('tl-play-btn');
+            if (tlPlaying) {
+                clearInterval(tlInterval);
+                tlInterval = null;
+                tlPlaying = false;
+                btn.innerHTML = "&#9654;";
+            } else {
+                if (tlPhotos.length <= 1) return;
+                tlPlaying = true;
+                btn.innerHTML = "&#10074;&#10074;";
+                if (tlCurrentIdx === tlPhotos.length - 1) {
+                    tlCurrentIdx = 0;
+                    renderTimelineFrame(0);
+                }
+                tlInterval = setInterval(() => {
+                    if (tlCurrentIdx < tlPhotos.length - 1) {
+                        renderTimelineFrame(tlCurrentIdx + 1);
+                    } else {
+                        toggleTimelinePlay(); // Auto stop at end
+                    }
+                }, tlSpeed);
+            }
+        }
+
+        function seekTimeline(val) {
+            const idx = parseInt(val, 10);
+            if (!isNaN(idx)) {
+                renderTimelineFrame(idx);
+            }
+        }
+
+        function setTimelineSpeed(ms) {
+            tlSpeed = parseInt(ms, 10);
+            if (tlPlaying) {
+                clearInterval(tlInterval);
+                tlInterval = setInterval(() => {
+                    if (tlCurrentIdx < tlPhotos.length - 1) {
+                        renderTimelineFrame(tlCurrentIdx + 1);
+                    } else {
+                        toggleTimelinePlay();
+                    }
+                }, tlSpeed);
+            }
+        }
+
+        async function viewFullPhoto() {
+            if (!tlPhotos || tlPhotos.length === 0 || tlCurrentIdx < 0 || tlCurrentIdx >= tlPhotos.length) return;
+            const photo = tlPhotos[tlCurrentIdx];
+            const modal = document.getElementById('hd-modal');
+            const loader = document.getElementById('hd-loader');
+            const statusText = document.getElementById('hd-status');
+            const hdImg = document.getElementById('hd-img');
+            const hdTs = document.getElementById('hd-timestamp');
+
+            if (tlPlaying) toggleTimelinePlay();
+
+            modal.style.display = 'flex';
+            hdImg.style.display = 'none';
+            hdTs.classList.add('hidden');
+            loader.style.display = 'block';
+            statusText.innerText = 'loading...';
+            statusText.style.display = 'block';
+            statusText.style.color = 'var(--text-main)';
+
+            try {
+                const savedKey = localStorage.getItem(STORAGE_KEY) || '';
+                const res = await fetch(`/api/photos/${photo.date}?thumb=0`, {
+                    headers: { 'X-Viewer-Key': savedKey }
+                });
+                if (!res.ok) throw new Error('failed to load full photo');
+                const blob = await res.blob();
+                hdImg.onload = () => {
+                    statusText.style.display = 'none';
+                    loader.style.display = 'none';
+                    hdImg.style.display = 'block';
+                    hdTs.innerText = '📅 ' + photo.date;
+                    hdTs.classList.remove('hidden');
+                };
+                hdImg.src = URL.createObjectURL(blob);
+            } catch (e) {
+                loader.style.display = 'none';
+                statusText.style.display = 'block';
+                statusText.innerText = t('fail_hd');
+                statusText.style.color = '#ef4444';
+            }
         }
 
         window.onload = async () => {

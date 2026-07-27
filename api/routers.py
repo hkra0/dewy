@@ -202,3 +202,38 @@ def toggle_manual_light(x_bff_to_pi_token: str = Header(None)):
         return {"status": "success"}
     else:
         raise HTTPException(status_code=500, detail="Hardware error or light relay not configured")
+
+@router.get("/api/photos")
+def get_photo_list(x_bff_to_pi_token: str = Header(None)):
+    if x_bff_to_pi_token != state.PI_SECRET_TOKEN:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        with state.db_lock:
+            conn = sqlite3.connect(state.DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute("SELECT date, file_size, thumb_size FROM photo_log ORDER BY date DESC")
+            rows = cursor.fetchall()
+            conn.close()
+        return [{"date": r[0], "size": r[1], "thumb_size": r[2]} for r in rows]
+    except Exception as e:
+        print(f"Photo list API Error: {e}")
+        return []
+
+@router.get("/api/photos/{date}")
+def get_photo(date: str, thumb: bool = False, x_bff_to_pi_token: str = Header(None)):
+    if x_bff_to_pi_token != state.PI_SECRET_TOKEN:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    # 验证日期格式
+    import re
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+    
+    if thumb:
+        target = os.path.join(state.THUMB_DIR, f"{date}.jpg")
+    else:
+        target = os.path.join(state.PHOTO_DIR, f"{date}.jpg")
+    
+    if os.path.exists(target):
+        return FileResponse(target, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+    raise HTTPException(status_code=404, detail="Photo not found")

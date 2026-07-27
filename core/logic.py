@@ -159,6 +159,188 @@ def get_system_stats():
     except: disk_used_pct = 0.0
     return {"cpu_temperature": round(cpu_temp, 1), "ram_usage_percent": ram_used_pct, "disk_usage_percent": disk_used_pct}
 
+def get_free_disk_gb():
+    """返回根分区剩余可用空间（GB）。"""
+    try:
+        stat = os.statvfs('/')
+        return (stat.f_bavail * stat.f_frsize) / (1024 ** 3)
+    except Exception:
+        return 999.0  # 读取失败时不触发清理
+
+def daily_photo_capture():
+    """每日定时拍摄一张 HQ 植物照片并生成缩略图。"""
+    now = datetime.now()
+    photo_cfg = config.global_config["daily_photo"]
+    
+    if now.hour < photo_cfg["hour"]:
+        return
+    
+    today_str = now.strftime("%Y-%m-%d")
+    filename = f"{today_str}.jpg"
+    
+    # 检查今天是否已拍
+    with state.db_lock:
+        conn = sqlite3.connect(state.DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM photo_log WHERE date = ?", (today_str,))
+        exists = cursor.fetchone()
+        conn.close()
+    
+    if exists:
+        return
+    
+    photo_path = os.path.join(state.PHOTO_DIR, filename)
+    thumb_path = os.path.join(state.THUMB_DIR, filename)
+    
+    print(f"[{now.strftime('%H:%M:%S')}] 📷 每日照片拍摄中...")
+    
+    try:
+        # 临时开灯（如果灯未开且 MQTT 可用）
+        needs_temp_light = (state.light_status != "ON") and state.global_mqtt_client
+        l_node = config.global_config["auto_light"]["node_id"]
+        l_act = config.global_config["auto_light"]["actuator_id"]
+        
+        if needs_temp_light:
+            state.ignore_light_feedback_until = time.time() + 7
+            try:
+                state.hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=state.global_mqtt_client, duration=4)
+                time.sleep(0.6)
+            except Exception:
+                pass
+        
+        # 使用 rpicam-jpeg 拍摄 HQ 照片
+        with state.camera_lock:
+            cmd = [
+                "rpicam-jpeg", "-o", photo_path,
+                "-t", "2000",
+                "--width", "2592", "--height", "1944",
+                "-q", "90",
+                "--vflip", "--hflip", "--nopreview"
+            ]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        if not os.path.exists(photo_path):
+            print(f"[{now.strftime('%H:%M:%S')}] ❌ 每日照片拍摄失败：文件未生成")
+            return
+        
+        file_size = os.path.getsize(photo_path)
+        
+        # 生成缩略图
+        thumb_size = 0
+        try:
+            from PIL import Image
+            with Image.open(photo_path) as img:
+                img.thumbnail((320, 240))
+                img.save(thumb_path, "JPEG", quality=70)
+            thumb_size = os.path.getsize(thumb_path)
+        except ImportError:
+            print(f"[{now.strftime('%H:%M:%S')}] ⚠️ Pillow 未安装，跳过缩略图生成")
+        except Exception as e:
+            print(f"[{now.strftime('%H:%M:%S')}] ⚠️ 缩略图生成失败: {e}")
+        
+        # 写入数据库
+        with state.db_lock:
+            conn = sqlite3.connect(state.DB_FILE)
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "INSERT INTO photo_log (date, filename, file_size, thumb_size) VALUES (?, ?, ?, ?)",
+                    (today_str, filename, file_size, thumb_size)
+                )
+                conn.commit()
+            except sqlite3.IntegrityError:
+                pass  # 并发重复插入，忽略
+            conn.close()
+        
+        print(f"[{now.strftime('%H:%M:%S')}] ✅ 每日照片已保存: {filename} ({file_size // 1024}KB, 缩略图 {thumb_size // 1024}KB)")
+        
+        # 拍照完成后检查是否需要清理
+        cleanup_old_photos()
+        
+    except Exception as e:
+        print(f"[{now.strftime('%H:%M:%S')}] ❌ 每日照片拍摄异常: {e}")
+
+def cleanup_old_photos():
+    """对数曲线稀疏化清理：近期密集保留，远期逐渐稀疏。
+    
+    触发条件：剩余磁盘空间 <= disk_limit_free_gb（默认 20GB）。
+    算法：min_gap(d) = max(1, floor(3 * ln(d + 1)))
+    保护区：最近 7 天永不删除。保底：不低于 30 张。
+    """
+    limit_gb = config.global_config["daily_photo"].get("disk_limit_free_gb", 20)
+    free_gb = get_free_disk_gb()
+    
+    if free_gb > limit_gb:
+        return
+    
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ 剩余磁盘空间 {free_gb:.1f}GB <= {limit_gb}GB，启动对数稀疏化清理...")
+    
+    with state.db_lock:
+        conn = sqlite3.connect(state.DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT date, filename FROM photo_log ORDER BY date ASC")
+        rows = cursor.fetchall()
+        
+        if len(rows) <= 30:
+            conn.close()
+            return
+        
+        today = datetime.now().date()
+        to_delete = []
+        last_kept_date = None
+        
+        for date_str, filename in rows:
+            try:
+                photo_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            
+            age = (today - photo_date).days
+            
+            # 保护区：最近 7 天永不删除
+            if age <= 7:
+                last_kept_date = photo_date
+                continue
+            
+            # 最旧照片：始终保留作为起点
+            if last_kept_date is None:
+                last_kept_date = photo_date
+                continue
+            
+            # 对数曲线计算最小间隔
+            min_gap = max(1, int(3 * math.log(age + 1)))
+            actual_gap = (photo_date - last_kept_date).days
+            
+            if actual_gap < min_gap:
+                to_delete.append((date_str, filename))
+            else:
+                last_kept_date = photo_date
+        
+        deleted_count = 0
+        for date_str, filename in to_delete:
+            # 删除原图
+            photo_path = os.path.join(state.PHOTO_DIR, filename)
+            if os.path.exists(photo_path):
+                os.remove(photo_path)
+            # 删除缩略图
+            thumb_path = os.path.join(state.THUMB_DIR, filename)
+            if os.path.exists(thumb_path):
+                os.remove(thumb_path)
+            # 删除 DB 记录
+            cursor.execute("DELETE FROM photo_log WHERE date = ?", (date_str,))
+            deleted_count += 1
+            
+            # 每删 5 张检查一次磁盘
+            if deleted_count % 5 == 0:
+                conn.commit()
+                if get_free_disk_gb() > limit_gb:
+                    break
+        
+        conn.commit()
+        conn.close()
+    
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 清理完成，删除 {deleted_count} 张照片，剩余空间 {get_free_disk_gb():.1f}GB")
+
 def clean_soil_anomalies(node_id):
     with state.db_lock:
         conn = sqlite3.connect(state.DB_FILE)
@@ -302,6 +484,14 @@ def background_logger():
                 clean_soil_anomalies(d.get("node_id"))
                 
             print(f"[{now.strftime('%H:%M:%S')}] 💾 数据归档")
+            
+            # 每日照片拍摄（省电模式下跳过）
+            if not state.power_save_mode and config.global_config["daily_photo"]["enabled"]:
+                try:
+                    daily_photo_capture()
+                except Exception as e:
+                    print(f"每日照片拍摄失败: {e}")
+                    
         except Exception as e:
             print(f"后台记录失败: {e}")
         

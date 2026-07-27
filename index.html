@@ -101,6 +101,7 @@
                     <div class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')" data-i18n="past_24h">past 24h</div>
                     <div class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')" data-i18n="daily_avg">daily avg</div>
                     <div class="sub-nav-btn" id="hist-watering" onclick="switchHistType('watering')" data-i18n="watering_log">watering log</div>
+                    <div class="sub-nav-btn" id="hist-photos" onclick="switchHistType('photos')" data-i18n="photo_log">photo log</div>
                 </div>
 
                 <div class="chart-container" id="chart-container-wrapper">
@@ -108,6 +109,23 @@
                     <canvas id="historyChart"></canvas>
                 </div>
                 <div id="watering-log-wrapper" class="hidden"></div>
+                <div id="photo-timeline-wrapper" class="hidden">
+                    <div class="photo-viewer" id="photo-viewer" onclick="viewFullPhoto()">
+                        <img id="timeline-img" alt="" />
+                        <div id="timeline-date" class="photo-date-label"></div>
+                        <div id="timeline-empty" class="photo-empty-msg" data-i18n="no_photos">no photos yet</div>
+                    </div>
+                    <div class="timeline-controls" id="timeline-controls">
+                        <button class="tl-btn" id="tl-play-btn" onclick="toggleTimelinePlay()">&#9654;</button>
+                        <input type="range" class="tl-slider" id="tl-slider" min="0" max="0" value="0" oninput="seekTimeline(this.value)" />
+                        <span class="tl-counter" id="tl-counter">0 / 0</span>
+                        <select class="tl-speed" id="tl-speed" onchange="setTimelineSpeed(this.value)">
+                            <option value="1000">1x</option>
+                            <option value="500" selected>2x</option>
+                            <option value="250">4x</option>
+                        </select>
+                    </div>
+                </div>
             </div>
         </div>
 

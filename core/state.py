@@ -8,6 +8,8 @@ TMP_IMG_PATH = f"{DATA_DIR}/live.jpg"
 TMP_IMG_HQ_PATH = f"{DATA_DIR}/live_hq.jpg"
 DB_FILE = f"{DATA_DIR}/plant_history.db"
 CONFIG_FILE = f"{DATA_DIR}/config.json"
+PHOTO_DIR = f"{DATA_DIR}/photos"
+THUMB_DIR = f"{DATA_DIR}/photos/thumbs"
 
 PI_SECRET_TOKEN = "hKra_Secure_Sensor_2026_Token"
 
@@ -15,6 +17,8 @@ camera_lock = threading.Lock()
 db_lock = threading.Lock()
 
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(PHOTO_DIR, exist_ok=True)
+os.makedirs(THUMB_DIR, exist_ok=True)
 
 # 初始化硬件抽象层
 hardware_manager = HardwareManager(DATA_DIR)
