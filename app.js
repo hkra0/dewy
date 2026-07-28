@@ -753,9 +753,20 @@ const translations = {
             const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
             if (!savedKey || !hasCamera) return;
 
+            const loadingEl = document.getElementById('timeline-loading');
+            const imgEl = document.getElementById('timeline-img');
+            const dateEl = document.getElementById('timeline-date');
+            const emptyEl = document.getElementById('timeline-empty');
+            const slider = document.getElementById('tl-slider');
+            const counter = document.getElementById('tl-counter');
+
             if (!forceFetch && tlPhotos.length > 0 && Date.now() - tlLastFetchTime < 300000) {
                 renderTimelineFrame(tlCurrentIdx);
                 return;
+            }
+            if (tlPhotos.length === 0 || !imgEl.getAttribute('src')) {
+                if (emptyEl) emptyEl.classList.add('hidden');
+                if (loadingEl) loadingEl.classList.remove('hidden');
             }
             try {
                 const res = await fetch('/api/photos', {
@@ -771,16 +782,11 @@ const translations = {
                 console.error("Failed to load photo list", e);
             }
 
-            const imgEl = document.getElementById('timeline-img');
-            const dateEl = document.getElementById('timeline-date');
-            const emptyEl = document.getElementById('timeline-empty');
-            const slider = document.getElementById('tl-slider');
-            const counter = document.getElementById('tl-counter');
-
             if (tlPhotos.length === 0) {
+                if (loadingEl) loadingEl.classList.add('hidden');
                 imgEl.src = "";
                 dateEl.innerText = "";
-                emptyEl.style.display = 'block';
+                if (emptyEl) emptyEl.classList.remove('hidden');
                 slider.max = "0";
                 slider.value = "0";
                 counter.innerText = "0 / 0";
@@ -788,7 +794,7 @@ const translations = {
                 return;
             }
 
-            emptyEl.style.display = 'none';
+            if (emptyEl) emptyEl.classList.add('hidden');
             slider.min = "0";
             slider.max = String(tlPhotos.length - 1);
             if (tlCurrentIdx >= tlPhotos.length || tlCurrentIdx === 0) {
@@ -835,11 +841,18 @@ const translations = {
             document.getElementById('timeline-date').innerText = photo.date;
 
             const imgEl = document.getElementById('timeline-img');
+            const loadingEl = document.getElementById('timeline-loading');
+            const emptyEl = document.getElementById('timeline-empty');
+            if (emptyEl) emptyEl.classList.add('hidden');
+
             if (tlThumbCache.has(photo.date)) {
+                if (loadingEl) loadingEl.classList.add('hidden');
                 imgEl.src = tlThumbCache.get(photo.date);
             } else {
+                if (!imgEl.getAttribute('src') && loadingEl) loadingEl.classList.remove('hidden');
                 await fetchThumb(photo.date);
                 if (tlThumbCache.has(photo.date) && tlCurrentIdx === idx) {
+                    if (loadingEl) loadingEl.classList.add('hidden');
                     imgEl.src = tlThumbCache.get(photo.date);
                 }
             }

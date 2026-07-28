@@ -111,9 +111,10 @@
                 <div id="watering-log-wrapper" class="hidden"></div>
                 <div id="photo-timeline-wrapper" class="hidden">
                     <div class="photo-viewer" id="photo-viewer" onclick="viewFullPhoto()">
+                        <div id="timeline-loading" class="photo-empty-msg hidden" style="z-index: 5;" data-i18n="chart_loading">loading...</div>
                         <img id="timeline-img" alt="" />
                         <div id="timeline-date" class="photo-date-label"></div>
-                        <div id="timeline-empty" class="photo-empty-msg" data-i18n="no_photos">no photos yet</div>
+                        <div id="timeline-empty" class="photo-empty-msg hidden" data-i18n="no_photos">no photos yet</div>
                     </div>
                     <div class="timeline-controls" id="timeline-controls">
                         <button class="tl-btn" id="tl-play-btn" onclick="toggleTimelinePlay()">&#9654;</button>
