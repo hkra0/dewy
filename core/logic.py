@@ -1,7 +1,6 @@
 import os
 import time
 import subprocess
-import sqlite3
 import json
 import urllib.request
 import math
@@ -9,6 +8,7 @@ from datetime import datetime, timedelta
 
 import core.state as state
 import core.config as config
+import core.database as db
 from core.database import init_db
 
 def is_wifi_connected():
@@ -179,14 +179,7 @@ def daily_photo_capture():
     filename = f"{today_str}.jpg"
     
     # 检查今天是否已拍
-    with state.db_lock:
-        conn = sqlite3.connect(state.DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM photo_log WHERE date = ?", (today_str,))
-        exists = cursor.fetchone()
-        conn.close()
-    
-    if exists:
+    if db.photo_exists(today_str):
         return
     
     photo_path = os.path.join(state.PHOTO_DIR, filename)
@@ -238,20 +231,9 @@ def daily_photo_capture():
         except Exception as e:
             print(f"[{now.strftime('%H:%M:%S')}] ⚠️ 缩略图生成失败: {e}")
         
-        # 写入数据库
-        with state.db_lock:
-            conn = sqlite3.connect(state.DB_FILE)
-            cursor = conn.cursor()
-            try:
-                cursor.execute(
-                    "INSERT INTO photo_log (date, filename, file_size, thumb_size) VALUES (?, ?, ?, ?)",
-                    (today_str, filename, file_size, thumb_size)
-                )
-                conn.commit()
-            except sqlite3.IntegrityError:
-                pass  # 并发重复插入，忽略
-            conn.close()
-        
+        # 写入数据库（并发重复插入由 DAL 静默忽略）
+        db.insert_photo(today_str, filename, file_size, thumb_size)
+
         print(f"[{now.strftime('%H:%M:%S')}] ✅ 每日照片已保存: {filename} ({file_size // 1024}KB, 缩略图 {thumb_size // 1024}KB)")
         
         # 拍照完成后检查是否需要清理
@@ -275,107 +257,84 @@ def cleanup_old_photos():
     
     print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ 剩余磁盘空间 {free_gb:.1f}GB <= {limit_gb}GB，启动对数稀疏化清理...")
     
-    with state.db_lock:
-        conn = sqlite3.connect(state.DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT date, filename FROM photo_log ORDER BY date ASC")
-        rows = cursor.fetchall()
-        
-        if len(rows) <= 30:
-            conn.close()
-            return
-        
-        today = datetime.now().date()
-        to_delete = []
-        last_kept_date = None
-        
-        for date_str, filename in rows:
-            try:
-                photo_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            except ValueError:
-                continue
-            
-            age = (today - photo_date).days
-            
-            # 保护区：最近 7 天永不删除
-            if age <= 7:
-                last_kept_date = photo_date
-                continue
-            
-            # 最旧照片：始终保留作为起点
-            if last_kept_date is None:
-                last_kept_date = photo_date
-                continue
-            
-            # 对数曲线计算最小间隔
-            min_gap = max(1, int(3 * math.log(age + 1)))
-            actual_gap = (photo_date - last_kept_date).days
-            
-            if actual_gap < min_gap:
-                to_delete.append((date_str, filename))
-            else:
-                last_kept_date = photo_date
-        
-        deleted_count = 0
-        for date_str, filename in to_delete:
-            # 删除原图
+    rows = db.query_photos_asc()
+    if len(rows) <= 30:
+        return
+
+    today = datetime.now().date()
+    to_delete = []
+    last_kept_date = None
+
+    for date_str, filename in rows:
+        try:
+            photo_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+
+        age = (today - photo_date).days
+
+        # 保护区：最近 7 天永不删除
+        if age <= 7:
+            last_kept_date = photo_date
+            continue
+
+        # 最旧照片：始终保留作为起点
+        if last_kept_date is None:
+            last_kept_date = photo_date
+            continue
+
+        # 对数曲线计算最小间隔
+        min_gap = max(1, int(3 * math.log(age + 1)))
+        actual_gap = (photo_date - last_kept_date).days
+
+        if actual_gap < min_gap:
+            to_delete.append((date_str, filename))
+        else:
+            last_kept_date = photo_date
+
+    # 每 5 张为一批：先删文件，再删记录，然后检查磁盘是否已够用。
+    # 分批而非全程持锁，避免清理期间长时间阻塞 API 的数据库读取。
+    deleted_count = 0
+    for i in range(0, len(to_delete), 5):
+        batch = to_delete[i:i + 5]
+        for date_str, filename in batch:
             photo_path = os.path.join(state.PHOTO_DIR, filename)
             if os.path.exists(photo_path):
                 os.remove(photo_path)
-            # 删除缩略图
             thumb_path = os.path.join(state.THUMB_DIR, filename)
             if os.path.exists(thumb_path):
                 os.remove(thumb_path)
-            # 删除 DB 记录
-            cursor.execute("DELETE FROM photo_log WHERE date = ?", (date_str,))
-            deleted_count += 1
-            
-            # 每删 5 张检查一次磁盘
-            if deleted_count % 5 == 0:
-                conn.commit()
-                if get_free_disk_gb() > limit_gb:
-                    break
-        
-        conn.commit()
-        conn.close()
-    
+
+        db.delete_photos([d for d, _ in batch])
+        deleted_count += len(batch)
+
+        if get_free_disk_gb() > limit_gb:
+            break
+
     print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 清理完成，删除 {deleted_count} 张照片，剩余空间 {get_free_disk_gb():.1f}GB")
 
 def clean_soil_anomalies(node_id):
-    with state.db_lock:
-        conn = sqlite3.connect(state.DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, soil_moisture FROM node_data WHERE node_id=? ORDER BY id DESC LIMIT 5", (node_id,))
-        rows = cursor.fetchall()
-        
-        if len(rows) < 3: return
-        current_soil = rows[0][1]
-        last_soil = rows[1][1]
-        
-        if current_soil is not None and last_soil is not None and current_soil - last_soil > 10:
-            anomaly_ids = []
-            if last_soil < 10 and len(rows) >= 3 and rows[2][1] is not None and (rows[2][1] - last_soil > 5): anomaly_ids = [rows[1][0]]
-            elif last_soil < 10 and len(rows) >= 4 and rows[2][1] is not None and rows[2][1] < 10 and rows[3][1] is not None and (rows[3][1] - rows[2][1] > 5): anomaly_ids = [rows[1][0], rows[2][0]]
-            elif last_soil < 10 and len(rows) >= 5 and rows[2][1] is not None and rows[2][1] < 10 and rows[3][1] is not None and rows[3][1] < 10 and rows[4][1] is not None and (rows[4][1] - rows[3][1] > 5): anomaly_ids = [rows[1][0], rows[2][0], rows[3][0]]
-            
-            if anomaly_ids:
-                placeholders = ','.join('?' * len(anomaly_ids))
-                cursor.execute(f"UPDATE node_data SET is_anomaly = 1 WHERE id IN ({placeholders})", anomaly_ids)
-        conn.commit()
-        conn.close()
+    rows = db.query_recent_soil(node_id, limit=5)
+
+    if len(rows) < 3: return
+    current_soil = rows[0][1]
+    last_soil = rows[1][1]
+
+    if current_soil is not None and last_soil is not None and current_soil - last_soil > 10:
+        anomaly_ids = []
+        if last_soil < 10 and len(rows) >= 3 and rows[2][1] is not None and (rows[2][1] - last_soil > 5): anomaly_ids = [rows[1][0]]
+        elif last_soil < 10 and len(rows) >= 4 and rows[2][1] is not None and rows[2][1] < 10 and rows[3][1] is not None and (rows[3][1] - rows[2][1] > 5): anomaly_ids = [rows[1][0], rows[2][0]]
+        elif last_soil < 10 and len(rows) >= 5 and rows[2][1] is not None and rows[2][1] < 10 and rows[3][1] is not None and rows[3][1] < 10 and rows[4][1] is not None and (rows[4][1] - rows[3][1] > 5): anomaly_ids = [rows[1][0], rows[2][0], rows[3][0]]
+
+        db.mark_anomalies(anomaly_ids)
 
 def can_water_now(node_id):
     try:
-        with state.db_lock:
-            conn = sqlite3.connect(state.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute("SELECT timestamp FROM watering_log WHERE node_id=? ORDER BY id DESC LIMIT 1", (node_id,))
-            row = cursor.fetchone()
-            conn.close()
-            if not row: return True
-            last_utc = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
-            diff_hours = (datetime.utcnow() - last_utc).total_seconds() / 3600
-            return diff_hours > 12
+        last_ts = db.query_last_watering_time(node_id)
+        if not last_ts: return True
+        last_utc = datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S")
+        diff_hours = (datetime.utcnow() - last_utc).total_seconds() / 3600
+        return diff_hours > 12
     except Exception:
         return False
 
@@ -387,12 +346,7 @@ def trigger_watering(node_id, soil_before, duration=None):
     success = state.hardware_manager.trigger_actuator(node_id, actuator_id, duration=duration)
     
     if success:
-        with state.db_lock:
-            conn = sqlite3.connect(state.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO watering_log (node_id, duration, soil_before) VALUES (?, ?, ?)", (node_id, duration, soil_before))
-            conn.commit()
-            conn.close()
+        db.insert_watering(node_id, duration, soil_before)
         return True
     else:
         print(f"❌ 浇水异常或未配置对应继电器")
@@ -465,21 +419,8 @@ def background_logger():
                     node_data_to_save.append(data)
                     info["updated"] = False
                     
-            with state.db_lock:
-                conn = sqlite3.connect(state.DB_FILE)
-                cursor = conn.cursor()
-                for d in node_data_to_save:
-                    cursor.execute('''
-                        INSERT INTO node_data (node_id, temperature, humidity, soil_moisture, pressure, voltage, current)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        d.get("node_id"), 
-                        d.get("temperature"), d.get("humidity"), d.get("soil_moisture"),
-                        d.get("pressure"), d.get("voltage"), d.get("current")
-                    ))
-                conn.commit()
-                conn.close()
-                
+            db.insert_node_data(node_data_to_save)
+
             for d in node_data_to_save:
                 clean_soil_anomalies(d.get("node_id"))
                 

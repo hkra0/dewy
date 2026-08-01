@@ -14,7 +14,8 @@ THUMB_DIR = f"{DATA_DIR}/photos/thumbs"
 TOKEN_FILE = f"{DATA_DIR}/secret_token"
 
 camera_lock = threading.Lock()
-db_lock = threading.Lock()
+# 可重入：database.get_conn() 会持锁，嵌套调用 DAL 时不至于自锁
+db_lock = threading.RLock()
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PHOTO_DIR, exist_ok=True)

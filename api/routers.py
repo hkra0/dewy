@@ -1,7 +1,6 @@
 import os
 import time
 import subprocess
-import sqlite3
 from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -10,6 +9,7 @@ from pydantic import BaseModel
 
 import core.state as state
 import core.config as config
+import core.database as db
 from core.logic import trigger_watering, get_effective_light_times, get_system_stats, compute_next_boundary
 
 router = APIRouter()
@@ -86,106 +86,66 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
 def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_token: str = Header(None)):
     if x_bff_to_pi_token != state.PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
     try:
-        with state.db_lock:
-            conn = sqlite3.connect(state.DB_FILE)
-            cursor = conn.cursor()
-            
-            if hist_type == "watering":
-                cursor.execute('''
-                    SELECT datetime(timestamp, 'localtime'), duration, soil_before 
-                    FROM watering_log 
-                    WHERE node_id=?
-                    ORDER BY timestamp DESC LIMIT 30
-                ''', (node_id,))
-                rows = cursor.fetchall()
-                conn.close()
-                return [{"time": r[0], "duration": r[1], "soil": round(r[2], 1) if r[2] is not None else None} for r in rows]
-                
-            elif hist_type == "daily":
-                cursor.execute('''
-                    SELECT date(timestamp, 'localtime') as day, AVG(temperature), AVG(humidity), AVG(soil_moisture), AVG(pressure)
-                    FROM node_data 
-                    WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL) 
-                    GROUP BY day ORDER BY day DESC LIMIT 30
-                ''', (node_id,))
-                rows = cursor.fetchall()
+        if hist_type == "watering":
+            rows = db.query_watering_history(node_id)
+            return [{"time": r[0], "duration": r[1], "soil": round(r[2], 1) if r[2] is not None else None} for r in rows]
 
-                cursor.execute('''
-                    SELECT date(timestamp, 'localtime') as day, SUM(duration)
-                    FROM watering_log 
-                    WHERE node_id=?
-                    GROUP BY day
-                ''', (node_id,))
-                watering_map = {r[0]: round(r[1], 1) if r[1] is not None else 0 for r in cursor.fetchall()}
-                conn.close()
-                rows.reverse()
-                return [{"time": r[0][5:], "temp": round(r[1], 1) if r[1] is not None else None, 
-                         "hum": round(r[2], 1) if r[2] is not None else None, 
-                         "soil": round(r[3], 1) if r[3] is not None else None,
-                         "pressure": round(r[4], 1) if r[4] is not None else None,
-                         "water": watering_map.get(r[0], 0)} for r in rows]
-                
-            else: # 24h
-                cursor.execute('''
-                    SELECT strftime('%H:%M', timestamp, 'localtime'), temperature, humidity, soil_moisture, pressure, strftime('%s', timestamp)
-                    FROM node_data 
-                    WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL) 
-                      AND timestamp >= datetime('now', '-24 hours')
-                    ORDER BY timestamp ASC
-                ''', (node_id,))
-                sensor_rows = cursor.fetchall()
+        elif hist_type == "daily":
+            rows, water_rows = db.query_daily_history(node_id)
+            watering_map = {r[0]: round(r[1], 1) if r[1] is not None else 0 for r in water_rows}
+            rows = list(rows)
+            rows.reverse()
+            return [{"time": r[0][5:], "temp": round(r[1], 1) if r[1] is not None else None,
+                     "hum": round(r[2], 1) if r[2] is not None else None,
+                     "soil": round(r[3], 1) if r[3] is not None else None,
+                     "pressure": round(r[4], 1) if r[4] is not None else None,
+                     "water": watering_map.get(r[0], 0)} for r in rows]
 
-                cursor.execute('''
-                    SELECT strftime('%H:%M', timestamp, 'localtime'), duration, soil_before, strftime('%s', timestamp)
-                    FROM watering_log 
-                    WHERE node_id=? AND timestamp >= datetime('now', '-24 hours')
-                    ORDER BY timestamp ASC
-                ''', (node_id,))
-                water_rows = cursor.fetchall()
-                conn.close()
+        else: # 24h
+            sensor_rows, water_rows = db.query_24h_history(node_id)
 
-                timeline = {}
-                for r in sensor_rows:
-                    time_str = r[0]
-                    epoch = int(r[5]) if r[5] is not None else 0
+            timeline = {}
+            for r in sensor_rows:
+                time_str = r[0]
+                epoch = int(r[5]) if r[5] is not None else 0
+                timeline[time_str] = {
+                    "time": time_str,
+                    "epoch": epoch,
+                    "temp": round(r[1], 1) if r[1] is not None else None,
+                    "hum": round(r[2], 1) if r[2] is not None else None,
+                    "soil": round(r[3], 1) if r[3] is not None else None,
+                    "pressure": round(r[4], 1) if r[4] is not None else None,
+                    "water": 0
+                }
+
+            for w in water_rows:
+                if w[0] is None or w[1] is None: continue
+                time_str = w[0]
+                dur = float(w[1])
+                soil_val = round(w[2], 1) if w[2] is not None and w[2] >= 0 else None
+                epoch = int(w[3]) if w[3] is not None else 0
+                if time_str in timeline:
+                    timeline[time_str]["water"] = round(timeline[time_str]["water"] + dur, 1)
+                    if timeline[time_str]["soil"] is None and soil_val is not None:
+                        timeline[time_str]["soil"] = soil_val
+                else:
                     timeline[time_str] = {
                         "time": time_str,
                         "epoch": epoch,
-                        "temp": round(r[1], 1) if r[1] is not None else None,
-                        "hum": round(r[2], 1) if r[2] is not None else None,
-                        "soil": round(r[3], 1) if r[3] is not None else None,
-                        "pressure": round(r[4], 1) if r[4] is not None else None,
-                        "water": 0
+                        "temp": None,
+                        "hum": None,
+                        "soil": soil_val,
+                        "pressure": None,
+                        "water": dur
                     }
 
-                for w in water_rows:
-                    if w[0] is None or w[1] is None: continue
-                    time_str = w[0]
-                    dur = float(w[1])
-                    soil_val = round(w[2], 1) if w[2] is not None and w[2] >= 0 else None
-                    epoch = int(w[3]) if w[3] is not None else 0
-                    if time_str in timeline:
-                        timeline[time_str]["water"] = round(timeline[time_str]["water"] + dur, 1)
-                        if timeline[time_str]["soil"] is None and soil_val is not None:
-                            timeline[time_str]["soil"] = soil_val
-                    else:
-                        timeline[time_str] = {
-                            "time": time_str,
-                            "epoch": epoch,
-                            "temp": None,
-                            "hum": None,
-                            "soil": soil_val,
-                            "pressure": None,
-                            "water": dur
-                        }
-
-                sorted_points = sorted(timeline.values(), key=lambda x: x["epoch"])
-                return [{"time": p["time"], 
-                         "temp": p["temp"], 
-                         "hum": p["hum"], 
-                         "soil": p["soil"], 
-                         "pressure": p["pressure"], 
-                         "water": p["water"] if p["water"] > 0 else 0} for p in sorted_points]
+            sorted_points = sorted(timeline.values(), key=lambda x: x["epoch"])
+            return [{"time": p["time"],
+                     "temp": p["temp"],
+                     "hum": p["hum"],
+                     "soil": p["soil"],
+                     "pressure": p["pressure"],
+                     "water": p["water"] if p["water"] > 0 else 0} for p in sorted_points]
     except Exception as e:
         print(f"History API Error: {e}")
         return []
@@ -263,12 +223,7 @@ def get_photo_list(x_bff_to_pi_token: str = Header(None)):
     if x_bff_to_pi_token != state.PI_SECRET_TOKEN:
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
-        with state.db_lock:
-            conn = sqlite3.connect(state.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute("SELECT date, file_size, thumb_size, timestamp FROM photo_log ORDER BY date DESC")
-            rows = cursor.fetchall()
-            conn.close()
+        rows = db.query_photos_desc()
         return [{"date": r[0], "size": r[1], "thumb_size": r[2], "timestamp": str(r[3]) if r[3] else ""} for r in rows]
     except Exception as e:
         print(f"Photo list API Error: {e}")
