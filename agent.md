@@ -84,8 +84,35 @@ with get_conn() as conn:          # 自动持锁 → 正常退出 commit → 异
 - **`local_sensor_updater`**（`logic/power.py`）— 每 2 秒读一次本地传感器写入内存；同时监测 UPS 电流。
   连续放电超 120 秒且无网络 → 进省电模式（关 HDMI/LED、断 WiFi、下线 3 个 CPU 核）。
   恢复需连续 3 次确认，防电流抖动导致反复切换。省电模式下轮询降到 60 秒。
+  **省电模式受看门狗保护，详见下方。**
 - **`background_logger`**（`logic/scheduler.py`）— 主循环，每轮：灯控 → 采样归档 → 自动浇水 → 每日照片。
   正常 10 分钟一轮，省电模式 1 小时一轮，且**对齐到整点/整十分**（便于历史图表按固定间隔聚合）。
+
+### 省电模式的看门狗（改这块前必读）
+
+`power_saver.sh enable` 会 `rfkill block wifi bluetooth`。**Pi Zero 2 W 没有网口，
+一旦断网就完全失联，只能物理断电恢复。** 为此脚本内置了看门狗：
+
+- `enable` **先**挂一个 systemd 瞬态定时器（默认 30 分钟后自动执行 `disable`），**再**断网。
+  顺序不可颠倒——万一定时器挂不上，此时网络还在，脚本会拒绝进入省电模式并返回非零。
+- 想长期停留在省电模式，必须周期性调用 `power_saver.sh pet` 续期。
+- `disable` 会同时撤销看门狗。由看门狗自身触发的 `disable` 通过 `DEWY_WATCHDOG_FIRED=1`
+  识别，不会去停自己的定时器（防自锁）。
+
+Python 侧的续期**只写在"确认仍需省电"的那个分支里**（`logic/power.py` 的 `else` 分支）。
+这是刻意的：电流传感器读不到值、循环抛异常、线程卡死、服务崩溃——任何异常都会导致
+无人续期，看门狗到点触发，网络自行恢复。**不要把 `pet` 挪到循环顶部或 `finally` 里，
+那会让它在程序已经失灵时继续续期，看门狗就形同虚设。**
+
+同理，`_run_power_saver()` 会检查退出码，**`enable` 失败时绝不能把 `power_save_mode`
+置为 `True`**，否则内存状态与实际硬件状态不符。
+
+超时时间用 `DEWY_POWERSAVE_WATCHDOG_MIN` 调整；`WATCHDOG_PET_INTERVAL_SEC`（默认 300 秒）
+必须显著小于它。
+
+> 手动测试省电模式时**永远不要直接在 SSH 里跑 `enable`**——命令一执行你自己就断线了，
+> 后面的 `disable` 再也没机会执行。现在有了看门狗会自动恢复，但仍建议先用
+> `DEWY_POWERSAVE_WATCHDOG_MIN=2` 缩短超时再测。
 
 ### 关键业务规则
 
