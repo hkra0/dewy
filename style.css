@@ -164,7 +164,7 @@
         /* Sub Nav */
         .sub-nav {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             justify-content: center;
             margin-top: 10px;
             margin-bottom: 10px;
@@ -175,7 +175,7 @@
             font-size: 12px;
             font-weight: 500;
             color: var(--text-muted);
-            padding: 6px 14px;
+            padding: 6px 12px;
             border-radius: var(--radius-md);
             background: var(--surface-color);
             border: 1px solid var(--border);
