@@ -2,6 +2,10 @@ import sqlite3
 import os
 import sys
 
+# 让脚本能直接 python scripts/migrate_db.py 运行
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.paths import DB_FILE  # noqa: E402  (core.paths 无副作用，不会初始化硬件)
+
 def migrate_database(db_path):
     if not os.path.exists(db_path):
         print(f"Error: Database file '{db_path}' not found.")
@@ -73,9 +77,7 @@ def migrate_database(db_path):
     print("The historical data is now ready for the new node-based architecture.")
 
 if __name__ == "__main__":
-    default_db = "/home/hkra/dewy/data/plant_history.db"
-    
-    db_file = sys.argv[1] if len(sys.argv) > 1 else default_db
+    db_file = sys.argv[1] if len(sys.argv) > 1 else DB_FILE
     print(f"Using DB file: {db_file}")
     print("You can pass a custom DB path as an argument: python scripts/migrate_db.py <path_to_db>")
     print("-" * 50)

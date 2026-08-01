@@ -26,7 +26,7 @@
 ## 🚀 核心功能逻辑
 
 ### 1. 数据监控与记录
-后台线程 `background_logger` 每十分钟（约 600 秒周期）读取一次环境数据，存储到 `/home/hkra/dewy/data/plant_history.db` 的 `env_log` 表中，并自带离群值过滤（异常检测清除）功能。
+后台线程 `background_logger` 每十分钟（约 600 秒周期）读取一次环境数据，存储到 `<项目根>/data/plant_history.db` 的 `node_data` 表中，并自带离群值过滤（异常检测清除）功能。数据目录由 `core/paths.py` 从 `__file__` 推导，可用环境变量 `DEWY_DATA_DIR` 覆盖。
 
 ### 2. 自动化与手动浇水
 - **自动浇水**：每天早上 6:00 进行检查，如果距离上次浇水已超过 12 小时且当前土壤湿度低于阈值（默认 `70.0%`），则触发水泵运行 1 秒，并记录到 `watering_log`。

@@ -2,27 +2,28 @@ import logging
 import os
 import secrets
 import threading
+
 from hardware.manager import HardwareManager
+# 路径全部来自 core.paths（由 __file__ 推导），此处转出以保持 state.XXX 的既有用法
+from core.paths import (
+    DATA_DIR,
+    DB_FILE,
+    CONFIG_FILE,
+    TOKEN_FILE,
+    TMP_IMG_PATH,
+    TMP_IMG_HQ_PATH,
+    PHOTO_DIR,
+    THUMB_DIR,
+    ensure_dirs,
+)
 
 logger = logging.getLogger(__name__)
-
-# ==================== 统一路径与硬件锁配置 ====================
-DATA_DIR = "/home/hkra/dewy/data"
-TMP_IMG_PATH = f"{DATA_DIR}/live.jpg"
-TMP_IMG_HQ_PATH = f"{DATA_DIR}/live_hq.jpg"
-DB_FILE = f"{DATA_DIR}/plant_history.db"
-CONFIG_FILE = f"{DATA_DIR}/config.json"
-PHOTO_DIR = f"{DATA_DIR}/photos"
-THUMB_DIR = f"{DATA_DIR}/photos/thumbs"
-TOKEN_FILE = f"{DATA_DIR}/secret_token"
 
 camera_lock = threading.Lock()
 # 可重入：database.get_conn() 会持锁，嵌套调用 DAL 时不至于自锁
 db_lock = threading.RLock()
 
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(PHOTO_DIR, exist_ok=True)
-os.makedirs(THUMB_DIR, exist_ok=True)
+ensure_dirs()
 
 
 def _load_secret_token():

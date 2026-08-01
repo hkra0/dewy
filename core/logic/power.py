@@ -10,10 +10,9 @@ import time
 
 import core.state as state
 from core.logic.system import is_wifi_connected
+from core.paths import POWER_SAVER_SCRIPT
 
 logger = logging.getLogger(__name__)
-
-POWER_SAVER_SCRIPT = "/home/hkra/dewy/power_saver.sh"
 
 DISCHARGE_CURRENT_MA = -300     # 低于此值视为放电
 RECOVER_CURRENT_MA = -100       # 高于此值视为供电恢复
