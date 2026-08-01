@@ -16,7 +16,8 @@ const translations = {
                 chart_temp: "temp (℃)", chart_hum: "hum (%)", chart_soil: "soil (%)", chart_pres: "pres (hPa)", syncing: "syncing...",
                 cam_offline: "⚠️ camera hardware offline or error", net_disconnect: "⚠️ network disconnected", hd_capture_est: "capturing hd image... (est. 10s+)",
                 fail_hd: "❌ failed to capture hd image.", last_synced: "last synced at {time}",
-                photo_log: "photo log", no_photos: "no photos yet"
+                photo_log: "photo log", no_photos: "no photos yet",
+                export_gif: "GIF ⚡", exporting: "creating...", gif_start: "Synthesizing GIF timeline, please wait...", gif_success: "🎉 GIF downloaded successfully!", gif_error: "❌ Failed to generate GIF.", gif_lib_missing: "⚠️ GIF library loading, please try again in a moment."
             },
             zh: {
                 env: "环境", sys: "系统", hist: "历史", settings: "设置",
@@ -35,7 +36,8 @@ const translations = {
                 chart_temp: "温度 (℃)", chart_hum: "湿度 (%)", chart_soil: "土壤 (%)", chart_pres: "气压 (hPa)", syncing: "同步中...",
                 cam_offline: "⚠️ 相机硬件离线或故障", net_disconnect: "⚠️ 网络已断开", hd_capture_est: "正在拍摄高清图片... (约10秒+)",
                 fail_hd: "❌ 获取高清图片失败。", last_synced: "最后同步时间: {time}",
-                photo_log: "照片记录", no_photos: "暂无照片"
+                photo_log: "照片记录", no_photos: "暂无照片",
+                export_gif: "导出 GIF ⚡", exporting: "合成中...", gif_start: "正在高速合成延时动图，请稍候...", gif_success: "🎉 GIF 动图已生成并下载！", gif_error: "❌ GIF 合成失败，请重试。", gif_lib_missing: "⚠️ 动图组件准备中，请稍等再重试。"
             }
         };
 
@@ -909,6 +911,142 @@ const translations = {
                         toggleTimelinePlay();
                     }
                 }, tlSpeed);
+            }
+        }
+
+        function createWatermarkedFrame(imgUrl, dateText) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const targetWidth = 480;
+                    const aspect = img.naturalHeight / (img.naturalWidth || 1) || (3/4);
+                    const targetHeight = Math.round(targetWidth * aspect);
+                    canvas.width = targetWidth;
+                    canvas.height = targetHeight;
+                    const ctx = canvas.getContext('2d');
+                    
+                    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                    
+                    ctx.font = '600 13px Inter, -apple-system, sans-serif';
+                    const text = `📅 ${dateText}`;
+                    const textWidth = ctx.measureText(text).width;
+                    const padX = 8, padY = 5;
+                    const boxX = 10, boxY = targetHeight - 30;
+                    const boxW = textWidth + padX * 2;
+                    const boxH = 22;
+                    
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+                    if (ctx.roundRect) {
+                        ctx.beginPath();
+                        ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(boxX, boxY, boxW, boxH);
+                    }
+                    
+                    ctx.fillStyle = '#ffffff';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(text, boxX + padX, boxY + boxH / 2);
+                    
+                    resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: targetWidth, height: targetHeight });
+                };
+                img.onerror = () => resolve(null);
+                img.src = imgUrl;
+            });
+        }
+
+        async function exportTimelineGIF() {
+            if (!tlPhotos || tlPhotos.length === 0) return;
+            const btn = document.getElementById('tl-export-btn');
+            if (!btn || btn.disabled) return;
+
+            if (typeof gifshot === 'undefined') {
+                showToast(t('gif_lib_missing'), 'error');
+                return;
+            }
+
+            if (tlPlaying) toggleTimelinePlay();
+            btn.disabled = true;
+            btn.innerText = t('exporting');
+            showToast(t('gif_start'), 'info');
+
+            const savedKey = localStorage.getItem(STORAGE_KEY) || '';
+            const frameUrls = [];
+            let gifWidth = 480, gifHeight = 360;
+
+            try {
+                for (let i = 0; i < tlPhotos.length; i++) {
+                    const photo = tlPhotos[i];
+                    let imgUrl = tlThumbCache.get(photo.date);
+                    let tempBlobUrl = null;
+
+                    if (!imgUrl) {
+                        try {
+                            const res = await fetch(`/api/photos/${photo.date}?thumb=1`, {
+                                headers: { 'X-Viewer-Key': savedKey }
+                            });
+                            if (res.ok) {
+                                const blob = await res.blob();
+                                tempBlobUrl = URL.createObjectURL(blob);
+                                imgUrl = tempBlobUrl;
+                            }
+                        } catch (err) {
+                            console.error(`Error fetching frame ${photo.date}`, err);
+                        }
+                    }
+
+                    if (imgUrl) {
+                        const frame = await createWatermarkedFrame(imgUrl, photo.date);
+                        if (frame) {
+                            frameUrls.push(frame.dataUrl);
+                            gifWidth = frame.width;
+                            gifHeight = frame.height;
+                        }
+                    }
+                    if (tempBlobUrl) URL.revokeObjectURL(tempBlobUrl);
+
+                    const percent = Math.round(((i + 1) / tlPhotos.length) * 50);
+                    btn.innerText = `${percent}%`;
+                }
+
+                if (frameUrls.length === 0) {
+                    throw new Error("No frames loaded");
+                }
+
+                const intervalSec = (tlSpeed || 500) / 1000;
+
+                gifshot.createGIF({
+                    images: frameUrls,
+                    gifWidth: gifWidth,
+                    gifHeight: gifHeight,
+                    interval: intervalSec,
+                    numWorkers: 3,
+                    sampleInterval: 10,
+                    progressCallback: (captureProgress) => {
+                        const totalPercent = 50 + Math.round(captureProgress * 50);
+                        if (btn) btn.innerText = `${totalPercent}%`;
+                    }
+                }, function (obj) {
+                    btn.disabled = false;
+                    btn.innerText = t('export_gif');
+                    if (!obj.error) {
+                        const a = document.createElement('a');
+                        a.href = obj.image;
+                        a.download = `dewy_timeline_${new Date().toISOString().slice(0, 10)}.gif`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        showToast(t('gif_success'), 'success');
+                    } else {
+                        showToast(t('gif_error'), 'error');
+                    }
+                });
+            } catch (e) {
+                console.error("Failed during GIF export", e);
+                btn.disabled = false;
+                btn.innerText = t('export_gif');
+                showToast(t('gif_error'), 'error');
             }
         }
 
