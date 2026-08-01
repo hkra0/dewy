@@ -473,14 +473,13 @@ function renderHistoryUI(data, type, animate = false) {
         type: 'line',
         label: t('chart_water'),
         data: chartData.map(d => (d.water > 0) ? (d.soil !== null && d.soil !== undefined ? d.soil : (d.hum !== null && d.hum !== undefined ? d.hum : 50)) : null),
-        borderColor: '#06b6d4',
-        backgroundColor: '#06b6d4',
-        pointBackgroundColor: '#06b6d4',
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 2,
+        borderColor: '#22d3ee',
+        pointBackgroundColor: '#22d3ee',
+        pointBorderColor: '#22d3ee',
+        pointBorderWidth: 2.5,
         pointRadius: 6,
         pointHoverRadius: 8,
-        pointStyle: 'circle',
+        pointStyle: 'cross',
         showLine: false,
         spanGaps: false,
         yAxisID: 'y1',
@@ -530,7 +529,7 @@ function renderHistoryUI(data, type, animate = false) {
                 tooltip: {
                     titleColor: tooltipText, bodyColor: tooltipText, backgroundColor: tooltipBg, titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8, borderColor: gridColor, borderWidth: 1,
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             if (context.dataset.isWatering) {
                                 const waterVal = context.dataset.waterData ? context.dataset.waterData[context.dataIndex] : '';
                                 return `${context.dataset.label}: ${waterVal}`;
