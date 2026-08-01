@@ -470,6 +470,7 @@ function renderHistoryUI(data, type, animate = false) {
     if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: '#10b981', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
     if (hasWater) datasets.push({
+        type: 'line',
         label: t('chart_water'),
         data: chartData.map(d => (d.water > 0) ? (d.soil !== null && d.soil !== undefined ? d.soil : (d.hum !== null && d.hum !== undefined ? d.hum : 50)) : null),
         borderColor: '#06b6d4',
@@ -479,7 +480,9 @@ function renderHistoryUI(data, type, animate = false) {
         pointBorderWidth: 2,
         pointRadius: 6,
         pointHoverRadius: 8,
+        pointStyle: 'circle',
         showLine: false,
+        spanGaps: false,
         yAxisID: 'y1',
         isWatering: true,
         waterData: chartData.map(d => d.water)

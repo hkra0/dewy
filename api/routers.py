@@ -113,7 +113,7 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_
                 cursor.execute('''
                     SELECT date(timestamp, 'localtime') as day, SUM(duration)
                     FROM watering_log 
-                    WHERE node_id=? AND timestamp >= datetime('now', '-35 days')
+                    WHERE node_id=?
                     GROUP BY day
                 ''', (node_id,))
                 watering_map = {r[0]: round(r[1], 1) if r[1] is not None else 0 for r in cursor.fetchall()}
@@ -133,39 +133,59 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_
                       AND timestamp >= datetime('now', '-24 hours')
                     ORDER BY timestamp ASC
                 ''', (node_id,))
-                rows = cursor.fetchall()
+                sensor_rows = cursor.fetchall()
 
                 cursor.execute('''
-                    SELECT strftime('%s', timestamp), duration 
+                    SELECT strftime('%H:%M', timestamp, 'localtime'), duration, soil_before, strftime('%s', timestamp)
                     FROM watering_log 
                     WHERE node_id=? AND timestamp >= datetime('now', '-24 hours')
+                    ORDER BY timestamp ASC
                 ''', (node_id,))
-                w_rows = cursor.fetchall()
+                water_rows = cursor.fetchall()
                 conn.close()
 
-                water_map = [0.0] * len(rows)
-                if rows and w_rows:
-                    row_ts = [int(r[5]) if r[5] is not None else 0 for r in rows]
-                    for w in w_rows:
-                        if w[0] is None or w[1] is None: continue
-                        w_ts = int(w[0])
-                        w_dur = float(w[1])
-                        best_idx = 0
-                        min_diff = float('inf')
-                        for idx, ts in enumerate(row_ts):
-                            diff = abs(ts - w_ts)
-                            if diff < min_diff:
-                                min_diff = diff
-                                best_idx = idx
-                        if min_diff <= 7200:
-                            water_map[best_idx] = round(water_map[best_idx] + w_dur, 1)
+                timeline = {}
+                for r in sensor_rows:
+                    time_str = r[0]
+                    epoch = int(r[5]) if r[5] is not None else 0
+                    timeline[time_str] = {
+                        "time": time_str,
+                        "epoch": epoch,
+                        "temp": round(r[1], 1) if r[1] is not None else None,
+                        "hum": round(r[2], 1) if r[2] is not None else None,
+                        "soil": round(r[3], 1) if r[3] is not None else None,
+                        "pressure": round(r[4], 1) if r[4] is not None else None,
+                        "water": 0
+                    }
 
-                return [{"time": r[0], 
-                         "temp": round(r[1], 1) if r[1] is not None else None, 
-                         "hum": round(r[2], 1) if r[2] is not None else None, 
-                         "soil": round(r[3], 1) if r[3] is not None else None,
-                         "pressure": round(r[4], 1) if r[4] is not None else None,
-                         "water": water_map[i] if water_map[i] > 0 else 0} for i, r in enumerate(rows)]
+                for w in water_rows:
+                    if w[0] is None or w[1] is None: continue
+                    time_str = w[0]
+                    dur = float(w[1])
+                    soil_val = round(w[2], 1) if w[2] is not None and w[2] >= 0 else None
+                    epoch = int(w[3]) if w[3] is not None else 0
+                    if time_str in timeline:
+                        timeline[time_str]["water"] = round(timeline[time_str]["water"] + dur, 1)
+                        if timeline[time_str]["soil"] is None and soil_val is not None:
+                            timeline[time_str]["soil"] = soil_val
+                    else:
+                        timeline[time_str] = {
+                            "time": time_str,
+                            "epoch": epoch,
+                            "temp": None,
+                            "hum": None,
+                            "soil": soil_val,
+                            "pressure": None,
+                            "water": dur
+                        }
+
+                sorted_points = sorted(timeline.values(), key=lambda x: x["epoch"])
+                return [{"time": p["time"], 
+                         "temp": p["temp"], 
+                         "hum": p["hum"], 
+                         "soil": p["soil"], 
+                         "pressure": p["pressure"], 
+                         "water": p["water"] if p["water"] > 0 else 0} for p in sorted_points]
     except Exception as e:
         print(f"History API Error: {e}")
         return []
