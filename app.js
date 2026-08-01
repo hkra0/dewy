@@ -13,7 +13,7 @@ const translations = {
         light_title: "fill light", watering_cmd: "Watering Command Sent!", watering_ing: "watering...", light_on: "Light turned ON", light_off: "Light turned OFF",
         cam_capturing: "Camera is capturing, try again later", light_fail: "Light toggle failed", no_water_records: "no watering records yet.",
         table_duration: "Duration (s)", table_soil: "Soil (%)", table_time: "Time", no_data: "no data available.",
-        chart_temp: "temp (℃)", chart_hum: "hum (%)", chart_soil: "soil (%)", chart_pres: "pres (hPa)", syncing: "syncing...",
+        chart_temp: "temp (℃)", chart_hum: "hum (%)", chart_soil: "soil (%)", chart_pres: "pres (hPa)", chart_water: "water (s)", syncing: "syncing...",
         cam_offline: "camera hardware offline or error", net_disconnect: "network disconnected", hd_capture_est: "capturing hd image... (est. 10s+)",
         fail_hd: "failed to capture hd image", last_synced: "last synced at {time}",
         photo_log: "photo", no_photos: "no photos yet",
@@ -33,7 +33,7 @@ const translations = {
         light_title: "补光灯", watering_cmd: "浇水指令已发送！", watering_ing: "正在浇水...", light_on: "补光灯已开启", light_off: "补光灯已关闭",
         cam_capturing: "相机正在拍摄中，请稍后再试", light_fail: "补光灯切换失败", no_water_records: "暂无浇水记录。",
         table_duration: "时长 (秒)", table_soil: "土壤湿度 (%)", table_time: "时间", no_data: "暂无数据。",
-        chart_temp: "温度 (℃)", chart_hum: "湿度 (%)", chart_soil: "土壤 (%)", chart_pres: "气压 (hPa)", syncing: "同步中...",
+        chart_temp: "温度 (℃)", chart_hum: "湿度 (%)", chart_soil: "土壤 (%)", chart_pres: "气压 (hPa)", chart_water: "浇水 (秒)", syncing: "同步中...",
         cam_offline: "相机硬件离线或故障", net_disconnect: "网络已断开", hd_capture_est: "正在拍摄高清图片... (约10秒+)",
         fail_hd: "获取高清图片失败。", last_synced: "最后同步时间: {time}",
         photo_log: "照片", no_photos: "暂无照片",
@@ -463,11 +463,27 @@ function renderHistoryUI(data, type, animate = false) {
     const hasHum = chartData.some(d => d.hum !== null && d.hum !== undefined);
     const hasSoil = chartData.some(d => d.soil !== null && d.soil !== undefined);
     const hasPres = chartData.some(d => d.pressure !== null && d.pressure !== undefined);
+    const hasWater = chartData.some(d => d.water !== null && d.water !== undefined && d.water > 0);
 
     if (hasTemp) datasets.push({ label: t('chart_temp'), data: chartData.map(d => d.temp), borderColor: '#f59e0b', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
     if (hasHum) datasets.push({ label: t('chart_hum'), data: chartData.map(d => d.hum), borderColor: '#3b82f6', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: '#10b981', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
+    if (hasWater) datasets.push({
+        label: t('chart_water'),
+        data: chartData.map(d => (d.water > 0) ? (d.soil !== null && d.soil !== undefined ? d.soil : (d.hum !== null && d.hum !== undefined ? d.hum : 50)) : null),
+        borderColor: '#06b6d4',
+        backgroundColor: '#06b6d4',
+        pointBackgroundColor: '#06b6d4',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        showLine: false,
+        yAxisID: 'y1',
+        isWatering: true,
+        waterData: chartData.map(d => d.water)
+    });
 
     const computedStyle = getComputedStyle(document.documentElement);
     const textColor = computedStyle.getPropertyValue('--text-muted').trim() || '#666';
@@ -508,7 +524,25 @@ function renderHistoryUI(data, type, animate = false) {
             responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { labels: { color: textColor } },
-                tooltip: { titleColor: tooltipText, bodyColor: tooltipText, backgroundColor: tooltipBg, titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8, borderColor: gridColor, borderWidth: 1 }
+                tooltip: {
+                    titleColor: tooltipText, bodyColor: tooltipText, backgroundColor: tooltipBg, titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8, borderColor: gridColor, borderWidth: 1,
+                    callbacks: {
+                        label: function(context) {
+                            if (context.dataset.isWatering) {
+                                const waterVal = context.dataset.waterData ? context.dataset.waterData[context.dataIndex] : '';
+                                return `${context.dataset.label}: ${waterVal}`;
+                            }
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y;
+                            }
+                            return label;
+                        }
+                    }
+                }
             },
             scales: {
                 x: { grid: { display: false, color: gridColor }, ticks: { color: textColor, maxTicksLimit: 6, font: { size: 10 } } },

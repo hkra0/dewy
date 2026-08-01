@@ -109,28 +109,63 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_
                     GROUP BY day ORDER BY day DESC LIMIT 30
                 ''', (node_id,))
                 rows = cursor.fetchall()
+
+                cursor.execute('''
+                    SELECT date(timestamp, 'localtime') as day, SUM(duration)
+                    FROM watering_log 
+                    WHERE node_id=? AND timestamp >= datetime('now', '-35 days')
+                    GROUP BY day
+                ''', (node_id,))
+                watering_map = {r[0]: round(r[1], 1) if r[1] is not None else 0 for r in cursor.fetchall()}
                 conn.close()
                 rows.reverse()
                 return [{"time": r[0][5:], "temp": round(r[1], 1) if r[1] is not None else None, 
                          "hum": round(r[2], 1) if r[2] is not None else None, 
                          "soil": round(r[3], 1) if r[3] is not None else None,
-                         "pressure": round(r[4], 1) if r[4] is not None else None} for r in rows]
+                         "pressure": round(r[4], 1) if r[4] is not None else None,
+                         "water": watering_map.get(r[0], 0)} for r in rows]
                 
             else: # 24h
                 cursor.execute('''
-                    SELECT strftime('%H:%M', timestamp, 'localtime'), temperature, humidity, soil_moisture, pressure 
+                    SELECT strftime('%H:%M', timestamp, 'localtime'), temperature, humidity, soil_moisture, pressure, strftime('%s', timestamp)
                     FROM node_data 
                     WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL) 
                       AND timestamp >= datetime('now', '-24 hours')
                     ORDER BY timestamp ASC
                 ''', (node_id,))
                 rows = cursor.fetchall()
+
+                cursor.execute('''
+                    SELECT strftime('%s', timestamp), duration 
+                    FROM watering_log 
+                    WHERE node_id=? AND timestamp >= datetime('now', '-24 hours')
+                ''', (node_id,))
+                w_rows = cursor.fetchall()
                 conn.close()
+
+                water_map = [0.0] * len(rows)
+                if rows and w_rows:
+                    row_ts = [int(r[5]) if r[5] is not None else 0 for r in rows]
+                    for w in w_rows:
+                        if w[0] is None or w[1] is None: continue
+                        w_ts = int(w[0])
+                        w_dur = float(w[1])
+                        best_idx = 0
+                        min_diff = float('inf')
+                        for idx, ts in enumerate(row_ts):
+                            diff = abs(ts - w_ts)
+                            if diff < min_diff:
+                                min_diff = diff
+                                best_idx = idx
+                        if min_diff <= 7200:
+                            water_map[best_idx] = round(water_map[best_idx] + w_dur, 1)
+
                 return [{"time": r[0], 
                          "temp": round(r[1], 1) if r[1] is not None else None, 
                          "hum": round(r[2], 1) if r[2] is not None else None, 
                          "soil": round(r[3], 1) if r[3] is not None else None,
-                         "pressure": round(r[4], 1) if r[4] is not None else None} for r in rows]
+                         "pressure": round(r[4], 1) if r[4] is not None else None,
+                         "water": water_map[i] if water_map[i] > 0 else 0} for i, r in enumerate(rows)]
     except Exception as e:
         print(f"History API Error: {e}")
         return []
