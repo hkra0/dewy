@@ -749,6 +749,11 @@ const tlThumbCache = new Map();
 const tlFetching = new Set();
 let tlLastFetchTime = 0;
 
+function getPhotoVersion(photo) {
+    if (!photo) return '';
+    return encodeURIComponent(`${photo.timestamp || ''}_${photo.size || ''}_${photo.thumb_size || ''}`);
+}
+
 async function loadPhotoTimeline(forceFetch = false) {
     const savedKey = localStorage.getItem(STORAGE_KEY) || '';
     const nodeInfo = availableNodes[currentDevice] || {};
@@ -777,7 +782,15 @@ async function loadPhotoTimeline(forceFetch = false) {
         if (res.ok) {
             const list = await res.json();
             // Reverse to chronological order (oldest -> newest for timeline play)
-            tlPhotos = list.reverse();
+            const newPhotos = list.reverse();
+            newPhotos.forEach(p => {
+                const oldP = tlPhotos.find(old => old.date === p.date);
+                if (oldP && getPhotoVersion(oldP) !== getPhotoVersion(p) && tlThumbCache.has(p.date)) {
+                    URL.revokeObjectURL(tlThumbCache.get(p.date));
+                    tlThumbCache.delete(p.date);
+                }
+            });
+            tlPhotos = newPhotos;
             tlLastFetchTime = Date.now();
         }
     } catch (e) {
@@ -810,7 +823,9 @@ async function fetchThumb(date) {
     tlFetching.add(date);
     try {
         const savedKey = localStorage.getItem(STORAGE_KEY) || '';
-        const res = await fetch(`/api/photos/${date}?thumb=1`, {
+        const photo = tlPhotos.find(p => p.date === date);
+        const ver = getPhotoVersion(photo);
+        const res = await fetch(`/api/photos/${date}?thumb=1${ver ? '&v=' + ver : ''}`, {
             headers: { 'X-Viewer-Key': savedKey }
         });
         if (res.ok) {
@@ -1016,7 +1031,8 @@ async function exportTimelineGIF() {
 
             if (!imgUrl) {
                 try {
-                    const res = await fetch(`/api/photos/${photo.date}?thumb=1`, {
+                    const ver = getPhotoVersion(photo);
+                    const res = await fetch(`/api/photos/${photo.date}?thumb=1${ver ? '&v=' + ver : ''}`, {
                         headers: { 'X-Viewer-Key': savedKey }
                     });
                     if (res.ok) {
@@ -1104,7 +1120,8 @@ async function viewFullPhoto() {
 
     try {
         const savedKey = localStorage.getItem(STORAGE_KEY) || '';
-        const res = await fetch(`/api/photos/${photo.date}?thumb=0`, {
+        const ver = getPhotoVersion(photo);
+        const res = await fetch(`/api/photos/${photo.date}?thumb=0${ver ? '&v=' + ver : ''}`, {
             headers: { 'X-Viewer-Key': savedKey }
         });
         if (!res.ok) throw new Error('failed to load full photo');

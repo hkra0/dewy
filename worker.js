@@ -61,8 +61,9 @@ export default {
                     if (imgTs) responseHeaders.set("X-Image-Timestamp", imgTs);
                 } else if (isPhotoFile) {
                     const piCt = piResponse.headers.get("Content-Type") || "image/jpeg";
+                    const piCc = piResponse.headers.get("Cache-Control") || "public, max-age=86400";
                     responseHeaders.set("Content-Type", piCt);
-                    responseHeaders.set("Cache-Control", "public, max-age=86400");
+                    responseHeaders.set("Cache-Control", piCc);
                 } else {
                     responseHeaders.set("Content-Type", "application/json");
                     responseHeaders.set("Vary", "Accept-Encoding");

@@ -211,10 +211,10 @@ def get_photo_list(x_bff_to_pi_token: str = Header(None)):
         with state.db_lock:
             conn = sqlite3.connect(state.DB_FILE)
             cursor = conn.cursor()
-            cursor.execute("SELECT date, file_size, thumb_size FROM photo_log ORDER BY date DESC")
+            cursor.execute("SELECT date, file_size, thumb_size, timestamp FROM photo_log ORDER BY date DESC")
             rows = cursor.fetchall()
             conn.close()
-        return [{"date": r[0], "size": r[1], "thumb_size": r[2]} for r in rows]
+        return [{"date": r[0], "size": r[1], "thumb_size": r[2], "timestamp": str(r[3]) if r[3] else ""} for r in rows]
     except Exception as e:
         print(f"Photo list API Error: {e}")
         return []
@@ -235,5 +235,9 @@ def get_photo(date: str, thumb: bool = False, x_bff_to_pi_token: str = Header(No
         target = os.path.join(state.PHOTO_DIR, f"{date}.jpg")
     
     if os.path.exists(target):
-        return FileResponse(target, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+        if date == datetime.now().strftime("%Y-%m-%d"):
+            cache_header = "no-cache, no-store, must-revalidate"
+        else:
+            cache_header = "public, max-age=86400"
+        return FileResponse(target, media_type="image/jpeg", headers={"Cache-Control": cache_header})
     raise HTTPException(status_code=404, detail="Photo not found")
