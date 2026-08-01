@@ -1,5 +1,8 @@
+import logging
 import smbus2
 import time
+
+logger = logging.getLogger(__name__)
 
 class ADS1115_Soil:
     def __init__(self, **kwargs):
@@ -16,7 +19,7 @@ class ADS1115_Soil:
         try:
             self.bus = smbus2.SMBus(self.bus_num)
         except Exception as e:
-            print(f"Warning: Failed to initialize ADS1115 on bus {self.bus_num}: {e}")
+            logger.error("ADS1115 初始化失败 (bus=%s addr=0x%02X): %s", self.bus_num, self.address, e)
             self.bus = None
 
     def read(self, samples=11):
@@ -63,5 +66,6 @@ class ADS1115_Soil:
             
             percent = ((self.VAL_AIR - compensated_raw) / (self.VAL_AIR - self.VAL_WATER)) * 100.0
             return {"soil_moisture": round(max(0.0, min(100.0, percent)), 1)}
-        except: 
+        except (OSError, ZeroDivisionError, ValueError) as e:
+            logger.warning("ADS1115 土壤湿度读取失败 (bus=%s): %s", self.bus_num, e)
             return {"soil_moisture": None}

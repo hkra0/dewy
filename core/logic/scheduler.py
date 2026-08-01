@@ -4,12 +4,15 @@
 便于历史图表按固定间隔聚合。
 """
 
+import logging
 import time
 from datetime import datetime
 
 import core.state as state
 import core.config as config
 import core.database as db
+
+logger = logging.getLogger(__name__)
 from core.database import init_db
 from core.logic.light import apply_light_schedule
 from core.logic.photo import daily_photo_capture
@@ -66,16 +69,17 @@ def background_logger():
             for d in node_data_to_save:
                 clean_soil_anomalies(d.get("node_id"))
 
-            print(f"[{now.strftime('%H:%M:%S')}] 💾 数据归档")
+            logger.info("💾 数据归档 (%d 个节点)", len(node_data_to_save))
 
             # 每日照片拍摄（省电模式下跳过）
             if not state.power_save_mode and config.global_config["daily_photo"]["enabled"]:
                 try:
                     daily_photo_capture()
-                except Exception as e:
-                    print(f"每日照片拍摄失败: {e}")
+                except Exception:
+                    logger.exception("每日照片拍摄失败")
 
-        except Exception as e:
-            print(f"后台记录失败: {e}")
+        except Exception:
+            # 兜底：任何未预料的异常都不能让后台循环退出
+            logger.exception("后台记录本轮失败，将在下一轮重试")
 
         _sleep_until_next_slot()

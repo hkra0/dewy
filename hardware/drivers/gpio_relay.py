@@ -2,7 +2,10 @@ try:
     import RPi.GPIO as GPIO
 except ImportError:
     GPIO = None
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 class GPIO_Relay:
     def __init__(self, **kwargs):
@@ -24,7 +27,11 @@ class GPIO_Relay:
             time.sleep(duration)
             GPIO.setup(self.pin, GPIO.IN)
             return True
-        except Exception:
-            try: GPIO.setup(self.pin, GPIO.IN)
-            except: pass
+        except Exception as e:
+            logger.error("GPIO 继电器 pin=%s 动作失败: %s", self.pin, e)
+            # 无论如何把引脚拉回输入态，避免水泵卡在通电状态
+            try:
+                GPIO.setup(self.pin, GPIO.IN)
+            except Exception:
+                logger.critical("⚠️ GPIO pin=%s 无法复位为输入，水泵可能持续通电！", self.pin)
             return False

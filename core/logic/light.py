@@ -5,12 +5,16 @@
 """
 
 import json
+import logging
 import math
+import urllib.error
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import core.state as state
 import core.config as config
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ON_MINUTES = 7 * 60 + 30    # 推算失败时的兜底：07:30
 DEFAULT_OFF_MINUTES = 21 * 60 + 30  # 兜底：21:30
@@ -41,11 +45,14 @@ def compute_next_boundary(now, on_minutes, off_minutes):
 
 
 def fetch_ip_location():
+    """按出口 IP 猜经纬度。失败返回 (None, None)，调用方会退回默认时段。"""
     try:
         req = urllib.request.urlopen("http://ip-api.com/json", timeout=3)
         data = json.loads(req.read())
         return data.get("lat"), data.get("lon")
-    except: return None, None
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        logger.warning("IP 定位失败，无法推算日出日落: %s", e)
+        return None, None
 
 
 def get_effective_light_times():
@@ -56,7 +63,10 @@ def get_effective_light_times():
             on_h, on_m = map(int, cfg["on_time"].split(":"))
             off_h, off_m = map(int, cfg["off_time"].split(":"))
             return on_h * 60 + on_m, off_h * 60 + off_m
-        except: return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
+        except (KeyError, ValueError, AttributeError) as e:
+            logger.error("固定时段配置非法 (on=%r off=%r)，退回默认 07:30-21:30: %s",
+                         cfg.get("on_time"), cfg.get("off_time"), e)
+            return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
     else:
         lat, lng = cfg.get("lat"), cfg.get("lng")
         if not lat or not lng:
@@ -73,7 +83,10 @@ def get_effective_light_times():
             B = math.radians((360 / 365) * (N - 81))
             decl = 23.45 * math.sin(B)
             cos_ha = (math.cos(math.radians(90.8333)) - (math.sin(math.radians(lat_f)) * math.sin(math.radians(decl)))) / (math.cos(math.radians(lat_f)) * math.cos(math.radians(decl)))
-            if cos_ha > 1 or cos_ha < -1: return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
+            if cos_ha > 1 or cos_ha < -1:
+                # 极昼/极夜：该纬度当天没有日出或日落
+                logger.info("当前纬度 %.2f 今日无日出/日落，使用默认时段", lat_f)
+                return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
             ha = math.degrees(math.acos(cos_ha))
             eot = 9.87 * math.sin(2 * B) - 7.53 * math.cos(B) - 1.5 * math.sin(B)
             solar_noon_utc = 12 - (lng_f / 15) - (eot / 60)
@@ -84,7 +97,9 @@ def get_effective_light_times():
             on_time = int(sr_local * 60) + int(cfg.get("sun_on_offset", 0))
             off_time = int(ss_local * 60) + int(cfg.get("sun_off_offset", 0))
             return on_time, off_time
-        except: return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
+        except (TypeError, ValueError, ZeroDivisionError) as e:
+            logger.error("日出日落推算失败 (lat=%r lng=%r)，退回默认时段: %s", lat, lng, e)
+            return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
 
 
 def _send_light_command(cmd):
@@ -120,7 +135,7 @@ def apply_light_schedule(now):
             # 覆盖到期，交还给定时控制
             state.manual_override = False
             state.manual_override_until = None
-            print(f"[{now.strftime('%H:%M:%S')}] 🔄 手动覆盖已到期，恢复定时控制")
+            logger.info("🔄 手动覆盖已到期，恢复定时控制")
 
             desired = "ON" if is_light_time else "OFF"
             _send_light_command(CMD_ON if desired == "ON" else CMD_OFF)
@@ -133,7 +148,7 @@ def apply_light_schedule(now):
         desired = "ON" if is_light_time else "OFF"
 
         if state.light_status != desired:
-            print(f"[{now.strftime('%H:%M:%S')}] 💡 定时灯控: {desired}")
+            logger.info("💡 定时灯控: %s", desired)
             state.light_status = desired
 
         _send_light_command(CMD_ON if desired == "ON" else CMD_OFF)

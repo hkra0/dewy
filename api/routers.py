@@ -1,6 +1,8 @@
+import logging
 import os
-import time
+import re
 import subprocess
+import time
 from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -11,6 +13,8 @@ import core.state as state
 import core.config as config
 import core.database as db
 from core.logic import trigger_watering, get_effective_light_times, get_system_stats, compute_next_boundary
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -63,8 +67,8 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
                 try:
                     state.hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=state.global_mqtt_client, duration=duration)
                     time.sleep(0.6)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("拍照前临时补光失败: %s", e)
 
             try:
                 with state.camera_lock:
@@ -74,7 +78,7 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
             finally:
                 pass
         except Exception:
-            pass
+            logger.exception("实时拍照失败 (hq=%s)", hq)
         finally:
             state.camera_in_progress = False
     if os.path.exists(target_path):
@@ -146,8 +150,8 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_
                      "soil": p["soil"],
                      "pressure": p["pressure"],
                      "water": p["water"] if p["water"] > 0 else 0} for p in sorted_points]
-    except Exception as e:
-        print(f"History API Error: {e}")
+    except Exception:
+        logger.exception("查询历史数据失败 (type=%s node=%s)", hist_type, node_id)
         return []
 
 @router.post("/api/water")
@@ -186,7 +190,8 @@ async def update_config(req: Request, x_bff_to_pi_token: str = Header(None)):
         cfg = await req.json()
         config.save_config(cfg)
         return {"status": "success"}
-    except:
+    except ValueError as e:
+        logger.warning("配置更新请求体非法: %s", e)
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
 @router.post("/api/light")
@@ -207,7 +212,8 @@ def toggle_manual_light(x_bff_to_pi_token: str = Header(None)):
     state.manual_override_until = compute_next_boundary(now, on_time, off_time)
     
     state.light_status = "ON" if new_cmd == "a1" else "OFF"
-    print(f"[{now.strftime('%H:%M:%S')}] 🔧 手动切灯: {state.light_status}，覆盖至 {state.manual_override_until.strftime('%H:%M')}")
+    logger.info("🔧 手动切灯: %s，覆盖至 %s",
+                state.light_status, state.manual_override_until.strftime('%H:%M'))
     
     l_node = config.global_config["auto_light"]["node_id"]
     l_act = config.global_config["auto_light"]["actuator_id"]
@@ -225,8 +231,8 @@ def get_photo_list(x_bff_to_pi_token: str = Header(None)):
     try:
         rows = db.query_photos_desc()
         return [{"date": r[0], "size": r[1], "thumb_size": r[2], "timestamp": str(r[3]) if r[3] else ""} for r in rows]
-    except Exception as e:
-        print(f"Photo list API Error: {e}")
+    except Exception:
+        logger.exception("查询照片列表失败")
         return []
 
 @router.get("/api/photos/{date}")
@@ -235,7 +241,6 @@ def get_photo(date: str, thumb: bool = False, x_bff_to_pi_token: str = Header(No
         raise HTTPException(status_code=403, detail="Forbidden")
     
     # 验证日期格式
-    import re
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
     

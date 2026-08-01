@@ -1,7 +1,10 @@
+import logging
 import os
 import secrets
 import threading
 from hardware.manager import HardwareManager
+
+logger = logging.getLogger(__name__)
 
 # ==================== 统一路径与硬件锁配置 ====================
 DATA_DIR = "/home/hkra/dewy/data"
@@ -43,12 +46,12 @@ def _load_secret_token():
     fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(token)
-    print("=" * 68)
-    print("⚠️  未找到 PI_SECRET_TOKEN，已生成新密钥并写入:")
-    print(f"    {TOKEN_FILE}")
-    print(f"    {token}")
-    print("    请同步到 Cloudflare Worker: wrangler secret put PI_SECRET_TOKEN")
-    print("=" * 68)
+    logger.warning(
+        "未找到 PI_SECRET_TOKEN，已生成新密钥并写入 %s\n"
+        "    %s\n"
+        "    请同步到 Cloudflare Worker: wrangler secret put PI_SECRET_TOKEN",
+        TOKEN_FILE, token,
+    )
     return token
 
 

@@ -2,6 +2,8 @@ import subprocess
 import json
 import logging
 
+logger = logging.getLogger(__name__)
+
 class Driver:
     """
     通用本地脚本传感器驱动
@@ -36,8 +38,8 @@ class Driver:
                 if isinstance(data, dict):
                     return data
             else:
-                logging.error(f"Script sensor error: {result.stderr}")
+                logger.error(f"Script sensor error: {result.stderr}")
             return {}
         except Exception as e:
-            logging.error(f"Script sensor execution error: {e}")
+            logger.error(f"Script sensor execution error: {e}")
             return {}

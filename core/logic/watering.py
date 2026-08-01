@@ -1,10 +1,13 @@
 """浇水控制与土壤读数的离群值过滤。"""
 
+import logging
 from datetime import datetime
 
 import core.state as state
 import core.config as config
 import core.database as db
+
+logger = logging.getLogger(__name__)
 
 MIN_WATER_INTERVAL_HOURS = 12   # 两次自动浇水的最小间隔
 AUTO_WATER_HOUR = 6             # 每天检查自动浇水的时刻
@@ -37,6 +40,7 @@ def can_water_now(node_id):
         diff_hours = (datetime.utcnow() - last_utc).total_seconds() / 3600
         return diff_hours > MIN_WATER_INTERVAL_HOURS
     except Exception:
+        logger.exception("浇水间隔判定失败，本次不浇水")
         return False
 
 
@@ -44,14 +48,14 @@ def trigger_watering(node_id, soil_before, duration=None):
     """驱动水泵并记录浇水日志。手动浇水与自动浇水共用此入口。"""
     if duration is None: duration = config.global_config["auto_water"]["duration"]
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💦 开启水泵 (Node: {node_id}), 时长: {duration}s")
+    logger.info("💦 开启水泵 (Node: %s), 时长: %ss", node_id, duration)
     success = state.hardware_manager.trigger_actuator(node_id, PUMP_ACTUATOR_ID, duration=duration)
 
     if success:
         db.insert_watering(node_id, duration, soil_before)
         return True
     else:
-        print(f"❌ 浇水异常或未配置对应继电器")
+        logger.error("❌ 浇水失败：节点 %s 未配置 %s 继电器或硬件异常", node_id, PUMP_ACTUATOR_ID)
         return False
 
 

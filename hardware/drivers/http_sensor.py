@@ -1,6 +1,8 @@
 import requests
 import logging
 
+logger = logging.getLogger(__name__)
+
 class Driver:
     """
     通用 HTTP 传感器驱动
@@ -34,5 +36,5 @@ class Driver:
                 return data
             return {}
         except Exception as e:
-            logging.error(f"HTTP sensor error from {self.url}: {e}")
+            logger.error(f"HTTP sensor error from {self.url}: {e}")
             return {}

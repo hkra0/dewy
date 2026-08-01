@@ -1,10 +1,14 @@
 import json
+import logging
 import time
+
 import core.state as state
+
+logger = logging.getLogger(__name__)
 
 def on_mqtt_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
-        print("✅ 已成功连接到本地 MQTT Broker")
+        logger.info("✅ 已成功连接到本地 MQTT Broker")
         topics = state.hardware_manager.get_mqtt_topics()
         for t in topics:
             client.subscribe(t)
@@ -15,7 +19,7 @@ def on_mqtt_connect(client, userdata, flags, reason_code, properties):
                 if hasattr(actuator, "topic"):
                     client.publish(actuator.topic, json.dumps({"command": "q1"}))
     else:
-        print(f"❌ 连接失败，返回码: {reason_code}")
+        logger.error("❌ MQTT 连接失败，返回码: %s", reason_code)
 
 def on_mqtt_message(client, userdata, msg):
     try:
@@ -43,5 +47,8 @@ def on_mqtt_message(client, userdata, msg):
             state.mqtt_latest_data[node_id]["data"]["pressure"] = data.get("pressure")
             state.mqtt_latest_data[node_id]["updated"] = True
             
-    except Exception as e:
-        pass
+    except (UnicodeDecodeError, ValueError) as e:
+        # 节点发来非 JSON 报文：常见于固件升级期间，不致命但要能查
+        logger.warning("MQTT 报文解析失败 (topic=%s): %s", msg.topic, e)
+    except Exception:
+        logger.exception("MQTT 消息处理异常 (topic=%s)", msg.topic)

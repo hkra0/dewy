@@ -1,4 +1,7 @@
+import logging
 import smbus2
+
+logger = logging.getLogger(__name__)
 
 class INA219_UPS:
     def __init__(self, **kwargs):
@@ -14,7 +17,7 @@ class INA219_UPS:
             self.bus.write_i2c_block_data(self.address, 0x00, [0x39, 0x9F])
             self.bus.write_i2c_block_data(self.address, 0x05, [0x1A, 0x00])
         except Exception as e:
-            print(f"Warning: Failed to initialize INA219 on bus {self.bus_num}: {e}")
+            logger.error("INA219 初始化失败 (bus=%s addr=0x%02X): %s", self.bus_num, self.address, e)
             self.bus = None
 
     def read(self):
@@ -27,5 +30,6 @@ class INA219_UPS:
             if c_raw > 32767: c_raw -= 65536
             voltage = v_raw * 0.004
             return {"voltage": round(voltage, 2), "current": round(c_raw * 1.0, 1)}
-        except: 
+        except (OSError, IndexError) as e:
+            logger.warning("INA219 电压/电流读取失败 (bus=%s): %s", self.bus_num, e)
             return {"voltage": None, "current": None}

@@ -1,5 +1,6 @@
 """每日照片拍摄与磁盘不足时的对数稀疏化清理。"""
 
+import logging
 import math
 import os
 import subprocess
@@ -10,6 +11,8 @@ import core.state as state
 import core.config as config
 import core.database as db
 from core.logic.system import get_free_disk_gb
+
+logger = logging.getLogger(__name__)
 
 RECENT_KEEP_DAYS = 7        # 保护区：这段时间内的照片永不删除
 MIN_PHOTOS_TO_CLEAN = 30    # 总数不超过此值时不做任何清理
@@ -34,7 +37,7 @@ def daily_photo_capture():
     photo_path = os.path.join(state.PHOTO_DIR, filename)
     thumb_path = os.path.join(state.THUMB_DIR, filename)
 
-    print(f"[{now.strftime('%H:%M:%S')}] 📷 每日照片拍摄中...")
+    logger.info("📷 每日照片拍摄中...")
 
     try:
         # 临时开灯（如果灯未开且 MQTT 可用）
@@ -47,8 +50,9 @@ def daily_photo_capture():
             try:
                 state.hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=state.global_mqtt_client, duration=4)
                 time.sleep(0.6)
-            except Exception:
-                pass
+            except Exception as e:
+                # 补光失败不影响拍照，只是照片会偏暗
+                logger.warning("拍照前临时补光失败: %s", e)
 
         # 使用 rpicam-jpeg 拍摄 HQ 照片
         with state.camera_lock:
@@ -62,7 +66,7 @@ def daily_photo_capture():
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         if not os.path.exists(photo_path):
-            print(f"[{now.strftime('%H:%M:%S')}] ❌ 每日照片拍摄失败：文件未生成")
+            logger.error("❌ 每日照片拍摄失败：rpicam-jpeg 未生成 %s", photo_path)
             return
 
         file_size = os.path.getsize(photo_path)
@@ -76,20 +80,20 @@ def daily_photo_capture():
                 img.save(thumb_path, "JPEG", quality=70)
             thumb_size = os.path.getsize(thumb_path)
         except ImportError:
-            print(f"[{now.strftime('%H:%M:%S')}] ⚠️ Pillow 未安装，跳过缩略图生成")
+            logger.warning("⚠️ Pillow 未安装，跳过缩略图生成")
         except Exception as e:
-            print(f"[{now.strftime('%H:%M:%S')}] ⚠️ 缩略图生成失败: {e}")
+            logger.warning("⚠️ 缩略图生成失败: %s", e)
 
         # 写入数据库（并发重复插入由 DAL 静默忽略）
         db.insert_photo(today_str, filename, file_size, thumb_size)
 
-        print(f"[{now.strftime('%H:%M:%S')}] ✅ 每日照片已保存: {filename} ({file_size // 1024}KB, 缩略图 {thumb_size // 1024}KB)")
+        logger.info("✅ 每日照片已保存: %s (%dKB, 缩略图 %dKB)", filename, file_size // 1024, thumb_size // 1024)
 
         # 拍照完成后检查是否需要清理
         cleanup_old_photos()
 
-    except Exception as e:
-        print(f"[{now.strftime('%H:%M:%S')}] ❌ 每日照片拍摄异常: {e}")
+    except Exception:
+        logger.exception("❌ 每日照片拍摄异常")
 
 
 def _select_photos_to_delete(rows, today):
@@ -142,7 +146,7 @@ def cleanup_old_photos():
     if free_gb > limit_gb:
         return
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ 剩余磁盘空间 {free_gb:.1f}GB <= {limit_gb}GB，启动对数稀疏化清理...")
+    logger.warning("⚠️ 剩余磁盘空间 %.1fGB <= %sGB，启动对数稀疏化清理", free_gb, limit_gb)
 
     rows = db.query_photos_asc()
     if len(rows) <= MIN_PHOTOS_TO_CLEAN:
@@ -169,4 +173,4 @@ def cleanup_old_photos():
         if get_free_disk_gb() > limit_gb:
             break
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 清理完成，删除 {deleted_count} 张照片，剩余空间 {get_free_disk_gb():.1f}GB")
+    logger.info("✅ 清理完成，删除 %d 张照片，剩余空间 %.1fGB", deleted_count, get_free_disk_gb())

@@ -4,12 +4,14 @@
 恢复需连续 CONFIRM_THRESHOLD 次确认，避免电流抖动导致反复切换。
 """
 
+import logging
 import subprocess
 import time
-from datetime import datetime
 
 import core.state as state
 from core.logic.system import is_wifi_connected
+
+logger = logging.getLogger(__name__)
 
 POWER_SAVER_SCRIPT = "/home/hkra/dewy/power_saver.sh"
 
@@ -25,9 +27,9 @@ def local_sensor_updater():
 
     try:
         subprocess.run([POWER_SAVER_SCRIPT, "disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 系统启动，初始化电源模式为正常...")
-    except Exception as e:
-        print(f"初始化省电模式状态失败: {e}")
+        logger.info("🔄 系统启动，初始化电源模式为正常")
+    except OSError as e:
+        logger.error("初始化省电模式失败（脚本 %s 不可执行？）: %s", POWER_SAVER_SCRIPT, e)
 
     while True:
         try:
@@ -48,7 +50,7 @@ def local_sensor_updater():
                     if not state.power_save_mode:
                         if ups_discharge_start_time and (time.time() - ups_discharge_start_time) > DISCHARGE_CONFIRM_SEC:
                             if not is_wifi_connected():
-                                print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ UPS 长期放电 (电流: {current}mA) 且无网络，即将进入省电模式...")
+                                logger.warning("⚠️ UPS 长期放电 (电流: %smA) 且无网络，进入省电模式", current)
                                 state.power_save_mode = True
                                 power_save_exit_count = 0
                                 subprocess.run([POWER_SAVER_SCRIPT, "enable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -56,7 +58,8 @@ def local_sensor_updater():
                         if current > RECOVER_CURRENT_MA or is_wifi_connected():
                             power_save_exit_count += 1
                             if power_save_exit_count >= CONFIRM_THRESHOLD:
-                                print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔌 电源或网络恢复 (电流: {current}mA)，连续 {CONFIRM_THRESHOLD} 次确认，退出省电模式...")
+                                logger.info("🔌 电源或网络恢复 (电流: %smA)，连续 %d 次确认，退出省电模式",
+                                            current, CONFIRM_THRESHOLD)
                                 state.power_save_mode = False
                                 power_save_exit_count = 0
                                 ups_discharge_start_time = None
@@ -64,7 +67,9 @@ def local_sensor_updater():
                         else:
                             power_save_exit_count = 0
         except Exception:
-            pass
+            # 本循环每 2 秒一轮，I2C 偶发失败很常见；
+            # 用 debug 避免刷屏，排查时设 DEWY_LOG_LEVEL=DEBUG 即可看到
+            logger.debug("传感器轮询异常", exc_info=True)
 
         if state.power_save_mode:
             time.sleep(60.0)

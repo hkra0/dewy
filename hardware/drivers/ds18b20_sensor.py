@@ -11,6 +11,8 @@ import time
 import os
 import logging
 
+logger = logging.getLogger(__name__)
+
 class Driver:
     def __init__(self, config):
         self.device_id = config.get("device_id") # e.g., "28-00000xxxxxxx"
@@ -26,7 +28,7 @@ class Driver:
                 self.device_file = device_folder + '/w1_slave'
             except IndexError:
                 self.device_file = None
-                logging.error("No DS18B20 sensor found automatically. Make sure 1-Wire is enabled.")
+                logger.error("No DS18B20 sensor found automatically. Make sure 1-Wire is enabled.")
                 
     def _read_temp_raw(self):
         if not self.device_file or not os.path.exists(self.device_file):

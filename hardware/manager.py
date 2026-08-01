@@ -1,7 +1,10 @@
-import os
-import json
 import importlib
+import json
+import logging
+import os
 import threading
+
+logger = logging.getLogger(__name__)
 
 def load_config_file(data_dir):
     # Support multiple config formats, fallback to empty if none found.
@@ -11,7 +14,7 @@ def load_config_file(data_dir):
         for ext in ['toml', 'yaml', 'json']:
             path = os.path.join(d, f"hardware_config.{ext}")
             if os.path.exists(path):
-                print(f"Loading hardware config from: {path}")
+                logger.info("从 %s 加载硬件配置", path)
                 if ext == 'json':
                     with open(path, 'r') as f:
                         return json.load(f)
@@ -24,16 +27,16 @@ def load_config_file(data_dir):
                         with open(path, 'rb') as f:
                             return toml.load(f)
                     except ImportError:
-                        print("TOML parser not found (needs Python 3.11+ or tomli). Try JSON format instead.")
+                        logger.error("缺少 TOML 解析器（需 Python 3.11+ 或 pip install tomli），改用 JSON 格式")
                 elif ext == 'yaml':
                     try:
                         import yaml
                         with open(path, 'r') as f:
                             return yaml.safe_load(f)
                     except ImportError:
-                        print("PyYAML not found. Try JSON format instead.")
+                        logger.error("未安装 PyYAML（pip install PyYAML），改用 JSON 格式")
     
-    print("Warning: No hardware_config.[toml|yaml|json] found. Using empty config.")
+    logger.warning("未找到 hardware_config.[toml|yaml|json]，将以空配置启动（无任何传感器）")
     return {}
 
 class HardwareManager:
@@ -90,7 +93,7 @@ class HardwareManager:
                 module = importlib.import_module(module_name)
                 return getattr(module, class_name)
             except Exception as e:
-                print(f"Failed to load driver {driver_name}: {e}")
+                logger.error("驱动 %s 加载失败: %s", driver_name, e)
                 return None
         return None
 
@@ -104,7 +107,7 @@ class HardwareManager:
                         if res:
                             data.update(res)
                     except Exception as e:
-                        print(f"Sensor {s_id} read failed: {e}")
+                        logger.warning("传感器 %s (节点 %s) 读取失败: %s", s_id, node_id, e)
         return data
 
     def trigger_actuator(self, node_id, actuator_id, **kwargs):

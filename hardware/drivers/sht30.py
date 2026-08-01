@@ -1,5 +1,8 @@
+import logging
 import smbus2
 import time
+
+logger = logging.getLogger(__name__)
 
 class SHT30:
     def __init__(self, **kwargs):
@@ -14,7 +17,7 @@ class SHT30:
         try:
             self.bus = smbus2.SMBus(self.bus_num)
         except Exception as e:
-            print(f"Warning: Failed to initialize SHT30 on bus {self.bus_num}: {e}")
+            logger.error("SHT30 初始化失败 (bus=%s addr=0x%02X): %s", self.bus_num, self.address, e)
             self.bus = None
 
     def read(self, samples=7):
@@ -36,10 +39,11 @@ class SHT30:
                     rhs.append(max(0.0, min(100.0, h)))
                     break
                 except Exception:
+                    # 软复位后重试；复位本身失败也只能继续重试
                     try:
                         self.bus.write_i2c_block_data(self.address, 0x30, [0xA2])
-                    except:
-                        pass
+                    except OSError as e:
+                        logger.debug("SHT30 软复位失败: %s", e)
                     if attempt < 2:
                         time.sleep(0.2)
                         
