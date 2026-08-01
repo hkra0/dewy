@@ -1,4 +1,5 @@
 import os
+import secrets
 import threading
 from hardware.manager import HardwareManager
 
@@ -10,8 +11,7 @@ DB_FILE = f"{DATA_DIR}/plant_history.db"
 CONFIG_FILE = f"{DATA_DIR}/config.json"
 PHOTO_DIR = f"{DATA_DIR}/photos"
 THUMB_DIR = f"{DATA_DIR}/photos/thumbs"
-
-PI_SECRET_TOKEN = "hKra_Secure_Sensor_2026_Token"
+TOKEN_FILE = f"{DATA_DIR}/secret_token"
 
 camera_lock = threading.Lock()
 db_lock = threading.Lock()
@@ -19,6 +19,39 @@ db_lock = threading.Lock()
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PHOTO_DIR, exist_ok=True)
 os.makedirs(THUMB_DIR, exist_ok=True)
+
+
+def _load_secret_token():
+    """BFF(Worker) -> Pi 的共享密钥。切勿硬编码进代码库。
+
+    优先级：环境变量 PI_SECRET_TOKEN > {DATA_DIR}/secret_token 文件。
+    两者都没有时自动生成一个并落盘（权限 600），同时打印出来，
+    需手动同步到 Worker：wrangler secret put PI_SECRET_TOKEN
+    """
+    env_token = os.environ.get("PI_SECRET_TOKEN")
+    if env_token:
+        return env_token.strip()
+
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, "r") as f:
+            token = f.read().strip()
+        if token:
+            return token
+
+    token = secrets.token_urlsafe(32)
+    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(token)
+    print("=" * 68)
+    print("⚠️  未找到 PI_SECRET_TOKEN，已生成新密钥并写入:")
+    print(f"    {TOKEN_FILE}")
+    print(f"    {token}")
+    print("    请同步到 Cloudflare Worker: wrangler secret put PI_SECRET_TOKEN")
+    print("=" * 68)
+    return token
+
+
+PI_SECRET_TOKEN = _load_secret_token()
 
 # 初始化硬件抽象层
 hardware_manager = HardwareManager(DATA_DIR)

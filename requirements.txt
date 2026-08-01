@@ -1,0 +1,38 @@
+# dewy — 树莓派端（main.py / core / api / hardware）运行依赖
+# 安装： pip install -r requirements.txt
+#
+# 注：Cloudflare Worker 端（worker.js）不使用本文件，由 wrangler 管理。
+#     ESP32 固件（firmware/）依赖由 platformio.ini 管理。
+
+# ---- Web 服务 ----
+fastapi>=0.110
+uvicorn>=0.27
+pydantic>=2.0
+
+# ---- MQTT（与 ESP32 节点通信）----
+paho-mqtt>=2.0
+
+# ---- 硬件 I/O ----
+# I2C 总线：SHT30 / ADS1115 / INA219 / BH1750 / BME280 驱动共用
+smbus2>=0.4
+# GPIO 继电器（水泵）。仅树莓派可装，非 Pi 环境请注释掉此行
+RPi.GPIO>=0.7
+
+# ---- 图像处理 ----
+# 每日照片的缩略图生成（core/logic.py），缺失时会跳过缩略图但不影响拍照
+Pillow>=10.0
+
+# ---- 配置解析 ----
+# Python 3.11+ 内置 tomllib，无需安装；低版本才需要下面这行
+tomli>=2.0; python_version < "3.11"
+
+# ==================================================================
+# 以下为可选驱动依赖：仅在 hardware_config.toml 中启用了对应传感器
+# 时才需要安装（这些驱动均为惰性 import，未安装不影响启动）
+# ==================================================================
+# PyYAML>=6.0                          # 使用 hardware_config.yaml 而非 .toml 时
+# requests>=2.31                       # drivers/http_sensor.py
+# RPi.bme280>=0.2                      # drivers/bme280_sensor.py
+# Adafruit_DHT>=1.4                    # drivers/dht_sensor.py
+# adafruit-circuitpython-ahtx0>=1.0    # drivers/aht20_sensor.py（附带 blinka）
+# adafruit-blinka>=8.0                 # 同上，提供 board / busio
