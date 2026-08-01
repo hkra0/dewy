@@ -10,15 +10,16 @@ export default {
 
         const url = new URL(request.url);
         const clientKey = request.headers.get("X-Viewer-Key");
-        const requestedBy = request.headers.get("X-Requested-By");
 
         if (url.pathname.startsWith("/api/")) {
             if (!PI_BASE_URL) return new Response(JSON.stringify({ error: "Missing PI_BASE_URL config" }), { status: 500 });
 
             // Authorization
-            if (url.pathname === "/api/monitor" || url.pathname === "/api/history" || url.pathname === "/api/nodes") {
-                if (clientKey !== VIEWER_MAGIC_KEY && requestedBy !== "Robin-Web") return new Response("not found", { status: 404 });
-            } else if (url.pathname === "/api/image" || url.pathname === "/api/photos" || url.pathname.startsWith("/api/photos/")) {
+            // 所有只读端点一律要求 X-Viewer-Key。
+            // 注意：这里曾有 `|| X-Requested-By === "Robin-Web"` 的旁路，
+            // 但该头是写死在前端的非机密字符串，等同于无鉴权，已移除。
+            if (url.pathname === "/api/monitor" || url.pathname === "/api/history" || url.pathname === "/api/nodes"
+                || url.pathname === "/api/image" || url.pathname === "/api/photos" || url.pathname.startsWith("/api/photos/")) {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404 });
             } else if (url.pathname === "/api/water" || url.pathname === "/api/light" || url.pathname === "/api/config") {
                 if (url.pathname !== "/api/config" && request.method !== "POST") return new Response("method not allowed", { status: 405 });

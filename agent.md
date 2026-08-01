@@ -1,48 +1,246 @@
-# dewy - 植物自动化监控与浇水系统
+# dewy — 植物自动化监控与浇水系统
 
-本项目（dewy）是一个基于树莓派（Raspberry Pi Zero 2 WH）和边缘计算（Cloudflare Worker）构建的植物自动化监控和浇水系统。
+基于树莓派（Raspberry Pi Zero 2 WH）+ Cloudflare Workers 边缘代理的植物监控系统。
+约 5400 行代码，四层架构：ESP32 固件 → 树莓派后端 → 边缘代理 → 浏览器前端。
 
-## 🎯 系统架构设计
+---
 
-系统主要分为两部分：
-1. **树莓派端（设备层与本地后端）**：运行 `main.py`，负责读取传感器数据、控制水泵、拍摄植物图像、以及本地 SQLite 数据库存储。并使用 FastAPI 提供 HTTP 接口供云端代理访问。
-2. **边缘代理端（BFF与前端页面）**：运行 `worker.js`，部署于 Cloudflare Workers。充当云端 BFF（Backend For Frontend）代理树莓派的接口，并直接下发包含 HTML/CSS/JS 的单页面应用供用户查看数据和操作。
+## 一、架构总览
 
-## 📁 核心文件结构
+```
+┌─────────────┐   MQTT    ┌──────────────────┐  HTTPS   ┌────────────────┐  HTTPS  ┌─────────┐
+│ ESP32 节点  │ ────────▶ │  树莓派 (main.py) │ ◀─────── │ Cloudflare     │ ◀────── │ 浏览器  │
+│ firmware/   │           │  FastAPI + SQLite │          │ Worker (BFF)   │         │ 单页应用│
+└─────────────┘           └──────────────────┘          └────────────────┘         └─────────┘
+                            ▲ I2C / GPIO                   worker.js                app.js
+                            │                              纯代理 + 鉴权            index.html
+                       传感器 / 水泵 / 摄像头                                        style.css
+```
 
-- `main.py`: 树莓派后端核心程序（FastAPI 服务 + 后台定时记录与自动浇水逻辑）。
-- `worker.js`: Cloudflare Worker 脚本，实现边缘代理鉴权及提供带有 Chart.js 图表可视化的前端 Web 页面。
-- `test/`: 包含各种传感器和硬件测试脚本，如 `test_sensors.py`（测试传感器连通性）、`pump_stress_test.py`（水泵压力测试）等。
+- **树莓派**是唯一持有数据和硬件的一端，对外只暴露内网 `127.0.0.1:8000`，经隧道由 Worker 访问。
+- **Worker 不含业务逻辑**（仅 91 行），只做鉴权 + 转发 + 下发静态资源。改功能基本不需要动它。
+- **前端**由 Worker 下发，通过 Worker 反代调用树莓派 API。
 
-## 🔧 硬件支持与引脚分配
+---
 
-系统使用了多路传感器与外设，核心交互基于 I2C 协议（总线1）和 GPIO 控制：
-- **温湿度传感器 (SHT30)**：I2C 地址 `0x44`，测量环境温度与湿度。
-- **土壤湿度传感器 (通过 ADS1115 ADC)**：I2C 地址 `0x48`，采集模拟信号，包含 VCC 比例补偿算法防止电压波动导致读数不准。
-- **UPS 电源监控 (INA219)**：I2C 地址 `0x43`，读取电池电压（V）和实时电流（mA）。
-- **水泵控制模块**：连接至 BCM 针脚 `GPIO 4`。
-- **摄像头模块**：通过调用系统命令 `rpicam-jpeg` 进行普通和高清拍照。
+## 二、目录结构
 
-## 🚀 核心功能逻辑
+```
+main.py                  仅做装配：配置日志 → 建 FastAPI → 起后台线程 → 连 MQTT（49 行）
+core/
+  paths.py               所有路径由 __file__ 推导，零依赖、无副作用
+  logging_setup.py       日志配置，必须在其它 core 模块导入前调用
+  state.py               全局状态、硬件锁、密钥加载
+  config.py              用户配置（config.json）的读写与默认值合并
+  database.py            数据访问层（DAL）——全项目唯一允许出现 sqlite3 的地方
+  mqtt_handler.py        MQTT 连接与消息回调
+  logic/                 业务逻辑，按职责拆分
+    system.py            网络探测、CPU/内存/磁盘查询
+    power.py             UPS 放电监测与省电模式进出
+    light.py             补光灯定时、日出日落推算、手动覆盖
+    watering.py          浇水触发、间隔判定、土壤离群值过滤
+    photo.py             每日拍照、磁盘不足时的对数稀疏化清理
+    scheduler.py         后台主循环
+api/routers.py           全部 HTTP 接口（10 个端点）
+hardware/
+  manager.py             硬件抽象层：读配置 → 动态加载驱动 → 统一读写接口
+  drivers/               13 个驱动，每个实现 read() 或 trigger()
+worker.js                Cloudflare Worker：鉴权 + 反代 + 下发前端
+index.html / app.js / style.css   单页应用（app.js 1194 行，待拆分）
+firmware/plant_node/     ESP32 固件（PlatformIO / Arduino）
+scripts/migrate_db.py    历史库迁移（env_log → node_data）
+test/                    手动硬件调试脚本，不是自动化测试
+```
 
-### 1. 数据监控与记录
-后台线程 `background_logger` 每十分钟（约 600 秒周期）读取一次环境数据，存储到 `<项目根>/data/plant_history.db` 的 `node_data` 表中，并自带离群值过滤（异常检测清除）功能。数据目录由 `core/paths.py` 从 `__file__` 推导，可用环境变量 `DEWY_DATA_DIR` 覆盖。
+---
 
-### 2. 自动化与手动浇水
-- **自动浇水**：每天早上 6:00 进行检查，如果距离上次浇水已超过 12 小时且当前土壤湿度低于阈值（默认 `70.0%`），则触发水泵运行 1 秒，并记录到 `watering_log`。
-- **手动浇水**：通过边缘代理透传请求到 `/api/water` 接口，执行立即浇水。
+## 三、树莓派端
 
-### 3. 前端交互 (Viewer)
-由 `worker.js` 返回的单页面应用。包含魔法链接（Magic Link）鉴权机制。前端分为三大视图：
-- **Plant（植物状态）**：展示当前温湿度、土壤湿度及植物实时画面监控（支持点击获取高清大图）。
-- **System（系统状态）**：查看设备供电状态、CPU温度、内存和磁盘利用率。
-- **History（历史数据）**：使用 Chart.js 展示过去 24 小时、每日平均的环境趋势曲线图，以及过往浇水日志。
+### 分层约定（改代码前必读）
 
-## 🔐 鉴权与安全
-- **边缘到设备端（BFF to Pi）**：使用请求头 `X-Bff-To-Pi-Token` (`PI_SECRET_TOKEN`) 认证，保护本地 FastAPI。
-- **客户端到边缘端（Client to BFF）**：使用 URL 参数 `?key=` 设置本地存储的 Viewer Key 进行认证。浇水接口另外设有独立的 `x-water-key` 用于执行浇水等高危操作。
+| 层 | 可以做什么 | 禁止 |
+|---|---|---|
+| `api/routers.py` | 鉴权、参数校验、调用 logic/DAL、组装响应 | 直接 `import sqlite3` |
+| `core/logic/*` | 业务判断与硬件编排 | 直接 `import sqlite3`、写死路径 |
+| `core/database.py` | 所有 SQL | 业务判断 |
+| `hardware/*` | 与器件对话 | 依赖 core 里的任何东西 |
 
-## 🛠️ AI 代理维护注意事项
-- 修改树莓派硬件交互代码时（特别是 `I2C` 或 `GPIO`），请务必注意硬件资源锁（如 `sensor_lock`、`pump_lock`）的使用，防止并发冲突导致总线挂死。
-- ADS1115 的模拟采样加入了**中值平均滤波与基准电压动态比例补偿**以校准供电波动，修改其逻辑时需特别留意这套算法的完整性。
-- Worker 代理在更新时，请确保 `PI_TUNNEL_URL` 等常量与树莓派设备的真实公网/隧道暴露地址匹配。
+**数据库访问一律走 `core/database.py`。** 它提供上下文管理器：
+
+```python
+from core.database import get_conn
+
+with get_conn() as conn:          # 自动持锁 → 正常退出 commit → 异常 rollback → 必定 close
+    conn.execute("INSERT ...", params)
+```
+
+在此之上是 13 个语义化函数（`insert_node_data`、`query_24h_history`、`query_last_watering_time` …），
+另有 `query()` / `execute()` 两个通用辅助。新增查询时**在 database.py 里加函数**，不要在业务代码里拼 SQL。
+
+### 后台线程
+
+`main.py` 启动两个 daemon 线程：
+
+- **`local_sensor_updater`**（`logic/power.py`）— 每 2 秒读一次本地传感器写入内存；同时监测 UPS 电流。
+  连续放电超 120 秒且无网络 → 进省电模式（关 HDMI/LED、断 WiFi、下线 3 个 CPU 核）。
+  恢复需连续 3 次确认，防电流抖动导致反复切换。省电模式下轮询降到 60 秒。
+- **`background_logger`**（`logic/scheduler.py`）— 主循环，每轮：灯控 → 采样归档 → 自动浇水 → 每日照片。
+  正常 10 分钟一轮，省电模式 1 小时一轮，且**对齐到整点/整十分**（便于历史图表按固定间隔聚合）。
+
+### 关键业务规则
+
+- **自动浇水**：每天 6:00 检查，距上次浇水 > 12 小时且土壤湿度 < 阈值（默认 50%）时启泵，默认 0.5 秒。
+  手动浇水经 `/api/water`，时长被钳制在 0.1–1.0 秒。
+- **补光灯**：`fixed` 固定时段，或按经纬度实时推算日出日落（支持偏移量，经纬度缺失时用 IP 定位）。
+  手动切灯置 `manual_override`，到下一个开/关边界自动失效。
+- **每日照片**：到点拍一张 2592×1944 HQ 图 + 320×240 缩略图。磁盘剩余空间低于阈值（默认 20GB）时，
+  按 `min_gap(d) = max(1, floor(3·ln(d+1)))` 稀疏化历史照片——近期密集、远期稀疏，最近 7 天永不删除。
+
+---
+
+## 四、硬件抽象层（扩展性最好的部分）
+
+`hardware_config.toml`（支持 TOML/YAML/JSON）描述节点、传感器、执行器，
+`HardwareManager` 读配置后用 `importlib` 动态加载驱动类。
+
+```toml
+[nodes.main]
+type = "local"                    # local: 直连 I2C/GPIO
+
+[nodes.main.sensors.sht30]
+driver = "SHT30"                  # 对应 driver_map 里的键
+bus = 1
+address = "0x44"
+
+[nodes.main.actuators.pump]
+driver = "GPIO_Relay"
+pin = 4
+active_low = true
+
+[nodes.sub1]
+type = "mqtt_node"                # mqtt_node: 通过 MQTT 收数据
+topic = "sensor/esp32/env_data"
+```
+
+### 新增一个传感器
+
+1. 在 `hardware/drivers/` 写一个类，实现 `read()` 返回 dict（执行器实现 `trigger(**kwargs)` 返回 bool）
+2. 在 `hardware/manager.py` 的 `driver_map` 里注册一行
+3. 在 `hardware_config.toml` 里声明
+
+**不需要改动 core 或 api 的任何代码。** 已注册：`SHT30`、`ADS1115_Soil`、`INA219_UPS`、`GPIO_Relay`、`MQTT_Relay`。
+`drivers/` 下另有 8 个未注册的驱动（DHT、BME280、BH1750、AHT20、DS18B20、HTTP、Script、Dummy），
+它们都是惰性 import，依赖未安装也不影响启动——要用时在 `driver_map` 注册即可。
+
+### 多节点
+
+`node_id` 贯穿数据库、API、前端。加一株植物只需在配置里加一个节点，前端会自动出现设备切换。
+
+---
+
+## 五、边缘代理与前端
+
+`worker.js` 通过 `wrangler.toml` 的 `[[rules]]` 把 `index.html` / `style.css` / `app.js`
+作为文本内联进 Worker，按路径分发。API 请求转发到 `PI_BASE_URL`，并注入 `X-BFF-To-Pi-Token`。
+
+前端四个视图：`environment`（实时数据 + 摄像头）、`system`（供电/CPU/内存/磁盘）、
+`history`（Chart.js 曲线 + 浇水日志）、`settings`（自动浇水/补光/拍照配置）。
+另有照片时间轴播放器与 GIF 导出（gifshot 从 CDN 加载，有三个备用源）。中英双语，按 `navigator.language` 自动选择。
+
+---
+
+## 六、配置与环境变量
+
+### 树莓派端
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `PI_SECRET_TOKEN` | 自动生成 | BFF→Pi 共享密钥。未设时自动生成并写入 `data/secret_token`（权限 600），启动日志会打印，需同步到 Worker |
+| `DEWY_DATA_DIR` | `<项目根>/data` | 数据目录（数据库、照片、配置、密钥） |
+| `DEWY_POWER_SAVER` | `<项目根>/power_saver.sh` | 省电脚本路径 |
+| `DEWY_LOG_LEVEL` | `INFO` | 日志级别 |
+| `DEWY_LOG_FILE` | 未设 | 设置后额外落盘，按 5MB × 3 份轮转 |
+
+用户可调配置存于 `data/config.json`（`auto_water` / `auto_light` / `daily_photo`），
+经 `/api/config` 读写，缺失字段会与 `DEFAULT_CONFIG` 自动合并。
+
+### Worker 端
+
+`PI_BASE_URL` 为变量；`PI_SECRET_TOKEN`、`VIEWER_MAGIC_KEY`、`WATER_MAGIC_KEY` 用
+`wrangler secret put <NAME>` 设置。
+
+---
+
+## 七、鉴权
+
+三道关卡，逐级收紧：
+
+1. **Client → Worker（只读）**：`/api/monitor`、`/api/history`、`/api/nodes`、
+   `/api/image`、`/api/photos*` 一律要求请求头 `X-Viewer-Key` 匹配 `VIEWER_MAGIC_KEY`，
+   不匹配返回 404（不暴露端点存在）。**无任何旁路。**
+2. **Client → Worker（高危操作）**：`/api/water`、`/api/light`、`/api/config` 要求
+   请求头 `x-water-key` 匹配 `WATER_MAGIC_KEY`，不匹配返回 403。
+   注意 viewer key 不能用于这三个端点，两把钥匙互相独立。
+3. **Worker → Pi**：请求头 `X-BFF-To-Pi-Token` 匹配 `PI_SECRET_TOKEN`，10 个端点逐一校验，无旁路。
+
+前端首次通过魔法链接 `?key=` 把 viewer key 写入 localStorage；浇水密钥单独存 `robin_water_key`。
+
+> 历史注记：`/api/monitor`、`/api/history`、`/api/nodes` 曾接受
+> `X-Requested-By: Robin-Web` 作为 `X-Viewer-Key` 的替代凭证。该头是写死在前端的
+> 非机密字符串，等同于无鉴权，已于 2026-08 移除。新增只读端点时**不要**再引入类似的
+> "标识头即凭证"设计。
+
+---
+
+## 八、数据库
+
+SQLite（WAL 模式），三张表：
+
+- **`node_data`** — 环境采样。`is_anomaly=1` 的行会被所有统计与图表排除。
+- **`watering_log`** — 浇水记录（时长、浇水前土壤湿度）。
+- **`photo_log`** — 每日照片索引，`date` 唯一。
+
+时间戳统一用 SQLite 的 `CURRENT_TIMESTAMP`（**UTC**），查询时用 `datetime(timestamp, 'localtime')` 转本地时区。
+
+---
+
+## 九、AI 代理维护注意事项
+
+### 必须遵守
+
+- **不要在 `core/logic/*` 或 `api/routers.py` 里 `import sqlite3`**——所有 SQL 归 `core/database.py`。
+  历史上这里出过连接泄漏（持锁时提前 `return`），DAL 的上下文管理器就是为杜绝此类问题而存在。
+- **不要写死路径**。一律从 `core/paths.py` 取，它由 `__file__` 推导，换用户名/换部署目录都不受影响。
+- **`main.py` 里 `setup_logging()` 必须在任何 `core.*` 导入之前执行**（故意不放在 import 块顶部，
+  已加 `# noqa: E402`）。否则 `core.state` 的密钥告警和 `hardware.manager` 的配置日志会丢失。
+- **用 logging 不用 print**。服务代码全部已改造完毕；`scripts/` 和 `test/` 下的独立脚本除外。
+- **不要写裸 `except:`**——它会连 `KeyboardInterrupt` 一起吞掉，导致 Ctrl-C 停不掉服务。
+
+### 并发与硬件锁
+
+三把锁，用途不同，**不要混用或嵌套错顺序**：
+
+- `state.db_lock`（**RLock**，可重入）— 由 `database.get_conn()` 自动持有，业务代码不要手动获取。
+- `state.camera_lock` — `rpicam-jpeg` 同一时刻只能有一个实例。
+- `HardwareManager.sensor_lock` — I2C 总线互斥，并发访问会导致总线挂死。
+
+### 容易被"误修"的既有行为
+
+- **ADS1115 的截尾均值滤波 + 基准电压比例补偿**（`drivers/ads1115.py`）是为抵消供电波动而设计的：
+  多次采样后排序、截去两端极值再取平均，然后按 `VCC_BASE / vcc_raw` 做比例校正。
+  改动前务必理解整套算法，不要简化。SHT30 同样对多次采样排序取中位。
+- **`apply_light_schedule` 每轮都重发 MQTT 指令**，而非仅在状态变化时发。这是有意的——
+  ESP32 掉电重启后靠下一轮指令自动恢复。
+- **手动覆盖到期的那一轮会连发两次灯控指令**（先清除 override 发一次，紧接着定时分支再发一次）。
+  指令幂等、无实际影响，属已知行为。
+- **`cleanup_old_photos` 里的 `MIN_PHOTOS_TO_CLEAN = 30` 是触发门槛，不是删除下限**。
+  一旦触发会沿曲线一直删到磁盘够用，实测 120 张可删到 18 张。
+- **`can_water_now` 用 `datetime.utcnow()` 与库里的 UTC 时间戳比较**，二者时区一致。
+  不要改成本地时间，会导致间隔判断错 8 小时。（注：`utcnow()` 在 Python 3.12+ 已废弃，
+  未来迁移到 `datetime.now(timezone.utc)` 时两侧要一起改。）
+
+### 已知待办
+
+- `app.js` 1194 行单文件、约 20 个全局变量、无构建步骤，是当前最该拆分的部分。
+- `test/` 目录名不副实，里面是手动硬件调试脚本而非自动化测试。
+  `compute_next_boundary`、`_select_photos_to_delete`、土壤离群值过滤这三处是纯函数，最适合先补测试。
