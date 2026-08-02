@@ -14,7 +14,7 @@ class Driver:
     配置示例 (Config Example):
     [nodes.main.sensors.my_http_sensor]
     driver = "http_sensor"
-    url = "http://192.16.1.100/data"
+    url = "http://192.168.1.100/data"
     timeout = 3
     """
     def __init__(self, config):

@@ -55,7 +55,7 @@ def get_monitor_data():
         "nodes": nodes_data,
         "light_status": state.light_status,
         "system_health": get_system_stats(),
-        "system": {"device": "Robin (Zero 2 WH)", "status": "Healthy"}
+        "system": {"device": "Raspberry Pi Zero 2 WH", "status": "Healthy"}
     }
 
 @router.get("/api/image")

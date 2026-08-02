@@ -23,7 +23,7 @@ MQTT_HOST = "127.0.0.1"
 MQTT_PORT = 1883
 MQTT_KEEPALIVE = 60
 
-app = FastAPI(title="Robin Plant Monitor BFF")
+app = FastAPI(title="dewy BFF")
 app.include_router(router)
 
 @app.on_event("startup")
