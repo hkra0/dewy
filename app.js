@@ -21,7 +21,7 @@ import {
 import { triggerWatering, toggleLight } from './js/dashboard.js';
 import { fetchHDImage, closeHD, initModalDismiss } from './js/camera.js';
 import { initKeyboardActivation } from './js/ui.js';
-import { saveConfig, toggleLightMode } from './js/settings.js';
+import { saveConfig, toggleLightMode, retakeTodayPhoto } from './js/settings.js';
 import {
     toggleTimelinePlay,
     seekTimeline,
@@ -38,6 +38,7 @@ Object.assign(window, {
     switchHistType,
     toggleLightMode,
     saveConfig,
+    retakeTodayPhoto,
     triggerWatering,
     toggleLight,          // 由 dashboard.js 生成的卡片 HTML 内联调用
     fetchAllData,

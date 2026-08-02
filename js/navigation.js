@@ -67,7 +67,7 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     const caps = nodeCaps(dev);
     const hasSystem = nodeInfo.type === 'local';
     const hasPump = caps.pump;
-    const hasSettings = (caps.pump || caps.light) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light || caps.camera) && !!localStorage.getItem(WATER_KEY);
 
     const hasKey = !!localStorage.getItem(STORAGE_KEY);
     const hasCamera = caps.camera;
@@ -83,6 +83,16 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
 
     if (hasKey && hasCamera) document.getElementById('hist-photos').classList.remove('hidden');
     else document.getElementById('hist-photos').classList.add('hidden');
+
+    // 没有相机就没有拍照设置可言，"重新拍摄"点了也必然失败
+    if (hasCamera) document.getElementById('cfg-photo-card').classList.remove('hidden');
+    else document.getElementById('cfg-photo-card').classList.add('hidden');
+
+    // 补光开关要相机和灯**同时**在场：只有灯没相机时这个开关无从生效，
+    // 只有相机没灯时它切了也没有灯可点。隐藏不影响保存——设置页提交的是
+    // fetchConfig 填进来的原值，看不见的字段原样回传，不会被清成 false。
+    if (hasCamera && caps.light) document.getElementById('cfg-photo-fill-light-row').classList.remove('hidden');
+    else document.getElementById('cfg-photo-fill-light-row').classList.add('hidden');
 
     if ((state.currentTab === 'system' && !hasSystem) || (state.currentTab === 'settings' && !hasSettings)) {
         switchTab('environment', false, true);
@@ -103,7 +113,7 @@ export function switchTab(tabName, pushState = true, skipFetch = false) {
     const nodeInfo = state.availableNodes[state.currentDevice] || {};
     const caps = nodeCaps();
     const hasSystem = nodeInfo.type === 'local';
-    const hasSettings = (caps.pump || caps.light) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light || caps.camera) && !!localStorage.getItem(WATER_KEY);
 
     if (tabName === 'system' && !hasSystem) tabName = 'environment';
     if (tabName === 'settings' && !hasSettings) tabName = 'environment';

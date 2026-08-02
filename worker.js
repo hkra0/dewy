@@ -140,7 +140,11 @@ export default {
                 || url.pathname === "/api/metrics"
                 || url.pathname === "/api/image" || url.pathname === "/api/photos" || url.pathname.startsWith("/api/photos/")) {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
-            } else if (url.pathname === "/api/water" || url.pathname === "/api/light" || url.pathname === "/api/config") {
+            } else if (url.pathname === "/api/water" || url.pathname === "/api/light" || url.pathname === "/api/config"
+                || url.pathname === "/api/photo/retake") {
+                // 重拍走 water key：它会驱动相机与补光灯，属于写操作。
+                // 注意路径不在 /api/photos/ 前缀下，否则会先被上面那条 viewer key
+                // 分支接走，变成只读鉴权。
                 if (url.pathname !== "/api/config" && request.method !== "POST") return new Response("method not allowed", { status: 405, headers: BASE_SECURITY_HEADERS });
                 const clientWaterKey = request.headers.get("x-water-key");
                 if (clientWaterKey !== WATER_MAGIC_KEY) {

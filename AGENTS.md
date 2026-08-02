@@ -44,7 +44,7 @@ core/
     watering.py          浇水触发、间隔判定、土壤离群值过滤
     photo.py             每日拍照、磁盘不足时的对数稀疏化清理
     scheduler.py         后台主循环
-api/routers.py           全部 HTTP 接口（10 个端点）
+api/routers.py           全部 HTTP 接口（11 个端点）
 hardware/
   manager.py             硬件抽象层：读配置 → 动态加载驱动 → 统一读写接口
   drivers/               13 个驱动，每个实现 read() 或 trigger()
@@ -152,8 +152,18 @@ Python 侧的续期**只写在"确认仍需省电"的那个分支里**（`logic/
   手动浇水经 `/api/water`，时长被钳制在 0.1–1.0 秒。
 - **补光灯**：`fixed` 固定时段，或按经纬度实时推算日出日落（支持偏移量，经纬度缺失时用 IP 定位）。
   手动切灯置 `manual_override`，到下一个开/关边界自动失效。
-- **每日照片**：到点拍一张 HQ 图（默认 2592×1944）+ 320×240 缩略图。磁盘剩余空间低于阈值（默认 20GB）时，
-  按 `min_gap(d) = max(1, floor(3·ln(d+1)))` 稀疏化历史照片——近期密集、远期稀疏，最近 7 天永不删除。
+- **每日照片**：到点（`daily_photo.hour`，按整点判断）拍一张 HQ 图（默认 2592×1944）+ 320×240 缩略图。
+  磁盘剩余空间低于阈值（默认 20GB）时，按 `min_gap(d) = max(1, floor(3·ln(d+1)))` 稀疏化历史照片——
+  近期密集、远期稀疏，最近 7 天永不删除。
+- **拍照补光**：**所有**拍摄路径（实时预览、高清抓拍、每日照片、手动重拍）在拍之前都点亮补光灯几秒，
+  统一走 `light.fill_light_for_capture(duration)`（灯已亮 / 无 MQTT 时跳过，失败只记警告——照片偏暗好过拍不成）。
+  由 `camera.fill_light` 控制，默认开；关掉它的场景是灯离镜头太近导致过曝，或灯与相机不在同一株植物上。
+  **它是拍照的全局设置，不隶属于每日照片**——放回 `daily_photo` 段会让人以为只管定时那一张。
+  也**不要在调用方各写一份这段逻辑**：忽略回报的时间窗（`ignore_light_feedback_until`）曾经在两处写成不同的值。
+- **重拍当日照片**：`POST /api/photo/retake`，设置页的手动入口。不带 `force` 时当天已有照片直接回 409，
+  由前端提示覆盖并要求三秒内二次点击，第二次带 `force=true` 才真的覆盖。
+  路径**不能**改成 `/api/photos/retake`——Worker 里 `/api/photos/` 整个前缀归 viewer key 管，
+  落进去等于把一个驱动硬件的写操作降级成只读鉴权。
 
 ---
 
@@ -222,6 +232,10 @@ MQTT 回报统一走 `actuator.parse_feedback(information)`。
 
 `/api/nodes` 除节点信息外还返回 `capabilities: {camera, pump, light}`，
 前端一律用 `state.js` 的 `nodeCaps()` 读它来决定显示哪些卡片与页签。
+显隐统一在 `navigation.js` 的 `switchDevice` 里做（切设备也要重算），
+设置页的"拍照"卡看 `camera`，卡里的"拍照时开启补光灯"那一行看 `camera && light`——
+只有灯没相机时这个开关无从生效，只有相机没灯时它切了也没有灯可点。
+隐藏的输入框不影响保存：`fetchConfig` 已经把服务端的值填了进去，提交时原样回传。
 **不要回到前端翻原始配置的老做法**（`'pump' in nodeInfo.actuators` 之类）：
 水泵/灯的执行器 id 可配，相机的声明形式也变过，这些规则散在五个前端模块里
 各写一份，改一次配置就要同步五处，漏一处就是"接了硬件但界面上没有"。
@@ -284,7 +298,7 @@ MQTT 回报统一走 `actuator.parse_feedback(information)`。
    新增端点时把它归到哪把钥匙下想清楚——这是 Worker 侧鉴权分支的镜像。
 
 前端四个视图：`environment`（实时数据 + 摄像头）、`system`（供电/CPU/内存/磁盘）、
-`history`（Chart.js 曲线 + 浇水日志）、`settings`（自动浇水/补光/拍照配置）。
+`history`（Chart.js 曲线 + 浇水日志）、`settings`（自动浇水/补光灯/拍照配置）。
 另有照片时间轴播放器与 GIF 导出。
 
 中英双语：默认按 `navigator.language` 选择，覆盖走链接参数 `?lang=zh` / `#lang=zh`，
@@ -376,8 +390,13 @@ API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头�
 | `DEWY_LOG_FILE` | 未设 | 设置后额外落盘，按 5MB × 3 份轮转 |
 | `DEWY_UPS_SAMPLE_SEC` | `10` | UPS 电流的快档采样间隔（秒）。必须显著小于 `DISCHARGE_CONFIRM_SEC`(120) |
 
-用户可调配置存于 `data/config.json`（`auto_water` / `auto_light` / `daily_photo`），
-经 `/api/config` 读写，缺失字段会与 `DEFAULT_CONFIG` 自动合并。
+用户可调配置存于 `data/config.json`（`auto_water` / `auto_light` / `camera` / `daily_photo`），
+经 `/api/config` 读写，缺失字段会与 `DEFAULT_CONFIG` 自动合并（`config.merge_defaults`）。
+
+**合并在读盘与写入两条路上都要跑。** 设置页提交的是它自己渲染的那几段，
+没有 UI 的段（以及新版本刚加的字段）根本不会出现在请求体里；`save_config` 不补默认值的话，
+一次保存就能让内存里的 `global_config` 少掉整个 `daily_photo` 段，后台循环下一轮直接 KeyError，
+而且要重启服务才能恢复。
 
 ### Worker 端
 
@@ -393,9 +412,9 @@ API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头�
 1. **Client → Worker（只读）**：`/api/monitor`、`/api/history`、`/api/metrics`、`/api/nodes`、
    `/api/image`、`/api/photos*` 一律要求请求头 `X-Viewer-Key` 匹配 `VIEWER_MAGIC_KEY`，
    不匹配返回 404（不暴露端点存在）。**无任何旁路。**
-2. **Client → Worker（高危操作）**：`/api/water`、`/api/light`、`/api/config` 要求
-   请求头 `x-water-key` 匹配 `WATER_MAGIC_KEY`，不匹配返回 403。
-   注意 viewer key 不能用于这三个端点，两把钥匙互相独立。
+2. **Client → Worker（高危操作）**：`/api/water`、`/api/light`、`/api/config`、`/api/photo/retake`
+   要求请求头 `x-water-key` 匹配 `WATER_MAGIC_KEY`，不匹配返回 403。
+   注意 viewer key 不能用于这四个端点，两把钥匙互相独立。
 3. **Worker → Pi**：请求头 `X-BFF-To-Pi-Token` 匹配 `PI_SECRET_TOKEN`。校验挂在
    `APIRouter(dependencies=[Depends(verify_pi_token)])` 上，**对全部端点默认生效**——
    新增端点自动受保护，不会因为忘了粘贴校验代码而默默敞开。要放开某个端点必须显式声明。

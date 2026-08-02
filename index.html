@@ -238,6 +238,36 @@
                 </div>
             </div>
 
+            <!-- 拍照。补光是所有拍摄路径（实时预览 / 高清抓拍 / 每日照片）共用的
+                 全局设置，每日照片只是其中一种拍摄，所以同属这一张卡。 -->
+            <div class="card full-width form-card" id="cfg-photo-card">
+                <div class="form-card-head">
+                    <span data-i18n="photo_capture">Photo Capture</span>
+                </div>
+                <div class="form-body">
+                    <div class="form-row" id="cfg-photo-fill-light-row">
+                        <label for="cfg-photo-fill-light" data-i18n="photo_fill_light">Fill Light While
+                            Capturing</label>
+                        <label class="switch"><input type="checkbox" id="cfg-photo-fill-light"
+                                aria-label="fill light while capturing"><span class="slider"></span></label>
+                    </div>
+                    <div class="form-row">
+                        <label for="cfg-photo-enabled" data-i18n="daily_photo">Daily Photo</label>
+                        <label class="switch"><input type="checkbox" id="cfg-photo-enabled"
+                                aria-label="daily photo"><span class="slider"></span></label>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-row">
+                            <label for="cfg-photo-hour" data-i18n="photo_hour">Capture Hour</label>
+                            <input type="number" id="cfg-photo-hour" class="form-input form-input--sm" min="0" max="23"
+                                step="1">
+                        </div>
+                        <button class="form-action-btn" id="retake-photo-btn" onclick="retakeTodayPhoto()"
+                            data-i18n="retake_photo">Retake Today's Photo</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="card full-width form-card--flush">
                 <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfig()"
                     data-i18n="save_cfg">Save Configuration</button>

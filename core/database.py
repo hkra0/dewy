@@ -325,6 +325,26 @@ def insert_photo(date_str, filename, file_size, thumb_size):
         pass
 
 
+def upsert_photo(date_str, filename, file_size, thumb_size):
+    """写入照片记录，当天已有记录时覆盖（重新拍摄用）。
+
+    timestamp 一并刷新：前端拿 `timestamp_size_thumbSize` 当版本号来失效
+    缩略图缓存（timeline.js 的 getPhotoVersion），不更新它的话重拍出一张
+    体积恰好相同的照片就会继续显示旧缩略图。
+    """
+    execute(
+        """
+        INSERT INTO photo_log (date, filename, file_size, thumb_size) VALUES (?, ?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            filename = excluded.filename,
+            file_size = excluded.file_size,
+            thumb_size = excluded.thumb_size,
+            timestamp = CURRENT_TIMESTAMP
+        """,
+        (date_str, filename, file_size, thumb_size),
+    )
+
+
 def query_photos_desc():
     """照片列表，供 /api/photos 使用。"""
     return query("SELECT date, file_size, thumb_size, timestamp FROM photo_log ORDER BY date DESC")

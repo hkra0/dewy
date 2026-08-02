@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -9,22 +10,39 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = {
     "auto_water": {"enabled": True, "duration": 0.5, "threshold": 50.0, "node_id": "main", "actuator_id": "pump"},
     "auto_light": {"enabled": True, "mode": "fixed", "on_time": "07:30", "off_time": "21:30", "sun_on_offset": 0, "sun_off_offset": 0, "lat": "", "lng": "", "node_id": "main", "actuator_id": "light"},
+    # 拍照的通用设置。补光放这里而不是 daily_photo 里：实时预览、高清抓拍、
+    # 每日照片走的是同一个 fill_light_for_capture()，它对三条路径一起生效，
+    # 挂在 daily_photo 下会让人以为只管定时那一张。
+    "camera": {"fill_light": True},
     "daily_photo": {"enabled": True, "hour": 12, "disk_limit_free_gb": 20}
 }
-global_config = DEFAULT_CONFIG.copy()
+# deepcopy 而非 copy：浅拷贝下 global_config["auto_light"] 就是 DEFAULT_CONFIG
+# 里那个 dict，IP 定位回写 lat/lng 会连默认值一起改掉。
+global_config = copy.deepcopy(DEFAULT_CONFIG)
+
+def merge_defaults(cfg):
+    """把 DEFAULT_CONFIG 里缺失的键补进 cfg（就地修改并返回）。
+
+    读盘与写入都要走一遍：**前端只提交它自己渲染的那几段**，
+    没有 UI 的段（以及新版本刚加的字段）不会出现在请求体里。
+    不补的话一次保存就能让 global_config 少掉整个 daily_photo 段，
+    后台循环下一轮直接 KeyError——而且要重启才能恢复。
+    """
+    for k, v in DEFAULT_CONFIG.items():
+        if k not in cfg:
+            cfg[k] = copy.deepcopy(v)
+        elif isinstance(v, dict) and isinstance(cfg[k], dict):
+            for subk, subv in v.items():
+                if subk not in cfg[k]: cfg[k][subk] = subv
+    return cfg
+
 
 def load_config():
     global global_config
     if os.path.exists(state.CONFIG_FILE):
         try:
             with open(state.CONFIG_FILE, "r") as f:
-                loaded = json.load(f)
-                for k, v in DEFAULT_CONFIG.items():
-                    if k not in loaded: loaded[k] = v
-                    elif isinstance(v, dict):
-                        for subk, subv in v.items():
-                            if subk not in loaded[k]: loaded[k][subk] = subv
-                global_config = loaded
+                global_config = merge_defaults(json.load(f))
         except (OSError, ValueError) as e:
             # 配置文件损坏或不可读：保留内存里的默认值继续跑，不要让服务起不来
             logger.error("配置文件 %s 读取失败，沿用默认配置: %s", state.CONFIG_FILE, e)
@@ -33,7 +51,7 @@ def load_config():
 
 def save_config(cfg):
     global global_config
-    global_config = cfg
+    global_config = merge_defaults(cfg)
     try:
         with open(state.CONFIG_FILE, "w") as f: json.dump(cfg, f, indent=4)
     except (OSError, TypeError) as e:

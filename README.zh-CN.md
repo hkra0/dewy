@@ -63,7 +63,7 @@ python main.py                                          # 监听 127.0.0.1:8000
 
 首次启动会自动生成共享密钥 `PI_SECRET_TOKEN`，写入 `data/secret_token`（权限 600）并打印到启动日志——Worker 端需要用到它。
 
-用户可调配置（自动浇水 / 补光 / 每日拍照）存于 `data/config.json`，可在前端设置页修改。
+用户可调配置（自动浇水 / 补光灯 / 拍照）存于 `data/config.json`，可在前端设置页修改。拍照一组里，「拍照时开启补光灯」对实时预览、高清抓拍与每日照片一并生效；每日照片是其中一种拍摄，可单独开关、设定时刻，并手动重拍当日照片（覆盖前需二次确认）。
 
 ### 2. Cloudflare Worker（边缘代理 + 前端托管）
 
@@ -88,7 +88,7 @@ pio run -t upload     # 默认环境：esp32s3mini（lolin_s3_mini）
 三道关卡，逐级收紧：
 
 1. **只读端点**（`/api/monitor`、`/api/history`、`/api/metrics`、`/api/nodes`、`/api/image`、`/api/photos*`）：要求请求头 `X-Viewer-Key` 匹配 `VIEWER_MAGIC_KEY`，不匹配一律返回 404，不暴露端点存在。
-2. **高危操作**（`/api/water`、`/api/light`、`/api/config`）：要求 `x-water-key` 匹配 `WATER_MAGIC_KEY`。两把钥匙互相独立。
+2. **高危操作**（`/api/water`、`/api/light`、`/api/config`、`/api/photo/retake`）：要求 `x-water-key` 匹配 `WATER_MAGIC_KEY`。两把钥匙互相独立。
 3. **Worker → 树莓派**：所有端点要求 `X-BFF-To-Pi-Token` 匹配 `PI_SECRET_TOKEN`，挂在路由级依赖上，新增端点默认自动受保护。
 
 分享访问请用**片段魔法链接**——fragment 不随请求上行，密钥不会进入边缘访问日志，也不会泄漏到第三方 Referer：

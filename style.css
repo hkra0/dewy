@@ -331,6 +331,38 @@ body {
     padding: 0;
 }
 
+/* 卡片内的次要操作按钮。比 .action-btn 轻：它不是本页的主操作，
+   主操作是底部那个"保存配置"，两个同样醒目的绿色按钮会互相抢。 */
+.form-action-btn {
+    margin-top: 5px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface-color);
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.form-action-btn:hover:not(:disabled) {
+    border-color: var(--border-hover);
+}
+
+.form-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* 等待二次确认的三秒窗口：必须一眼看出这一下点下去会覆盖已有照片 */
+.form-action-btn.confirming {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: var(--toast-text);
+}
+
 /* ========== 头部与设备选择 ========== */
 .header {
     text-align: center;

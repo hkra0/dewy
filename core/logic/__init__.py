@@ -19,6 +19,7 @@ from core.logic.light import (
     get_effective_light_times,
     apply_light_schedule,
     set_light,
+    fill_light_for_capture,
 )
 from core.logic.watering import (
     clean_soil_anomalies,
@@ -33,6 +34,7 @@ __all__ = [
     "is_wifi_connected", "get_system_stats", "get_free_disk_gb",
     "local_sensor_updater",
     "compute_next_boundary", "fetch_ip_location", "get_effective_light_times", "apply_light_schedule", "set_light",
+    "fill_light_for_capture",
     "clean_soil_anomalies", "can_water_now", "trigger_watering", "check_auto_watering",
     "daily_photo_capture", "cleanup_old_photos",
     "background_logger",

@@ -63,7 +63,7 @@ python main.py                                          # serves 127.0.0.1:8000
 
 On first start, a shared `PI_SECRET_TOKEN` is generated into `data/secret_token` (mode 600) and printed to the log — you will need it for the Worker.
 
-User-tunable settings (auto water / auto light / daily photo) live in `data/config.json` and are editable from the UI's settings tab.
+User-tunable settings (auto water / auto light / photo capture) live in `data/config.json` and are editable from the UI's settings tab. Under photo capture, "fill light while capturing" applies to every capture path — live preview, HD grab, and the daily photo alike; the daily photo is one such capture, with its own toggle, capture hour, and a manual retake for today (overwriting takes a second confirming tap).
 
 ### 2. Cloudflare Worker (edge proxy + frontend host)
 
@@ -88,7 +88,7 @@ pio run -t upload     # default env: esp32s3mini (lolin_s3_mini)
 Three gates, progressively stricter:
 
 1. **Read-only** (`/api/monitor`, `/api/history`, `/api/metrics`, `/api/nodes`, `/api/image`, `/api/photos*`): requires header `X-Viewer-Key` matching `VIEWER_MAGIC_KEY`; mismatches get a plain 404 so the endpoint's existence is never revealed.
-2. **High-risk actions** (`/api/water`, `/api/light`, `/api/config`): require `x-water-key` matching `WATER_MAGIC_KEY`. The two keys are independent.
+2. **High-risk actions** (`/api/water`, `/api/light`, `/api/config`, `/api/photo/retake`): require `x-water-key` matching `WATER_MAGIC_KEY`. The two keys are independent.
 3. **Worker → Pi**: every Pi endpoint requires `X-BFF-To-Pi-Token` matching `PI_SECRET_TOKEN`, enforced by a router-level dependency so new endpoints are protected by default.
 
 Share access with a **fragment magic link** — fragments are never sent to the server, so keys stay out of edge logs and third-party Referers:

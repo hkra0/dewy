@@ -7,6 +7,7 @@
 import json
 import logging
 import math
+import time
 import urllib.error
 import urllib.request
 from datetime import timedelta
@@ -75,7 +76,6 @@ def get_effective_light_times():
         try:
             lat_f, lng_f = float(lat), float(lng)
             from datetime import date
-            import time
             N = date.today().timetuple().tm_yday
             B = math.radians((360 / 365) * (N - 81))
             decl = 23.45 * math.sin(B)
@@ -106,6 +106,41 @@ def set_light(on, retain=False):
     return state.hardware_manager.trigger_actuator(
         l_node, l_act, mqtt_client=state.global_mqtt_client, state=on, retain=retain
     )
+
+
+def fill_light_for_capture(duration):
+    """拍照前的临时补光：点亮补光灯 `duration` 秒，并等它真正亮起来。
+
+    **所有拍摄路径共用这一个入口**：实时预览、高清抓拍、每日照片、手动重拍。
+    三处都要判断"灯是否已开、MQTT 是否连着、要不要忽略回报"，各写一份迟早跑偏
+    （此前 photo.py 把忽略窗口写死成 7 秒，routers.py 写的是 duration+3，
+    同样的 duration=4 却是两个值）。
+
+    由 `camera.fill_light` 控制（默认开），因此是一个全局的拍照设置，
+    不隶属于每日照片。关掉它的场景是灯离镜头太近导致过曝、或者灯与相机
+    根本不在同一株植物上——那时宁可要一张偏暗的原色照片。
+
+    返回是否真的下发了补光指令。任何失败都只是照片偏暗，不该让拍照本身失败。
+    """
+    if not config.global_config.get("camera", {}).get("fill_light", True):
+        return False
+    if state.light_status == "ON" or not state.global_mqtt_client:
+        return False
+
+    # 这盏灯几秒后会自己灭，期间 ESP32 回报的 "ON" 不代表用户开了灯，
+    # 忽略窗口要盖住整个点亮时长再加一点余量。
+    state.ignore_light_feedback_until = time.time() + duration + 3
+    l_node = config.global_config["auto_light"]["node_id"]
+    l_act = config.global_config["auto_light"]["actuator_id"]
+    try:
+        state.hardware_manager.trigger_actuator(
+            l_node, l_act, mqtt_client=state.global_mqtt_client, duration=duration
+        )
+        time.sleep(0.6)
+        return True
+    except Exception as e:
+        logger.warning("拍照前临时补光失败: %s", e)
+        return False
 
 
 def apply_light_schedule(now):

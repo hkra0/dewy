@@ -3,12 +3,12 @@
 import logging
 import math
 import os
-import time
 from datetime import datetime
 
 import core.state as state
 import core.config as config
 import core.database as db
+from core.logic.light import fill_light_for_capture
 from core.logic.system import get_free_disk_gb
 
 logger = logging.getLogger(__name__)
@@ -18,52 +18,45 @@ MIN_PHOTOS_TO_CLEAN = 30    # 总数不超过此值时不做任何清理
 DELETE_BATCH_SIZE = 5       # 每删这么多张检查一次磁盘
 
 
-def daily_photo_capture():
-    """每日定时拍摄一张 HQ 植物照片并生成缩略图。"""
+def daily_photo_capture(force=False):
+    """每日定时拍摄一张 HQ 植物照片并生成缩略图。
+
+    `force=True` 用于手动"重新拍摄当日照片"：跳过时刻判断，且当天已有照片时
+    覆盖而不是跳过。返回是否真的产出了一张照片——定时路径不看返回值，
+    但 /api/photo/retake 要据此告诉用户成功与否。
+    """
     now = datetime.now()
     photo_cfg = config.global_config["daily_photo"]
 
-    if now.hour < photo_cfg["hour"]:
-        return
+    if not force and now.hour < photo_cfg["hour"]:
+        return False
 
     today_str = now.strftime("%Y-%m-%d")
     filename = f"{today_str}.jpg"
 
     # 检查今天是否已拍
-    if db.photo_exists(today_str):
-        return
+    if not force and db.photo_exists(today_str):
+        return False
 
     photo_path = os.path.join(state.PHOTO_DIR, filename)
     thumb_path = os.path.join(state.THUMB_DIR, filename)
 
-    logger.info("📷 每日照片拍摄中...")
+    logger.info("📷 %s拍摄中...", "重新" if force else "每日照片")
 
     try:
-        # 临时开灯（如果灯未开且 MQTT 可用）
-        needs_temp_light = (state.light_status != "ON") and state.global_mqtt_client
-        l_node = config.global_config["auto_light"]["node_id"]
-        l_act = config.global_config["auto_light"]["actuator_id"]
-
-        if needs_temp_light:
-            state.ignore_light_feedback_until = time.time() + 7
-            try:
-                state.hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=state.global_mqtt_client, duration=4)
-                time.sleep(0.6)
-            except Exception as e:
-                # 补光失败不影响拍照，只是照片会偏暗
-                logger.warning("拍照前临时补光失败: %s", e)
+        fill_light_for_capture(4)
 
         camera = state.hardware_manager.get_camera()
         if camera is None:
             logger.error("❌ 每日照片拍摄失败：未配置任何相机")
-            return
+            return False
 
         with state.camera_lock:
             camera.capture(photo_path, hq=True)
 
         if not os.path.exists(photo_path):
             logger.error("❌ 每日照片拍摄失败：相机未生成 %s", photo_path)
-            return
+            return False
 
         file_size = os.path.getsize(photo_path)
 
@@ -80,16 +73,22 @@ def daily_photo_capture():
         except Exception as e:
             logger.warning("⚠️ 缩略图生成失败: %s", e)
 
-        # 写入数据库（并发重复插入由 DAL 静默忽略）
-        db.insert_photo(today_str, filename, file_size, thumb_size)
+        # 写入数据库（定时路径的并发重复插入由 DAL 静默忽略；
+        # 重拍则必须覆盖，否则文件换了、记录里的体积还是旧的）
+        if force:
+            db.upsert_photo(today_str, filename, file_size, thumb_size)
+        else:
+            db.insert_photo(today_str, filename, file_size, thumb_size)
 
         logger.info("✅ 每日照片已保存: %s (%dKB, 缩略图 %dKB)", filename, file_size // 1024, thumb_size // 1024)
 
         # 拍照完成后检查是否需要清理
         cleanup_old_photos()
+        return True
 
     except Exception:
         logger.exception("❌ 每日照片拍摄异常")
+        return False
 
 
 def _select_photos_to_delete(rows, today):

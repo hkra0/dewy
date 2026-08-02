@@ -12,7 +12,15 @@ from pydantic import BaseModel
 import core.state as state
 import core.config as config
 import core.database as db
-from core.logic import trigger_watering, get_effective_light_times, get_system_stats, compute_next_boundary, set_light
+from core.logic import (
+    trigger_watering,
+    get_effective_light_times,
+    get_system_stats,
+    compute_next_boundary,
+    set_light,
+    fill_light_for_capture,
+    daily_photo_capture,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,19 +118,8 @@ def get_image(live: bool = False, hq: bool = False, since: int = 0):
         state.camera_in_progress = True
         try:
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
-            
-            needs_temp_light = (state.light_status != "ON") and state.global_mqtt_client
-            l_node = config.global_config["auto_light"]["node_id"]
-            l_act = config.global_config["auto_light"]["actuator_id"]
-            
-            if needs_temp_light:
-                duration = 4 if hq else 2
-                state.ignore_light_feedback_until = time.time() + duration + 3
-                try:
-                    state.hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=state.global_mqtt_client, duration=duration)
-                    time.sleep(0.6)
-                except Exception as e:
-                    logger.warning("拍照前临时补光失败: %s", e)
+
+            fill_light_for_capture(4 if hq else 2)
 
             camera = state.hardware_manager.get_camera()
             if camera is None:
@@ -305,6 +302,38 @@ def toggle_manual_light():
         return {"status": "success"}
     else:
         raise HTTPException(status_code=500, detail="Hardware error or light relay not configured")
+
+@router.post("/api/photo/retake")
+def retake_daily_photo(force: bool = False):
+    """立即重拍当日照片（设置页的手动入口）。
+
+    路径特意不写成 `/api/photos/retake`：Worker 里 `/api/photos/` 整个前缀
+    归 viewer key 管，落在那下面等于把一个会驱动硬件的端点降级成只读鉴权。
+
+    两个失败码前端要分开处理，所以不能共用 409——Worker 只透传状态码，
+    会把 body 换成自己的错误 JSON，detail 到不了浏览器：
+      409 当天已有照片，需要用户确认覆盖（前端据此进入"再点一次"状态）
+      423 相机正忙，稍后再试
+    """
+    if state.camera_in_progress:
+        raise HTTPException(status_code=423, detail="Camera capture in progress")
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    if not force and db.photo_exists(today):
+        raise HTTPException(status_code=409, detail="Photo already exists for today")
+
+    # 与实时抓拍共用这个标志：拍摄期间的手动切灯会被 /api/light 挡掉，
+    # 否则用户在这十几秒里切灯，等于对着正在曝光的镜头开关灯。
+    state.camera_in_progress = True
+    try:
+        ok = daily_photo_capture(force=True)
+    finally:
+        state.camera_in_progress = False
+
+    if not ok:
+        raise HTTPException(status_code=500, detail="Capture failed")
+    return {"status": "success", "date": today}
+
 
 @router.get("/api/photos")
 def get_photo_list():
