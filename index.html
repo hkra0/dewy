@@ -8,10 +8,33 @@
     <title>dewy</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js" defer></script>
+    <!-- 字体不阻塞首屏：URL 里已有 display=swap，本来就会 FOUT，
+         没理由再为它推迟渲染。不支持 onload 的浏览器走 <noscript> 兜底。 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"
+        media="print" onload="this.media='all'">
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet">
+    </noscript>
     <link rel="stylesheet" href="/style.css">
+
+    <!-- Chart.js 与 gifshot 曾写死在这里，每个访客都要下载约 240KB，
+         哪怕从不打开历史或照片页。现在由 js/cdn.js 在进入对应视图时按需加载。 -->
+
+    <!-- 模块图是串行发现的：浏览器要先下 app.js 才知道有 js/*.js。
+         预声明一遍，把瀑布压平。新增模块时记得同步这里和 worker.js 的 JS_MODULES。 -->
+    <link rel="modulepreload" href="/js/i18n.js">
+    <link rel="modulepreload" href="/js/state.js">
+    <link rel="modulepreload" href="/js/api.js">
+    <link rel="modulepreload" href="/js/ui.js">
+    <link rel="modulepreload" href="/js/cdn.js">
+    <link rel="modulepreload" href="/js/navigation.js">
+    <link rel="modulepreload" href="/js/dashboard.js">
+    <link rel="modulepreload" href="/js/camera.js">
+    <link rel="modulepreload" href="/js/history.js">
+    <link rel="modulepreload" href="/js/timeline.js">
+    <link rel="modulepreload" href="/js/settings.js">
+    <link rel="modulepreload" href="/js/refresh.js">
 </head>
 
 <body>
@@ -26,7 +49,7 @@
     <div class="container">
         <div class="header" style="text-align: center; margin-bottom: 22px;">
             <h1 style="margin: 0; font-size: 24px; color: var(--text-main); letter-spacing: -0.5px;">🌱 dewy</h1>
-            <div style="display: inline-block; position: relative; margin-top: 8px;">
+            <div id="device-select-wrapper" class="hidden" style="display: inline-block; position: relative; margin-top: 8px;">
                 <select id="device-select" onchange="switchDevice(this.value, true)"
                     style="appearance: none; -webkit-appearance: none; background: var(--nav-bg); color: var(--text-muted); padding: 4px 28px 4px 14px; border-radius: 16px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); text-align: center;">
                     <option value="main">Loading...</option>
@@ -82,11 +105,11 @@
         <div class="grid hidden view-section" id="view-system">
             <div class="card full-width">
                 <div class="card-title" data-i18n="power_status">power status</div>
-                <div class="card-value" style="color: #0284c7;" id="power-status">-- V / -- mA</div>
+                <div class="card-value" style="color: var(--metric-power);" id="power-status">-- V / -- mA</div>
             </div>
             <div class="card">
                 <div class="card-title" data-i18n="cpu_temp">cpu temp</div>
-                <div class="card-value" style="color: #e11d48;" id="sys-temp">-- ℃</div>
+                <div class="card-value" style="color: var(--metric-cpu);" id="sys-temp">-- ℃</div>
             </div>
             <div class="card">
                 <div class="card-title" data-i18n="ram_used">ram used</div>

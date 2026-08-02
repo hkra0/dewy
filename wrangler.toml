@@ -12,7 +12,10 @@ compatibility_date = "2024-03-20"
 
 [[rules]]
 type = "Text"
-globs = ["**/*.html", "**/*.css", "**/app.js", "js/*.js"]
+# 注意 `**/js/*.js` 的前缀：写成 `js/*.js` 匹配不到任何文件，
+# 于是 js/*.js 会被当成普通 ES 模块打包，报 "No matching export for import default"，
+# 整个 Worker 构建失败。改这行前先跑 `npx wrangler deploy --dry-run`。
+globs = ["**/*.html", "**/*.css", "**/app.js", "**/js/*.js"]
 fallthrough = true
 
 [observability.logs]

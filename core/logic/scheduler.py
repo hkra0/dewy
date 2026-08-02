@@ -22,6 +22,25 @@ NORMAL_INTERVAL_SEC = 600    # 正常模式：每 10 分钟一轮
 POWER_SAVE_INTERVAL_SEC = 3600  # 省电模式：每小时一轮
 
 
+def _prune_if_new_day(now, last_prune_date):
+    """每天清理一次超期采样，返回新的 last_prune_date。
+
+    失败不能影响本轮的其它工作，因此单独兜住异常——
+    清理不掉最多是表继续变大，下一天还会再试。
+    """
+    today = now.date()
+    if last_prune_date == today:
+        return last_prune_date
+    try:
+        removed = db.prune_node_data()
+        if removed:
+            logger.info("🧹 清理超期采样 %d 条（保留 %d 天）",
+                        removed, db.NODE_DATA_RETENTION_DAYS)
+    except Exception:
+        logger.exception("清理超期采样失败，下一天重试")
+    return today
+
+
 def _collect_node_data(now):
     """汇总本地传感器与 MQTT 节点的最新读数，顺带处理自动浇水。"""
     node_data_to_save = []
@@ -57,6 +76,7 @@ def _sleep_until_next_slot():
 
 def background_logger():
     init_db()
+    last_prune_date = None
     while True:
         try:
             now = datetime.now()
@@ -77,6 +97,9 @@ def background_logger():
                     daily_photo_capture()
                 except Exception:
                     logger.exception("每日照片拍摄失败")
+
+            # 放在本轮最后：清理是维护工作，不该拖慢灯控与采样归档
+            last_prune_date = _prune_if_new_day(now, last_prune_date)
 
         except Exception:
             # 兜底：任何未预料的异常都不能让后台循环退出

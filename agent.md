@@ -98,12 +98,19 @@ with get_conn() as conn:          # 自动持锁 → 正常退出 commit → 异
 
 `main.py` 启动两个 daemon 线程：
 
-- **`local_sensor_updater`**（`logic/power.py`）— 每 2 秒读一次本地传感器写入内存；同时监测 UPS 电流。
+- **`local_sensor_updater`**（`logic/power.py`）— 读本地传感器写入内存，同时监测 UPS 电流。
+  **采样分两档**：只有提供 `current` 的传感器按 2 秒读（省电判据需要这个频率），
+  其余传感器 30 秒一轮。归档是 10 分钟、前端轮询 30 秒，温湿度按 2 秒读属于几百倍过采样，
+  白占 CPU 与 I2C 总线，且 SHT30 高频读取会自热抬高温度读数。
+  哪些传感器进快档由 `hardware_manager.sensors_for_field("main", "current")` 在每次全量读取后
+  重新探测（依据是驱动实际返回的字段，不是配置声明），坏掉又恢复的传感器会自动归队；
+  节点上没有电流传感器时快档整个停掉，退化成 30 秒一轮。
   连续放电超 120 秒且无网络 → 进省电模式（关 HDMI/LED、断 WiFi、下线 3 个 CPU 核）。
-  恢复需连续 3 次确认，防电流抖动导致反复切换。省电模式下轮询降到 60 秒。
+  恢复需连续 3 次确认，防电流抖动导致反复切换。省电模式下不再分档，整体降到 60 秒。
   **省电模式受看门狗保护，详见下方。**
-- **`background_logger`**（`logic/scheduler.py`）— 主循环，每轮：灯控 → 采样归档 → 自动浇水 → 每日照片。
+- **`background_logger`**（`logic/scheduler.py`）— 主循环，每轮：灯控 → 采样归档 → 自动浇水 → 每日照片 → 每日清理。
   正常 10 分钟一轮，省电模式 1 小时一轮，且**对齐到整点/整十分**（便于历史图表按固定间隔聚合）。
+  清理放在每轮最后，且每天只跑一次（本地日期变化时触发），不该拖慢灯控与采样。
 
 ### 省电模式的看门狗（改这块前必读）
 
@@ -169,6 +176,7 @@ topic = "sensor/esp32/env_data"
 ### 新增一个传感器
 
 1. 在 `hardware/drivers/` 写一个类，实现 `read()` 返回 dict（执行器实现 `trigger(**kwargs)` 返回 bool）
+   （`read()` 返回的键会被 manager 记下来，供 `sensors_for_field` 按字段挑传感器——见分档采样）
 2. 在 `hardware/manager.py` 的 `driver_map` 里注册一行
 3. 在 `hardware_config.toml` 里声明
 
@@ -190,19 +198,51 @@ topic = "sensor/esp32/env_data"
 前端是**无构建步骤的原生 ES 模块**（`<script type="module">`），浏览器按 import 逐个请求。
 改前端时需要注意的地方：
 
-1. **新增一个 js 模块，必须同时在 `worker.js` 的 `JS_MODULES` 里加一行**（Wrangler 的
-   Text 规则只能静态 import，无法遍历目录）。漏了的话该路径会 404——已特意让未注册的
-   `/js/` 路径返回 404 而不是回落到 SPA 兜底，否则浏览器只报一个难以定位的 MIME 错误。
-2. **模块作用域不是全局作用域**。`index.html` 和 `dashboard.js` 生成的 HTML 里用了
+1. **新增一个 js 模块要改三处**：`worker.js` 的 `JS_MODULES`（Wrangler 的 Text 规则
+   只能静态 import，无法遍历目录）、`index.html` 的 `modulepreload` 列表、以及 import 它的模块。
+   漏掉 `JS_MODULES` 的话该路径会 404——已特意让未注册的 `/js/` 路径返回 404 而不是
+   回落到 SPA 兜底，否则浏览器只报一个难以定位的 MIME 错误。
+
+   `wrangler.toml` 里那条 Text 规则的 glob **必须写成 `**/js/*.js`**。写 `js/*.js`
+   匹配不到任何文件，js 模块会被当成普通 ES 模块打包，报
+   "No matching export for import default"，整个 Worker 构建失败。改完跑
+   `npx wrangler deploy --dry-run` 验证。
+2. **指标语义色一律用 CSS 变量**（`--metric-temp` / `--metric-hum` / `--metric-soil` /
+   `--metric-pres` / `--metric-water` / `--metric-light-on` / `--metric-power` / `--metric-cpu`），
+   定义在 `style.css` 的 `:root` 与暗色媒体查询里。不要再往 HTML 或 js 里写十六进制色值——
+   这些值此前在 `index.html`、`dashboard.js`、`history.js` 各存了一份且没有暗色变体。
+   Chart.js 只认真实色值，`history.js` 用 `getComputedStyle` 从 `:root` 读，色值来源仍是 CSS。
+
+3. **模块作用域不是全局作用域**。`index.html` 和 `dashboard.js` 生成的 HTML 里用了
    `onclick="xxx()"`，这类内联处理器只认 `window` 上的函数。新增内联处理器时，
    必须在 `app.js` 顶部的 `Object.assign(window, {...})` 里同步登记，否则点击即报错。
-3. **不要直接调 `fetch('/api/...')`**。一律走 `js/api.js`：只读端点用 `apiGet`，
+4. **不要直接调 `fetch('/api/...')`**。一律走 `js/api.js`：只读端点用 `apiGet`，
    高危端点用 `apiWater` / `apiWaterPost`，鉴权头由它注入（`bust()` 用于加时间戳防缓存）。
    新增端点时把它归到哪把钥匙下想清楚——这是 Worker 侧鉴权分支的镜像。
 
 前端四个视图：`environment`（实时数据 + 摄像头）、`system`（供电/CPU/内存/磁盘）、
 `history`（Chart.js 曲线 + 浇水日志）、`settings`（自动浇水/补光/拍照配置）。
-另有照片时间轴播放器与 GIF 导出（gifshot 从 CDN 加载，有三个备用源）。中英双语，按 `navigator.language` 自动选择。
+另有照片时间轴播放器与 GIF 导出。中英双语，按 `navigator.language` 自动选择。
+
+**Chart.js 与 gifshot 都由 `js/cdn.js` 按需加载**（各有三个备用 CDN），不要再写回
+`index.html` 的 `<head>`——那样每个只看环境页的访客都要白下载约 240KB。
+`renderHistoryUI` 因此是 async 的，调用处需要 await。
+
+### 静态资源缓存
+
+`worker.js` 在模块初始化时对所有静态资源算一个哈希作为共用 `ETag`，
+响应带 `Cache-Control: public, max-age=0, must-revalidate`，命中 `If-None-Match` 返回 304。
+
+**所有资源共用同一个 ETag 是有意的**：它们本来就同一次部署，共用 ETag 才能保证
+`index.html` 与 `js/*.js` 不会各自缓存到不同版本。URL 里没有内容哈希，
+所以也**不能**改成长 `max-age`——那样改完发上去，用户手里还是旧版本。
+
+### 浏览器历史
+
+`updateURL()` 用 `pushState` 写地址栏，`initHistoryNav()`（`app.js` 启动时调用一次）
+监听 `popstate` 把地址栏变化同步回视图。两者缺一不可：只 push 不监听，
+前进/后退就只会改地址栏、界面不动。popstate 分支里所有 `switchTab`/`switchDevice`
+都必须传 `pushState=false`，否则后退会再压一条历史记录。
 
 ---
 
@@ -215,6 +255,7 @@ topic = "sensor/esp32/env_data"
 | `PI_SECRET_TOKEN` | 自动生成 | BFF→Pi 共享密钥。未设时自动生成并写入 `data/secret_token`（权限 600），启动日志会打印，需同步到 Worker |
 | `DEWY_DATA_DIR` | `<项目根>/data` | 数据目录（数据库、照片、配置、密钥） |
 | `DEWY_POWER_SAVER` | `<项目根>/power_saver.sh` | 省电脚本路径 |
+| `DEWY_DATA_RETENTION_DAYS` | `365` | `node_data` 保留天数，超期行每天清理一次。设 0 关闭清理 |
 | `DEWY_LOG_LEVEL` | `INFO` | 日志级别 |
 | `DEWY_LOG_FILE` | 未设 | 设置后额外落盘，按 5MB × 3 份轮转 |
 
@@ -238,9 +279,25 @@ topic = "sensor/esp32/env_data"
 2. **Client → Worker（高危操作）**：`/api/water`、`/api/light`、`/api/config` 要求
    请求头 `x-water-key` 匹配 `WATER_MAGIC_KEY`，不匹配返回 403。
    注意 viewer key 不能用于这三个端点，两把钥匙互相独立。
-3. **Worker → Pi**：请求头 `X-BFF-To-Pi-Token` 匹配 `PI_SECRET_TOKEN`，10 个端点逐一校验，无旁路。
+3. **Worker → Pi**：请求头 `X-BFF-To-Pi-Token` 匹配 `PI_SECRET_TOKEN`。校验挂在
+   `APIRouter(dependencies=[Depends(verify_pi_token)])` 上，**对全部端点默认生效**——
+   新增端点自动受保护，不会因为忘了粘贴校验代码而默默敞开。要放开某个端点必须显式声明。
+   比较用 `hmac.compare_digest`，避免逐字节比较带来的时序差异。
 
 前端首次通过魔法链接 `?key=` 把 viewer key 写入 localStorage；浇水密钥单独存 `robin_water_key`。
+
+### 无密钥＝访客路径，必须保持静默
+
+没有 viewer key 时前端**不发任何 API 请求**，也不显示任何提示或残留的加载态——
+这是有意设计的：链接可以直接分享出去，拿不到密钥的人看到的就是一个普通空页面，
+不该暴露"这里有个需要授权的系统"。
+
+因此**不要给无密钥状态加"请获取密钥"之类的引导**。同理，Worker 对密钥不匹配一律回
+404 而不是 403，前端收到 404 也必须静默返回。
+
+只有**网络异常与 5xx**（Pi 掉线、边缘错误）才在状态栏提示 `conn_lost`——
+那是持有有效密钥的用户，需要能分辨"数据没变"和"已经断了"。
+新增前端请求时照此区分：`404 → 静默`，`其余失败 → 提示`。
 
 > 历史注记：`/api/monitor`、`/api/history`、`/api/nodes` 曾接受
 > `X-Requested-By: Robin-Web` 作为 `X-Viewer-Key` 的替代凭证。该头是写死在前端的
@@ -258,6 +315,21 @@ SQLite（WAL 模式），三张表：
 - **`photo_log`** — 每日照片索引，`date` 唯一。
 
 时间戳统一用 SQLite 的 `CURRENT_TIMESTAMP`（**UTC**），查询时用 `datetime(timestamp, 'localtime')` 转本地时区。
+
+### 保留策略
+
+`node_data` 每天清理一次超过 `DEWY_DATA_RETENTION_DAYS`（默认 365 天）的行；
+`watering_log` 与 `photo_log` 是稀疏的人类可读事件，**全部保留**（照片文件本身另有对数稀疏化清理）。
+
+历史查询**必须带 timestamp 条件**。`daily` 视图按 `date(timestamp,'localtime')` 分组，
+这是表达式分组、索引帮不上忙，`LIMIT` 又只作用于分组之后——没有 WHERE 上的时间窗口，
+每次查询都是全表扫描，且随数据积累逐年变慢。新增聚合查询时照此办理。
+
+`prune_node_data()` 分批删除（每批 500 行）以免长时间独占 `db_lock`，
+且**每批都带 timestamp 条件**。不要"优化"成先取 `MAX(id)` 再按 id 区间删——
+那要求 id 与 timestamp 同向递增，而 `scripts/migrate_db.py` 会写入带历史时间戳的行，
+顺序一旦不成立就会把未过期的数据一起删掉。不执行 VACUUM：SQLite 会复用释放的页，
+文件不缩小但也不再增长，而 VACUUM 要重写整库，在 SD 卡上代价过高。
 
 ---
 

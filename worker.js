@@ -9,6 +9,7 @@ import M_API from "./js/api.js";
 import M_I18N from "./js/i18n.js";
 import M_STATE from "./js/state.js";
 import M_UI from "./js/ui.js";
+import M_CDN from "./js/cdn.js";
 import M_SETTINGS from "./js/settings.js";
 import M_DASHBOARD from "./js/dashboard.js";
 import M_HISTORY from "./js/history.js";
@@ -23,6 +24,7 @@ const JS_MODULES = {
     "/js/i18n.js": M_I18N,
     "/js/state.js": M_STATE,
     "/js/ui.js": M_UI,
+    "/js/cdn.js": M_CDN,
     "/js/settings.js": M_SETTINGS,
     "/js/dashboard.js": M_DASHBOARD,
     "/js/history.js": M_HISTORY,
@@ -31,6 +33,34 @@ const JS_MODULES = {
     "/js/navigation.js": M_NAVIGATION,
     "/js/refresh.js": M_REFRESH,
 };
+// 静态资源随 Worker 一起部署，URL 里没有内容哈希，所以不能用长 max-age——
+// 那样改完发上去，用户手里还是旧版本。改用 ETag：仍然每次回源校验，
+// 但命中时返回 304 不带 body，省掉的正是体积大头。
+//
+// 所有资源共用同一个 ETag（它们本来就同一次部署），这样 index.html 与
+// js/*.js 不可能各自缓存到不同版本。
+const ASSET_VERSION = (() => {
+    let h = 5381;
+    for (const text of [HTML_TEMPLATE, CSS_TEMPLATE, ...Object.values(JS_MODULES)]) {
+        for (let i = 0; i < text.length; i++) h = (h * 33 ^ text.charCodeAt(i)) >>> 0;
+    }
+    return h.toString(36);
+})();
+const ETAG = `"${ASSET_VERSION}"`;
+
+function staticResponse(request, body, contentType) {
+    if (request.headers.get("If-None-Match") === ETAG) {
+        return new Response(null, { status: 304, headers: { "ETag": ETAG, "Cache-Control": "public, max-age=0, must-revalidate" } });
+    }
+    return new Response(body, {
+        headers: {
+            "Content-Type": contentType,
+            "ETag": ETAG,
+            "Cache-Control": "public, max-age=0, must-revalidate",
+        },
+    });
+}
+
 export default {
     async fetch(request, env, ctx) {
         const PI_BASE_URL = env?.PI_BASE_URL;
@@ -42,8 +72,10 @@ export default {
         const clientKey = request.headers.get("X-Viewer-Key");
 
         if (url.pathname.startsWith("/api/")) {
-            if (!PI_BASE_URL) return new Response(JSON.stringify({ error: "Missing PI_BASE_URL config" }), { status: 500 });
-
+            // 鉴权必须排在任何配置检查之前。反过来的话，未授权的人能靠
+            // 500 与 404 的差别推断出"这里确实有个 Worker，只是没配好"，
+            // 与只读端点一律回 404、不暴露端点存在的原则相悖。
+            //
             // Authorization
             // 所有只读端点一律要求 X-Viewer-Key。
             // 注意：这里曾有 `|| X-Requested-By === "Robin-Web"` 的旁路，
@@ -60,6 +92,10 @@ export default {
             } else {
                 return new Response("not found", { status: 404 });
             }
+
+            // 走到这里说明已经通过鉴权，此时再暴露配置错误是安全的，
+            // 而且对排查部署问题有用。
+            if (!PI_BASE_URL) return new Response(JSON.stringify({ error: "Missing PI_BASE_URL config" }), { status: 500 });
 
             const targetURL = PI_BASE_URL + url.pathname + url.search;
             const newHeaders = new Headers();
@@ -108,12 +144,10 @@ export default {
 
         
         if (url.pathname === "/style.css") {
-            return new Response(CSS_TEMPLATE, { headers: { "Content-Type": "text/css;charset=UTF-8" } });
+            return staticResponse(request, CSS_TEMPLATE, "text/css;charset=UTF-8");
         }
         if (JS_MODULES[url.pathname] !== undefined) {
-            return new Response(JS_MODULES[url.pathname], {
-                headers: { "Content-Type": "application/javascript;charset=UTF-8" },
-            });
+            return staticResponse(request, JS_MODULES[url.pathname], "application/javascript;charset=UTF-8");
         }
         // 未注册的 /js/ 路径必须 404，不能落到下面的 SPA 兜底返回 HTML——
         // 那样浏览器只会报难以定位的 MIME 错误
@@ -121,7 +155,7 @@ export default {
             return new Response("not found", { status: 404 });
         }
         if (!url.pathname.startsWith("/api/")) {
-            return new Response(HTML_TEMPLATE, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
+            return staticResponse(request, HTML_TEMPLATE, "text/html;charset=UTF-8");
         }
 
         return new Response("not found", { status: 404 });

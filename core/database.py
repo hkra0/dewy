@@ -8,10 +8,28 @@
 抛异常自动 rollback，任何路径下都保证 close（含提前 return）。
 """
 
+import logging
+import os
 import sqlite3
 from contextlib import contextmanager
 
 import core.state as state
+
+logger = logging.getLogger(__name__)
+
+# node_data 的保留窗口。采样每 10 分钟一轮、每节点每天约 144 行，
+# 不清理的话表会无限增长，而全表扫描的日均查询会随之逐年变慢。
+# 应用本身最远只读 30 天（/api/history 的 daily 视图），365 天是留给
+# 将来做长期分析的余量。设为 0 表示不清理。
+_RETENTION_DEFAULT_DAYS = 365
+try:
+    NODE_DATA_RETENTION_DAYS = int(os.environ.get("DEWY_DATA_RETENTION_DAYS", _RETENTION_DEFAULT_DAYS))
+except ValueError:
+    logger.error("DEWY_DATA_RETENTION_DAYS=%r 非法，退回默认 %d 天",
+                 os.environ.get("DEWY_DATA_RETENTION_DAYS"), _RETENTION_DEFAULT_DAYS)
+    NODE_DATA_RETENTION_DAYS = _RETENTION_DEFAULT_DAYS
+
+PRUNE_BATCH_SIZE = 500  # 每批删除的行数，避免长时间独占 db_lock
 
 
 @contextmanager
@@ -115,6 +133,42 @@ def query_recent_soil(node_id, limit=5):
     )
 
 
+def prune_node_data(retention_days=None):
+    """删除超出保留窗口的采样行，返回删除条数。
+
+    只清 node_data——浇水与照片记录是稀疏的人类可读事件，全部保留。
+    分批删除：单条 DELETE 删掉几十万行会长时间持有 db_lock，
+    把 /api/monitor 一起卡住。
+
+    不执行 VACUUM：SQLite 会复用释放的页，文件不缩小但也不再增长，
+    而 VACUUM 需要重写整库，在 SD 卡上代价过高。
+    """
+    days = NODE_DATA_RETENTION_DAYS if retention_days is None else retention_days
+    if days <= 0:
+        return 0
+
+    cutoff = f"-{int(days)} days"
+
+    # 每批都带上 timestamp 条件，删除范围只由它决定。
+    # ORDER BY id 是为了让 SQLite 顺着主键扫、凑够一批就停：正常情况下
+    # 过期行都在 id 低位，扫几百行即可，不会每批全表扫。
+    # 不要改成先取 MAX(id) 再按 id 区间删——那要求 id 与 timestamp 同向
+    # 递增，而 scripts/migrate_db.py 会写入带历史时间戳的行，一旦顺序
+    # 不成立就会连未过期的数据一起删掉。
+    total = 0
+    while True:
+        deleted = execute('''
+            DELETE FROM node_data WHERE id IN (
+                SELECT id FROM node_data WHERE timestamp < datetime('now', ?)
+                ORDER BY id LIMIT ?
+            )
+        ''', (cutoff, PRUNE_BATCH_SIZE))
+        total += deleted
+        if deleted < PRUNE_BATCH_SIZE:
+            break
+    return total
+
+
 def mark_anomalies(row_ids):
     """把指定行标记为离群值，后续统计与图表会跳过。"""
     if not row_ids:
@@ -188,19 +242,29 @@ def query_watering_history(node_id, limit=30):
 
 
 def query_daily_history(node_id, limit=30):
-    """返回 (逐日环境均值, 逐日浇水时长合计)。"""
+    """返回 (逐日环境均值, 逐日浇水时长合计)。
+
+    两条查询都先按 timestamp 收窄再分组。分组键是 date(timestamp,'localtime')
+    这个表达式，索引帮不上分组的忙——没有 WHERE 上的时间条件时，
+    LIMIT 只作用于分组之后，等于每次都全表扫描，且随数据积累逐年变慢。
+
+    窗口比 limit 多取一天：最旧的那天多半只有半天数据，
+    ORDER BY ... DESC LIMIT 会把它挡在结果之外。
+    """
+    window = f"-{int(limit) + 1} days"
     rows = query('''
         SELECT date(timestamp, 'localtime') as day, AVG(temperature), AVG(humidity), AVG(soil_moisture), AVG(pressure)
         FROM node_data
         WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL)
+          AND timestamp >= datetime('now', ?)
         GROUP BY day ORDER BY day DESC LIMIT ?
-    ''', (node_id, limit))
+    ''', (node_id, window, limit))
     water_rows = query('''
         SELECT date(timestamp, 'localtime') as day, SUM(duration)
         FROM watering_log
-        WHERE node_id=?
+        WHERE node_id=? AND timestamp >= datetime('now', ?)
         GROUP BY day
-    ''', (node_id,))
+    ''', (node_id, window))
     return rows, water_rows
 
 

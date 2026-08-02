@@ -21,16 +21,16 @@ export function renderDynamicCards(nodeData, globalData) {
     let html = '';
 
     if (nodeData.temperature !== undefined) {
-        html += `<div class="card"><div class="card-title">` + t('temp') + `</div><div class="card-value" style="color: #f59e0b;">${formatVal(nodeData.temperature, '℃')}</div></div>`;
+        html += `<div class="card"><div class="card-title">` + t('temp') + `</div><div class="card-value" style="color: var(--metric-temp);">${formatVal(nodeData.temperature, '℃')}</div></div>`;
     }
     if (nodeData.humidity !== undefined) {
-        html += `<div class="card"><div class="card-title">` + t('humidity') + `</div><div class="card-value" style="color: #3b82f6;">${formatVal(nodeData.humidity, '%')}</div></div>`;
+        html += `<div class="card"><div class="card-title">` + t('humidity') + `</div><div class="card-value" style="color: var(--metric-hum);">${formatVal(nodeData.humidity, '%')}</div></div>`;
     }
     if (nodeData.soil_moisture !== undefined) {
         html += `<div class="card"><div class="card-title">` + t('soil_moisture') + `</div><div class="card-value" style="color: var(--accent);">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
     }
     if (nodeData.pressure !== undefined) {
-        html += `<div class="card"><div class="card-title">` + t('pressure') + `</div><div class="card-value" style="color: #8b5cf6;">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
+        html += `<div class="card"><div class="card-title">` + t('pressure') + `</div><div class="card-value" style="color: var(--metric-pres);">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
     }
 
     // Light Status (global for now, or you can attach to specific node)
@@ -38,10 +38,10 @@ export function renderDynamicCards(nodeData, globalData) {
     if (state.currentDevice === 'main') {
         const effectiveStatus = optimisticLightStatus || globalData.light_status;
         if (effectiveStatus && effectiveStatus !== '--') {
-            const color = effectiveStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
+            const color = effectiveStatus === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
             html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">` + t('light_title') + `</div><div class="card-value" id="light-status" style="color: ${color};">${effectiveStatus}</div></div>`;
         } else if (globalData.light_status) {
-            const color = globalData.light_status === 'ON' ? '#eab308' : 'var(--text-muted)';
+            const color = globalData.light_status === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
             html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">${t('light_title')}</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
         }
     }
@@ -76,10 +76,19 @@ export function renderDynamicCards(nodeData, globalData) {
 }
 
 export async function fetchSensorData() {
+    // 无密钥 = 访客路径，设计上什么都不发生：不请求、不提示
+    if (!getViewerKey()) return;
+
     try {
         const res = await apiGet('/api/monitor');
+
+        // 404 是"密钥不对/端点不存在"的统一答复（worker.js 有意不区分），
+        // 属于访客路径，必须保持静默；其余失败才是真的连不上。
+        if (res.status === 404) return;
+        if (!res.ok) { showConnectionLost(); return; }
+
         const data = await res.json();
-        if (data.error) return;
+        if (data.error) { showConnectionLost(); return; }
 
         const nodeData = data.nodes ? data.nodes[state.currentDevice] : {};
         renderDynamicCards(nodeData, data);
@@ -97,8 +106,23 @@ export async function fetchSensorData() {
             document.getElementById('power-status').innerText = '-- V / -- mA';
         }
         const time = new Date(data.timestamp * 1000);
-        document.getElementById('update-time').innerText = t('last_synced', { time: time.toLocaleTimeString().toLowerCase() });
-    } catch (e) { console.error(e); }
+        const statusEl = document.getElementById('update-time');
+        statusEl.innerText = t('last_synced', { time: time.toLocaleTimeString().toLowerCase() });
+        statusEl.style.color = '';
+    } catch (e) {
+        // fetch 抛异常 = 网络层就没通，与 404 无关，可以放心提示
+        console.error(e);
+        showConnectionLost();
+    }
+}
+
+/** 状态栏转为断连提示。数据卡片保留上次数值——
+ *  没有这个提示的话，用户无法分辨"数据没变"和"已经断了"。 */
+function showConnectionLost() {
+    const statusEl = document.getElementById('update-time');
+    if (!statusEl) return;
+    statusEl.innerText = t('conn_lost');
+    statusEl.style.color = '#ef4444';
 }
 
 export async function triggerWatering() {
@@ -110,7 +134,7 @@ export async function triggerWatering() {
         const res = await apiWaterPost('/api/water', { duration, node_id: state.currentDevice });
         if (res.ok) { showToast(t('watering_cmd'), 'success'); setTimeout(() => { btn.innerText = t('water_btn'); btn.disabled = false; fetchAllData(true); }, 2000); }
         else throw new Error('fail');
-    } catch (e) { showToast('Failed to save configuration.', 'error'); setTimeout(() => { btn.innerText = t('water_btn'); btn.disabled = false; }, 2000); }
+    } catch (e) { showToast(t('water_fail'), 'error'); setTimeout(() => { btn.innerText = t('water_btn'); btn.disabled = false; }, 2000); }
 }
 
 export async function toggleLight() {
@@ -129,7 +153,7 @@ export async function toggleLight() {
     // Pure optimistic update — no server refresh needed
     optimisticLightStatus = newStatus;
     statusEl.innerText = newStatus;
-    statusEl.style.color = newStatus === 'ON' ? '#eab308' : 'var(--text-muted)';
+    statusEl.style.color = newStatus === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
     showToast(newStatus === 'ON' ? t('light_on') : t('light_off'), 'success');
 
     try {
@@ -142,7 +166,7 @@ export async function toggleLight() {
         // Revert optimistic state on failure
         optimisticLightStatus = isCurrentlyOn ? 'ON' : null;
         statusEl.innerText = isCurrentlyOn ? 'ON' : 'OFF';
-        statusEl.style.color = isCurrentlyOn ? '#eab308' : 'var(--text-muted)';
+        statusEl.style.color = isCurrentlyOn ? 'var(--metric-light-on)' : 'var(--text-muted)';
         showToast(e.message === 'camera' ? t('cam_capturing') : t('light_fail'), 'error');
     }
 

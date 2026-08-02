@@ -1,3 +1,4 @@
+import hmac
 import logging
 import os
 import re
@@ -5,7 +6,7 @@ import subprocess
 import time
 from datetime import datetime
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -16,21 +17,30 @@ from core.logic import trigger_watering, get_effective_light_times, get_system_s
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+
+def verify_pi_token(x_bff_to_pi_token: str = Header(None)):
+    """校验 BFF(Worker) → Pi 的共享密钥。
+
+    挂在 router 上而不是逐个端点写：新增端点自动受保护，
+    漏写一处就是一个鉴权洞——这正是 agent.md「七、鉴权」强调的"无旁路"。
+    要放开某个端点必须显式声明，不会因为忘了粘贴而默默敞开。
+    """
+    if not x_bff_to_pi_token or not hmac.compare_digest(x_bff_to_pi_token, state.PI_SECRET_TOKEN):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+router = APIRouter(dependencies=[Depends(verify_pi_token)])
 
 class WaterRequest(BaseModel):
     duration: float = 0.5
     node_id: str = "main"
 
 @router.get("/api/nodes")
-def get_nodes(x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
+def get_nodes():
     return state.hardware_manager.nodes
 
 @router.get("/api/monitor")
-def get_monitor_data(x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
-    
+def get_monitor_data():
     nodes_data = {}
     
     for node_id in state.hardware_manager.local_sensors:
@@ -49,8 +59,7 @@ def get_monitor_data(x_bff_to_pi_token: str = Header(None)):
     }
 
 @router.get("/api/image")
-def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
+def get_image(live: bool = False, hq: bool = False):
     target_path = state.TMP_IMG_HQ_PATH if hq else state.TMP_IMG_PATH
     if live:
         state.camera_in_progress = True
@@ -70,13 +79,10 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
                 except Exception as e:
                     logger.warning("拍照前临时补光失败: %s", e)
 
-            try:
-                with state.camera_lock:
-                    if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
-                    else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "60", "--vflip", "--hflip", "--nopreview"]
-                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            finally:
-                pass
+            with state.camera_lock:
+                if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
+                else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "60", "--vflip", "--hflip", "--nopreview"]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             logger.exception("实时拍照失败 (hq=%s)", hq)
         finally:
@@ -87,8 +93,7 @@ def get_image(live: bool = False, hq: bool = False, x_bff_to_pi_token: str = Hea
     raise HTTPException(status_code=404, detail="Image not ready")
 
 @router.get("/api/history")
-def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
+def get_history_data(hist_type: str = "24h", node_id: str = "main"):
     try:
         if hist_type == "watering":
             rows = db.query_watering_history(node_id)
@@ -155,10 +160,7 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main", x_bff_to_pi_
         return []
 
 @router.post("/api/water")
-def trigger_manual_watering(req: WaterRequest, x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN: 
-        raise HTTPException(status_code=403, detail="Forbidden")
-    
+def trigger_manual_watering(req: WaterRequest):
     duration = max(0.1, min(req.duration, 1.0))
     node_id = req.node_id
 
@@ -175,8 +177,7 @@ def trigger_manual_watering(req: WaterRequest, x_bff_to_pi_token: str = Header(N
         raise HTTPException(status_code=500, detail="Hardware error or pump not configured")
 
 @router.get("/api/config")
-def get_config_endpoint(x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
+def get_config_endpoint():
     on_m, off_m = get_effective_light_times()
     res = config.global_config.copy()
     res["effective_light_on"] = f"{on_m//60:02d}:{on_m%60:02d}"
@@ -184,8 +185,7 @@ def get_config_endpoint(x_bff_to_pi_token: str = Header(None)):
     return res
 
 @router.post("/api/config")
-async def update_config(req: Request, x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN: raise HTTPException(status_code=403, detail="Forbidden")
+async def update_config(req: Request):
     try:
         cfg = await req.json()
         config.save_config(cfg)
@@ -195,10 +195,7 @@ async def update_config(req: Request, x_bff_to_pi_token: str = Header(None)):
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
 @router.post("/api/light")
-def toggle_manual_light(x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN: 
-        raise HTTPException(status_code=403, detail="Forbidden")
-    
+def toggle_manual_light():
     if not state.global_mqtt_client:
         raise HTTPException(status_code=500, detail="MQTT not connected")
     if state.camera_in_progress:
@@ -225,9 +222,7 @@ def toggle_manual_light(x_bff_to_pi_token: str = Header(None)):
         raise HTTPException(status_code=500, detail="Hardware error or light relay not configured")
 
 @router.get("/api/photos")
-def get_photo_list(x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN:
-        raise HTTPException(status_code=403, detail="Forbidden")
+def get_photo_list():
     try:
         rows = db.query_photos_desc()
         return [{"date": r[0], "size": r[1], "thumb_size": r[2], "timestamp": str(r[3]) if r[3] else ""} for r in rows]
@@ -236,10 +231,7 @@ def get_photo_list(x_bff_to_pi_token: str = Header(None)):
         return []
 
 @router.get("/api/photos/{date}")
-def get_photo(date: str, thumb: bool = False, x_bff_to_pi_token: str = Header(None)):
-    if x_bff_to_pi_token != state.PI_SECRET_TOKEN:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    
+def get_photo(date: str, thumb: bool = False):
     # 验证日期格式
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")

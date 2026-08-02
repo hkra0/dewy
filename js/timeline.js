@@ -3,6 +3,7 @@ import { t } from './i18n.js';
 import { showToast } from './ui.js';
 import { state, getViewerKey } from './state.js';
 import { apiGet } from './api.js';
+import { ensureGifshot } from './cdn.js';
 
 let tlPhotos = [];
 let tlCurrentIdx = 0;
@@ -229,30 +230,6 @@ function createWatermarkedFrame(imgUrl, dateText) {
     });
 }
 
-async function ensureGifshotLoaded() {
-    if (typeof gifshot !== 'undefined') return true;
-    const cdns = [
-        'https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js',
-        'https://unpkg.com/gifshot@0.3.3/build/gifshot.min.js',
-        'https://cdn.jsdelivr.net/npm/gifshot@0.3.3/build/gifshot.min.js'
-    ];
-    for (let url of cdns) {
-        try {
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = url;
-                script.onload = () => resolve(true);
-                script.onerror = () => reject();
-                document.head.appendChild(script);
-            });
-            if (typeof gifshot !== 'undefined') return true;
-        } catch (e) {
-            console.warn(`Failed to load GIF library from ${url}`);
-        }
-    }
-    return typeof gifshot !== 'undefined';
-}
-
 export async function exportTimelineGIF() {
     if (!tlPhotos || tlPhotos.length === 0) return;
     const btn = document.getElementById('tl-export-btn');
@@ -262,7 +239,7 @@ export async function exportTimelineGIF() {
         showToast(t('gif_lib_missing'), 'info');
         btn.disabled = true;
         btn.innerText = '⏳...';
-        const loaded = await ensureGifshotLoaded();
+        const loaded = await ensureGifshot();
         if (!loaded || typeof gifshot === 'undefined') {
             btn.disabled = false;
             btn.innerText = t('export_gif');

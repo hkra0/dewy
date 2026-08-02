@@ -26,6 +26,16 @@ DISCHARGE_CONFIRM_SEC = 120     # 放电持续多久才进省电
 CONFIRM_THRESHOLD = 3           # 退出省电所需的连续确认次数
 WATCHDOG_PET_INTERVAL_SEC = 300 # 看门狗续期间隔，须显著小于脚本里的超时（默认 30 分钟）
 
+UPS_NODE_ID = "main"            # UPS 电流所在的节点
+UPS_FIELD = "current"           # 省电判据依赖的字段
+
+# 采样分两档：省电判据需要 2 秒级的电流，其余传感器不需要。
+# 归档是 10 分钟一轮、前端轮询 30 秒，温湿度按 2 秒读属于几百倍过采样——
+# 白白占用 CPU 与 I2C 总线，且 SHT30 高频读取会自热、把温度读数抬高。
+FAST_INTERVAL_SEC = 2.0
+FULL_INTERVAL_SEC = 30.0
+POWER_SAVE_INTERVAL_SEC = 60.0  # 省电模式下不再分档，整体降频
+
 
 def _run_power_saver(action, timeout=30):
     """执行 power_saver.sh，返回是否成功。
@@ -49,23 +59,57 @@ def _run_power_saver(action, timeout=30):
     return True
 
 
+def _read_all_nodes():
+    """全量读取所有本地节点。整轮读不到任何值时保留上一次的读数。"""
+    for node_id in state.hardware_manager.local_sensors:
+        data = state.hardware_manager.read_local_node(node_id)
+        if data:
+            state.local_latest_data[node_id] = data
+
+
+def _read_ups_only(sensor_ids):
+    """只读提供电流的那些传感器，结果合并进已有读数。
+
+    合并前先摘掉这些传感器已知会提供的字段：这样读失败时对应字段消失，
+    与全量读取的语义一致，界面上不会留下一个看着正常的过期电流值。
+    """
+    hm = state.hardware_manager
+    data = hm.read_local_node(UPS_NODE_ID, sensor_ids=sensor_ids)
+
+    entry = dict(state.local_latest_data.get(UPS_NODE_ID) or {})
+    for field in hm.fields_of(UPS_NODE_ID, sensor_ids):
+        entry.pop(field, None)
+    entry.update(data)
+    state.local_latest_data[UPS_NODE_ID] = entry
+
+
 def local_sensor_updater():
     ups_discharge_start_time = None
     power_save_exit_count = 0
     last_pet_time = 0.0
+    last_full_read = 0.0
+    ups_sensor_ids = None   # None 表示尚未探测；[] 表示该节点没有电流传感器
 
     if _run_power_saver("disable"):
         logger.info("🔄 系统启动，初始化电源模式为正常")
 
     while True:
         try:
-            for node_id in state.hardware_manager.local_sensors:
-                data = state.hardware_manager.read_local_node(node_id)
-                if data:
-                    state.local_latest_data[node_id] = data
+            # 省电模式下本就 60 秒一轮，没必要再分档
+            need_full = (ups_sensor_ids is None
+                         or state.power_save_mode
+                         or time.time() - last_full_read >= FULL_INTERVAL_SEC)
 
-            if "main" in state.local_latest_data:
-                current = state.local_latest_data["main"].get("current", 0)
+            if need_full:
+                _read_all_nodes()
+                last_full_read = time.time()
+                # 每次全量读取后重新探测：坏掉又恢复的传感器能自动归队
+                ups_sensor_ids = state.hardware_manager.sensors_for_field(UPS_NODE_ID, UPS_FIELD)
+            elif ups_sensor_ids:
+                _read_ups_only(ups_sensor_ids)
+
+            if UPS_NODE_ID in state.local_latest_data:
+                current = state.local_latest_data[UPS_NODE_ID].get(UPS_FIELD, 0)
                 if current is not None:
                     if current < DISCHARGE_CURRENT_MA:
                         if ups_discharge_start_time is None:
@@ -105,11 +149,14 @@ def local_sensor_updater():
                                 if _run_power_saver("pet"):
                                     last_pet_time = time.time()
         except Exception:
-            # 本循环每 2 秒一轮，I2C 偶发失败很常见；
-            # 用 debug 避免刷屏，排查时设 DEWY_LOG_LEVEL=DEBUG 即可看到
+            # I2C 偶发失败很常见；用 debug 避免刷屏，
+            # 排查时设 DEWY_LOG_LEVEL=DEBUG 即可看到
             logger.debug("传感器轮询异常", exc_info=True)
 
         if state.power_save_mode:
-            time.sleep(60.0)
+            time.sleep(POWER_SAVE_INTERVAL_SEC)
+        elif ups_sensor_ids:
+            time.sleep(FAST_INTERVAL_SEC)
         else:
-            time.sleep(2.0)
+            # 没有电流传感器就没有省电判据，快循环纯属空转
+            time.sleep(FULL_INTERVAL_SEC)

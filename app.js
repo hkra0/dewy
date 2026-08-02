@@ -15,6 +15,7 @@ import {
     switchHistType,
     checkMagicLink,
     parseURLAndNavigate,
+    initHistoryNav,
 } from './js/navigation.js';
 import { triggerWatering, toggleLight } from './js/dashboard.js';
 import { fetchHDImage, closeHD } from './js/camera.js';
@@ -54,6 +55,7 @@ window.onload = async () => {
     applyTranslations();
     await initNodes();
     parseURLAndNavigate();
+    initHistoryNav();
     fetchAllData(true);
 
     // 页面不可见时不轮询，省流量也省树莓派的电

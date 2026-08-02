@@ -50,8 +50,12 @@ class HardwareManager:
         self.local_sensors = {}
         self.actuators = {}
         self.mqtt_nodes = {}
-        
+
         self.sensor_lock = threading.Lock()
+        # (node_id, sensor_id) -> 该传感器最近一次成功读取返回的字段名集合。
+        # 供调用方按字段挑选要读的传感器（见 sensors_for_field）。
+        # 读失败时不清空，保留上次已知的字段。
+        self._sensor_fields = {}
         
         self._init_hardware()
         
@@ -99,22 +103,49 @@ class HardwareManager:
                 return None
         return None
 
-    def read_local_node(self, node_id):
+    def read_local_node(self, node_id, sensor_ids=None):
+        """读取节点上的传感器并合并结果。
+
+        sensor_ids 为 None 时读全部；给定时只读其中存在的那些——
+        调用方可以据此把高频采样（如 UPS 电流）与低频采样分开，
+        不必为了一个字段把整条 I2C 总线上的器件全部唤醒一遍。
+        """
         data = {}
         if node_id in self.local_sensors:
+            sensors = self.local_sensors[node_id]
+            if sensor_ids is not None:
+                wanted = set(sensor_ids)
+                sensors = {s_id: s for s_id, s in sensors.items() if s_id in wanted}
             with self.sensor_lock:
-                for s_id, sensor in self.local_sensors[node_id].items():
-                    # 本方法每 2 秒被轮询一次，坏掉的传感器若每次都打日志
+                for s_id, sensor in sensors.items():
+                    # 本方法被高频轮询，坏掉的传感器若每次都打日志
                     # 一天就是十几万条，故用折叠告警
                     key = f"sensor:{node_id}:{s_id}"
                     try:
                         res = sensor.read()
                         if res:
                             data.update(res)
+                            self._sensor_fields[(node_id, s_id)] = set(res.keys())
                         log_recovery(logger, key, "传感器 %s (节点 %s) 已恢复", s_id, node_id)
                     except Exception as e:
                         log_failure(logger, key, "传感器 %s (节点 %s) 读取失败: %s", s_id, node_id, e)
         return data
+
+    def sensors_for_field(self, node_id, field):
+        """最近一次成功读取中提供了 field 的传感器 id 列表。
+
+        字段来自实际读数而非配置声明，所以驱动返回什么就认什么，
+        新增驱动无需在别处登记它提供哪些字段。节点从未成功读过时返回空列表。
+        """
+        return [s_id for (n_id, s_id), fields in self._sensor_fields.items()
+                if n_id == node_id and field in fields]
+
+    def fields_of(self, node_id, sensor_ids):
+        """这些传感器已知会提供的字段集合。"""
+        fields = set()
+        for s_id in sensor_ids:
+            fields |= self._sensor_fields.get((node_id, s_id), set())
+        return fields
 
     def trigger_actuator(self, node_id, actuator_id, **kwargs):
         if node_id in self.actuators and actuator_id in self.actuators[node_id]:

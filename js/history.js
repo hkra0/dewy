@@ -2,6 +2,7 @@
 import { t } from './i18n.js';
 import { state } from './state.js';
 import { apiGet } from './api.js';
+import { ensureChart } from './cdn.js';
 import { loadPhotoTimeline } from './timeline.js';
 
 let myChart = null;
@@ -13,7 +14,7 @@ export function clearHistoryCache() {
     for (const k in historyCache) delete historyCache[k];
 }
 
-export function renderHistoryUI(data, type, animate = false) {
+export async function renderHistoryUI(data, type, animate = false) {
     if (type === 'watering') {
         const wrapper = document.getElementById('watering-log-wrapper');
         if (!data || data.length === 0) { wrapper.innerHTML = `<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">${t('no_water_records')}</div>`; return; }
@@ -43,18 +44,28 @@ export function renderHistoryUI(data, type, animate = false) {
     const hasPres = chartData.some(d => d.pressure !== null && d.pressure !== undefined);
     const hasWater = chartData.some(d => d.water !== null && d.water !== undefined && d.water > 0);
 
-    if (hasTemp) datasets.push({ label: t('chart_temp'), data: chartData.map(d => d.temp), borderColor: '#f59e0b', backgroundColor: '#f59e0b', tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
-    if (hasHum) datasets.push({ label: t('chart_hum'), data: chartData.map(d => d.hum), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-    if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: '#10b981', backgroundColor: '#10b981', tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
-    if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
+    // Chart.js 只认真实色值，取不到 var()，所以从 :root 上把 token 读出来。
+    // 色值的唯一来源仍是 style.css，暗色模式会自动跟着变。
+    const metric = (name, fallback) =>
+        getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    const cTemp = metric('--metric-temp', '#d97706');
+    const cHum = metric('--metric-hum', '#2563eb');
+    const cSoil = metric('--metric-soil', '#059669');
+    const cPres = metric('--metric-pres', '#7c3aed');
+    const cWater = metric('--metric-water', '#0891b2');
+
+    if (hasTemp) datasets.push({ label: t('chart_temp'), data: chartData.map(d => d.temp), borderColor: cTemp, backgroundColor: cTemp, tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
+    if (hasHum) datasets.push({ label: t('chart_hum'), data: chartData.map(d => d.hum), borderColor: cHum, backgroundColor: cHum, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+    if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: cSoil, backgroundColor: cSoil, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
+    if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: cPres, backgroundColor: cPres, tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
     if (hasWater) datasets.push({
         type: 'line',
         label: t('chart_water'),
         data: chartData.map(d => (d.water > 0) ? (d.soil !== null && d.soil !== undefined ? d.soil : (d.hum !== null && d.hum !== undefined ? d.hum : 50)) : null),
-        borderColor: '#22d3ee',
-        backgroundColor: '#22d3ee',
-        pointBackgroundColor: '#22d3ee',
-        pointBorderColor: '#22d3ee',
+        borderColor: cWater,
+        backgroundColor: cWater,
+        pointBackgroundColor: cWater,
+        pointBorderColor: cWater,
         pointBorderWidth: 2.5,
         pointRadius: 6,
         pointHoverRadius: 8,
@@ -65,6 +76,15 @@ export function renderHistoryUI(data, type, animate = false) {
         isWatering: true,
         waterData: chartData.map(d => d.water)
     });
+
+    // Chart.js 改为按需加载：只看环境页的访客不必下载这 200KB。
+    // 数据集已经算好，这里才是第一次真正用到 Chart。
+    if (!await ensureChart()) {
+        const loadingEl = document.getElementById('chart-loading');
+        loadingEl.innerText = t('chart_lib_missing');
+        loadingEl.classList.remove('hidden');
+        return;
+    }
 
     const computedStyle = getComputedStyle(document.documentElement);
     const textColor = computedStyle.getPropertyValue('--text-muted').trim() || '#666';
@@ -153,7 +173,7 @@ export async function loadHistoryData(forceFetch = false) {
         }
 
         if (!forceFetch) {
-            renderHistoryUI(historyCache[cacheKey], reqType, animateUpdate);
+            await renderHistoryUI(historyCache[cacheKey], reqType, animateUpdate);
             return;
         }
     } else {
@@ -167,7 +187,7 @@ export async function loadHistoryData(forceFetch = false) {
         if (!data.error) {
             historyCache[cacheKey] = data;
             historyFetchTime[cacheKey] = Date.now();
-            if (state.currentHistType === reqType) renderHistoryUI(data, reqType, animateUpdate);
+            if (state.currentHistType === reqType) await renderHistoryUI(data, reqType, animateUpdate);
         }
     } catch (e) { }
 }
