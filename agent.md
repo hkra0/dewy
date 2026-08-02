@@ -46,7 +46,20 @@ hardware/
   manager.py             硬件抽象层：读配置 → 动态加载驱动 → 统一读写接口
   drivers/               13 个驱动，每个实现 read() 或 trigger()
 worker.js                Cloudflare Worker：鉴权 + 反代 + 下发前端
-index.html / app.js / style.css   单页应用（app.js 1194 行，待拆分）
+index.html / style.css   单页应用的骨架与样式
+app.js                   前端入口：挂载 window 全局、绑定 onload
+js/                      前端 ES 模块
+  api.js                 所有 API 调用的唯一出口，鉴权头在此注入
+  i18n.js                中英文案与 t()
+  state.js               跨模块共享状态（可变对象）与 localStorage 键
+  ui.js                  showToast
+  navigation.js          设备/标签页/历史子页切换与 URL 同步
+  dashboard.js           环境视图：指标卡片、浇水、切灯
+  history.js             Chart.js 曲线与浇水日志
+  camera.js              实时预览与高清抓拍
+  timeline.js            照片时间轴与 GIF 导出
+  settings.js            配置读写
+  refresh.js             fetchAllData（单独成模块以打断循环引用）
 firmware/plant_node/     ESP32 固件（PlatformIO / Arduino）
 scripts/migrate_db.py    历史库迁移（env_log → node_data）
 test/                    手动硬件调试脚本，不是自动化测试
@@ -171,8 +184,21 @@ topic = "sensor/esp32/env_data"
 
 ## 五、边缘代理与前端
 
-`worker.js` 通过 `wrangler.toml` 的 `[[rules]]` 把 `index.html` / `style.css` / `app.js`
+`worker.js` 通过 `wrangler.toml` 的 `[[rules]]` 把 `index.html` / `style.css` / `app.js` / `js/*.js`
 作为文本内联进 Worker，按路径分发。API 请求转发到 `PI_BASE_URL`，并注入 `X-BFF-To-Pi-Token`。
+
+前端是**无构建步骤的原生 ES 模块**（`<script type="module">`），浏览器按 import 逐个请求。
+改前端时需要注意的地方：
+
+1. **新增一个 js 模块，必须同时在 `worker.js` 的 `JS_MODULES` 里加一行**（Wrangler 的
+   Text 规则只能静态 import，无法遍历目录）。漏了的话该路径会 404——已特意让未注册的
+   `/js/` 路径返回 404 而不是回落到 SPA 兜底，否则浏览器只报一个难以定位的 MIME 错误。
+2. **模块作用域不是全局作用域**。`index.html` 和 `dashboard.js` 生成的 HTML 里用了
+   `onclick="xxx()"`，这类内联处理器只认 `window` 上的函数。新增内联处理器时，
+   必须在 `app.js` 顶部的 `Object.assign(window, {...})` 里同步登记，否则点击即报错。
+3. **不要直接调 `fetch('/api/...')`**。一律走 `js/api.js`：只读端点用 `apiGet`，
+   高危端点用 `apiWater` / `apiWaterPost`，鉴权头由它注入（`bust()` 用于加时间戳防缓存）。
+   新增端点时把它归到哪把钥匙下想清楚——这是 Worker 侧鉴权分支的镜像。
 
 前端四个视图：`environment`（实时数据 + 摄像头）、`system`（供电/CPU/内存/磁盘）、
 `history`（Chart.js 曲线 + 浇水日志）、`settings`（自动浇水/补光/拍照配置）。
@@ -277,6 +303,5 @@ SQLite（WAL 模式），三张表：
 
 ### 已知待办
 
-- `app.js` 1194 行单文件、约 20 个全局变量、无构建步骤，是当前最该拆分的部分。
 - `test/` 目录名不副实，里面是手动硬件调试脚本而非自动化测试。
   `compute_next_boundary`、`_select_photos_to_delete`、土壤离群值过滤这三处是纯函数，最适合先补测试。

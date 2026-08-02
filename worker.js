@@ -1,6 +1,36 @@
 import HTML_TEMPLATE from "./index.html";
 import CSS_TEMPLATE from "./style.css";
 import JS_TEMPLATE from "./app.js";
+
+// 前端已拆成 ES 模块，浏览器会按 import 路径逐个请求。
+// Wrangler 的 Text 规则只能静态导入，所以新增模块时这里也要加一行，
+// 否则该路径会落到 SPA 兜底分支、返回 HTML，浏览器报 MIME 类型错误。
+import M_API from "./js/api.js";
+import M_I18N from "./js/i18n.js";
+import M_STATE from "./js/state.js";
+import M_UI from "./js/ui.js";
+import M_SETTINGS from "./js/settings.js";
+import M_DASHBOARD from "./js/dashboard.js";
+import M_HISTORY from "./js/history.js";
+import M_CAMERA from "./js/camera.js";
+import M_TIMELINE from "./js/timeline.js";
+import M_NAVIGATION from "./js/navigation.js";
+import M_REFRESH from "./js/refresh.js";
+
+const JS_MODULES = {
+    "/app.js": JS_TEMPLATE,
+    "/js/api.js": M_API,
+    "/js/i18n.js": M_I18N,
+    "/js/state.js": M_STATE,
+    "/js/ui.js": M_UI,
+    "/js/settings.js": M_SETTINGS,
+    "/js/dashboard.js": M_DASHBOARD,
+    "/js/history.js": M_HISTORY,
+    "/js/camera.js": M_CAMERA,
+    "/js/timeline.js": M_TIMELINE,
+    "/js/navigation.js": M_NAVIGATION,
+    "/js/refresh.js": M_REFRESH,
+};
 export default {
     async fetch(request, env, ctx) {
         const PI_BASE_URL = env?.PI_BASE_URL;
@@ -80,8 +110,15 @@ export default {
         if (url.pathname === "/style.css") {
             return new Response(CSS_TEMPLATE, { headers: { "Content-Type": "text/css;charset=UTF-8" } });
         }
-        if (url.pathname === "/app.js") {
-            return new Response(JS_TEMPLATE, { headers: { "Content-Type": "application/javascript;charset=UTF-8" } });
+        if (JS_MODULES[url.pathname] !== undefined) {
+            return new Response(JS_MODULES[url.pathname], {
+                headers: { "Content-Type": "application/javascript;charset=UTF-8" },
+            });
+        }
+        // 未注册的 /js/ 路径必须 404，不能落到下面的 SPA 兜底返回 HTML——
+        // 那样浏览器只会报难以定位的 MIME 错误
+        if (url.pathname.startsWith("/js/")) {
+            return new Response("not found", { status: 404 });
         }
         if (!url.pathname.startsWith("/api/")) {
             return new Response(HTML_TEMPLATE, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
