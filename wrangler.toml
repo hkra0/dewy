@@ -10,6 +10,12 @@ compatibility_date = "2024-03-20"
 # VIEWER_MAGIC_KEY
 # WATER_MAGIC_KEY
 
+# 静态资源 ETag 的来源。每次部署产生新的 id，正是"同一次部署共用一个 ETag"
+# 想要的语义，且零计算——否则 worker.js 要在每个 isolate 冷启动时
+# 逐字符哈希全部静态资源。绑定缺失时 worker.js 会退回内容哈希，不会挂。
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
 [[rules]]
 type = "Text"
 # 注意 `**/js/*.js` 的前缀：写成 `js/*.js` 匹配不到任何文件，

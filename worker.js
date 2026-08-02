@@ -39,26 +39,80 @@ const JS_MODULES = {
 //
 // 所有资源共用同一个 ETag（它们本来就同一次部署），这样 index.html 与
 // js/*.js 不可能各自缓存到不同版本。
-const ASSET_VERSION = (() => {
-    let h = 5381;
-    for (const text of [HTML_TEMPLATE, CSS_TEMPLATE, ...Object.values(JS_MODULES)]) {
-        for (let i = 0; i < text.length; i++) h = (h * 33 ^ text.charCodeAt(i)) >>> 0;
+//
+// ETag 的来源优先用部署版本号（wrangler.toml 的 [version_metadata] 绑定）：
+// "同一次部署" 正是这个 id 的语义，而且零计算。此前是在模块初始化时逐字符
+// 哈希全部资源（约 110KB → 十几万次循环），每个 isolate 冷启动都要付一次。
+// 绑定缺失时（本地 dev、旧版 wrangler）才退回内容哈希，且改成懒计算。
+let _contentHash = null;
+function contentHash() {
+    if (_contentHash === null) {
+        let h = 5381;
+        for (const text of [HTML_TEMPLATE, CSS_TEMPLATE, ...Object.values(JS_MODULES)]) {
+            for (let i = 0; i < text.length; i++) h = (h * 33 ^ text.charCodeAt(i)) >>> 0;
+        }
+        _contentHash = h.toString(36);
     }
-    return h.toString(36);
-})();
-const ETAG = `"${ASSET_VERSION}"`;
+    return _contentHash;
+}
 
-function staticResponse(request, body, contentType) {
-    if (request.headers.get("If-None-Match") === ETAG) {
-        return new Response(null, { status: 304, headers: { "ETag": ETAG, "Cache-Control": "public, max-age=0, must-revalidate" } });
+let _etag = null;
+function getETag(env) {
+    if (_etag === null) {
+        _etag = `"${env?.CF_VERSION_METADATA?.id || contentHash()}"`;
     }
-    return new Response(body, {
-        headers: {
-            "Content-Type": contentType,
-            "ETag": ETAG,
-            "Cache-Control": "public, max-age=0, must-revalidate",
-        },
-    });
+    return _etag;
+}
+
+// 应用在所有响应上的基础安全头。
+//
+// nosniff 对 js/json 最要紧：没有它，浏览器可能把响应按嗅探出的类型执行。
+// no-referrer 同时兜住魔法链接——即使有人还在用旧的 ?key= 格式，
+// 密钥也不会随 Referer 漏给第三方 CDN 或字体服务。
+const BASE_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+};
+
+// 只对 HTML 文档生效（CSP 是文档级策略，挂在 json/图片上没有意义）。
+//
+// script-src 保留 'unsafe-inline'：index.html 与 dashboard.js 生成的 HTML 里
+// 用的是内联 onclick，这是 agent.md 第五节明确的约定，不是疏漏。
+// 因此这条 CSP 挡不住注入的内联脚本，它挡的是**主机**——注入的外部脚本加载不了，
+// connect-src 'self' 也让数据无法外发到任意域名。这是在不推翻既有约定前提下
+// 能拿到的那一半，且是更值钱的那一半。
+//
+// script-src 的三个 CDN 必须与 js/cdn.js 的 CHART_CDNS / GIFSHOT_CDNS 保持一致，
+// 改那边记得同步这里，否则库会被 CSP 拦掉、图表和 GIF 导出静默失效。
+// worker-src blob: 是给 gifshot 的（它的 numWorkers 从 blob URL 起 worker）。
+// img-src 的 blob:/data: 分别对应 createObjectURL 的图片与 canvas 水印帧。
+const CSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src https://fonts.gstatic.com",
+    "img-src 'self' blob: data:",
+    "connect-src 'self'",
+    "worker-src blob:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+].join("; ");
+
+function staticResponse(request, env, body, contentType) {
+    const etag = getETag(env);
+    const headers = {
+        ...BASE_SECURITY_HEADERS,
+        "ETag": etag,
+        "Cache-Control": "public, max-age=0, must-revalidate",
+    };
+    if (contentType.startsWith("text/html")) headers["Content-Security-Policy"] = CSP;
+
+    if (request.headers.get("If-None-Match") === etag) {
+        return new Response(null, { status: 304, headers });
+    }
+    return new Response(body, { headers: { ...headers, "Content-Type": contentType } });
 }
 
 export default {
@@ -82,20 +136,20 @@ export default {
             // 但该头是写死在前端的非机密字符串，等同于无鉴权，已移除。
             if (url.pathname === "/api/monitor" || url.pathname === "/api/history" || url.pathname === "/api/nodes"
                 || url.pathname === "/api/image" || url.pathname === "/api/photos" || url.pathname.startsWith("/api/photos/")) {
-                if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404 });
+                if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
             } else if (url.pathname === "/api/water" || url.pathname === "/api/light" || url.pathname === "/api/config") {
-                if (url.pathname !== "/api/config" && request.method !== "POST") return new Response("method not allowed", { status: 405 });
+                if (url.pathname !== "/api/config" && request.method !== "POST") return new Response("method not allowed", { status: 405, headers: BASE_SECURITY_HEADERS });
                 const clientWaterKey = request.headers.get("x-water-key");
                 if (clientWaterKey !== WATER_MAGIC_KEY) {
-                    return new Response(JSON.stringify({ error: "invalid key" }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+                    return new Response(JSON.stringify({ error: "invalid key" }), { status: 403, headers: { ...BASE_SECURITY_HEADERS, "Content-Type": "application/json" } });
                 }
             } else {
-                return new Response("not found", { status: 404 });
+                return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
             }
 
             // 走到这里说明已经通过鉴权，此时再暴露配置错误是安全的，
             // 而且对排查部署问题有用。
-            if (!PI_BASE_URL) return new Response(JSON.stringify({ error: "Missing PI_BASE_URL config" }), { status: 500 });
+            if (!PI_BASE_URL) return new Response(JSON.stringify({ error: "Missing PI_BASE_URL config" }), { status: 500, headers: BASE_SECURITY_HEADERS });
 
             const targetURL = PI_BASE_URL + url.pathname + url.search;
             const newHeaders = new Headers();
@@ -116,14 +170,24 @@ export default {
 
                 const isImageEndpoint = url.pathname === "/api/image";
                 const isPhotoFile = url.pathname.startsWith("/api/photos/");
-                if (!piResponse.ok) return new Response((isImageEndpoint || isPhotoFile) ? "offline" : JSON.stringify({ error: "cannot connect to pi" }), { status: piResponse.status });
 
-                const responseHeaders = new Headers();
-                responseHeaders.set("Access-Control-Allow-Origin", "*");
+                // 304 必须先于 !ok 判断：Response.ok 只认 2xx，落到下面就会被
+                // 当成故障、回一个带 "offline" body 的 304——而 304 本就不允许
+                // 带 body。/api/image?since= 靠它省掉重复下载。
+                if (piResponse.status === 304) {
+                    return new Response(null, { status: 304, headers: { ...BASE_SECURITY_HEADERS, "Cache-Control": "no-store" } });
+                }
+
+                if (!piResponse.ok) return new Response((isImageEndpoint || isPhotoFile) ? "offline" : JSON.stringify({ error: "cannot connect to pi" }), { status: piResponse.status, headers: BASE_SECURITY_HEADERS });
+
+                // 前端由同一个 Worker 下发，与 API 同源，所以 CORS 头本来就用不上：
+                // 而且鉴权走的是自定义头（X-Viewer-Key / x-water-key），跨源调用必须
+                // 先过预检，而这里根本没有 OPTIONS 处理器——ACAO:* 是一行死代码。
+                // Expose-Headers 同理：同源 JS 本来就能读到全部响应头。
+                const responseHeaders = new Headers(BASE_SECURITY_HEADERS);
                 if (isImageEndpoint) {
                     responseHeaders.set("Content-Type", "image/jpeg");
                     responseHeaders.set("Cache-Control", "no-store");
-                    responseHeaders.set("Access-Control-Expose-Headers", "X-Image-Timestamp");
                     const imgTs = piResponse.headers.get("X-Image-Timestamp");
                     if (imgTs) responseHeaders.set("X-Image-Timestamp", imgTs);
                 } else if (isPhotoFile) {
@@ -138,26 +202,26 @@ export default {
                 
                 return new Response(piResponse.body, { status: piResponse.status, headers: responseHeaders });
             } catch (err) {
-                return new Response(url.pathname === "/api/image" ? "error" : JSON.stringify({ error: "edge error" }), { status: 500 });
+                return new Response(url.pathname === "/api/image" ? "error" : JSON.stringify({ error: "edge error" }), { status: 500, headers: BASE_SECURITY_HEADERS });
             }
         }
 
         
         if (url.pathname === "/style.css") {
-            return staticResponse(request, CSS_TEMPLATE, "text/css;charset=UTF-8");
+            return staticResponse(request, env, CSS_TEMPLATE, "text/css;charset=UTF-8");
         }
         if (JS_MODULES[url.pathname] !== undefined) {
-            return staticResponse(request, JS_MODULES[url.pathname], "application/javascript;charset=UTF-8");
+            return staticResponse(request, env, JS_MODULES[url.pathname], "application/javascript;charset=UTF-8");
         }
         // 未注册的 /js/ 路径必须 404，不能落到下面的 SPA 兜底返回 HTML——
         // 那样浏览器只会报难以定位的 MIME 错误
         if (url.pathname.startsWith("/js/")) {
-            return new Response("not found", { status: 404 });
+            return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
         }
         if (!url.pathname.startsWith("/api/")) {
-            return staticResponse(request, HTML_TEMPLATE, "text/html;charset=UTF-8");
+            return staticResponse(request, env, HTML_TEMPLATE, "text/html;charset=UTF-8");
         }
 
-        return new Response("not found", { status: 404 });
+        return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
     },
 };

@@ -18,8 +18,14 @@ export function toggleLightMode() {
 export async function fetchConfig() {
     try {
         const res = await apiWater('/api/config');
+
+        // 设置页只对持有浇水密钥的人可见，所以这里的失败不是访客路径——
+        // 多半是密钥失效或树莓派掉线，必须让用户看见。
+        // 此前不检查 res.ok，403 时静默返回，留下一屏空输入框。
+        if (!res.ok) { showToast(t('fail_load_cfg'), 'error'); return; }
+
         const data = await res.json();
-        if (data.error) return;
+        if (data.error) { showToast(t('fail_load_cfg'), 'error'); return; }
 
         document.getElementById('cfg-water-enabled').checked = data.auto_water.enabled;
         document.getElementById('cfg-water-threshold').value = data.auto_water.threshold;
@@ -34,7 +40,10 @@ export async function fetchConfig() {
         document.getElementById('cfg-light-lng').value = data.auto_light.lng || "";
         if (data.effective_light_on && data.effective_light_off) document.getElementById('cfg-light-effective-times').innerText = `` + t('currently_scheduled', { on: data.effective_light_on, off: data.effective_light_off }) + ``;
         toggleLightMode();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error(e);
+        showToast(t('fail_load_cfg'), 'error');
+    }
 }
 
 export async function saveConfig() {

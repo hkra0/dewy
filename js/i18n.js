@@ -19,7 +19,9 @@ const translations = {
         conn_lost: "connection lost, showing last known data", chart_lib_missing: "chart library unavailable",
         fail_hd: "failed to capture hd image", last_synced: "last synced at {time}",
         photo_log: "photo", no_photos: "no photos yet",
-        export_gif: "GIF", exporting: "creating...", gif_start: "Synthesizing GIF timeline, please wait...", gif_success: "GIF downloaded successfully", gif_error: "Failed to generate GIF.", gif_lib_missing: "GIF library loading, please try again in a moment."
+        export_gif: "GIF", exporting: "creating...", gif_start: "Synthesizing GIF timeline, please wait...", gif_success: "GIF downloaded successfully", gif_error: "Failed to generate GIF.", gif_lib_missing: "GIF library loading, please try again in a moment.",
+        load_failed: "failed to load, check connection", fail_load_cfg: "Failed to load configuration.", water_clamped: "Duration must be {min}–{max}s, adjusted.",
+        gif_sampled: "Sampled {n} of {total} photos to keep the GIF manageable"
     },
     zh: {
         env: "环境", sys: "系统", hist: "历史", settings: "设置",
@@ -40,12 +42,58 @@ const translations = {
         conn_lost: "连接已断开，显示最后一次数据", chart_lib_missing: "图表组件加载失败",
         fail_hd: "获取高清图片失败。", last_synced: "最后同步时间: {time}",
         photo_log: "照片", no_photos: "暂无照片",
-        export_gif: "导出 GIF", exporting: "合成中...", gif_start: "正在高速合成延时动图，请稍候...", gif_success: "GIF 动图已生成", gif_error: "GIF 合成失败，请重试。", gif_lib_missing: "动图组件准备中，请稍后再试"
+        export_gif: "导出 GIF", exporting: "合成中...", gif_start: "正在高速合成延时动图，请稍候...", gif_success: "GIF 动图已生成", gif_error: "GIF 合成失败，请重试。", gif_lib_missing: "动图组件准备中，请稍后再试",
+        load_failed: "加载失败，请检查连接", fail_load_cfg: "配置读取失败。", water_clamped: "浇水时长需在 {min}–{max} 秒之间，已自动调整。",
+        gif_sampled: "照片较多，已从 {total} 张中均匀抽取 {n} 张合成"
     }
 };
 
 
-let currentLang = (typeof navigator !== 'undefined' && navigator.language && navigator.language.startsWith('zh')) ? 'zh' : 'en';
+export const LANG_KEY = 'dewy_lang';
+export const SUPPORTED_LANGS = ['en', 'zh'];
+
+// 语言默认跟 navigator.language，没有界面控件——**这是刻意的**。
+//
+// 页面本身只有四个 tab，任何常驻的语言开关都会和主导航抢视觉权重，
+// 显得比实际功能还重要；而设置页要浇水密钥才可见，访客够不着。
+// 覆盖走链接参数（见 navigation.js 的 checkMagicLink）：
+//     https://…/?lang=zh    或    https://…/#key=xxx&lang=zh
+// 这跟本项目已有的魔法链接是同一套习惯，不是新机制，而且零像素占用。
+// 覆盖值落进 localStorage，之后一直生效，链接只需要发一次。
+function detectLang() {
+    try {
+        const saved = localStorage.getItem(LANG_KEY);
+        if (SUPPORTED_LANGS.includes(saved)) return saved;
+    } catch (e) {
+        // 隐私模式下 localStorage 可能抛异常，退回浏览器语言即可
+    }
+    const nav = typeof navigator !== 'undefined' ? navigator.language : '';
+    return (nav && nav.startsWith('zh')) ? 'zh' : 'en';
+}
+
+let currentLang = detectLang();
+
+/** 记住语言覆盖。由 checkMagicLink 在首屏渲染前调用，所以不需要重绘。
+ *
+ *  返回"生效语言是否发生了变化"。
+ */
+export function setLang(lang) {
+    if (!SUPPORTED_LANGS.includes(lang)) return false;
+
+    // 即使与当前生效值相同也要落盘：这是用户的显式选择，不该因为"碰巧和
+    // navigator.language 一致"就不被记住——否则哪天浏览器语言变了，
+    // 这个选择会静默失效。落盘与"是否需要重绘"是两件事。
+    try {
+        localStorage.setItem(LANG_KEY, lang);
+    } catch (e) {
+        // 存不下就只在本次会话生效
+    }
+
+    if (lang === currentLang) return false;
+    currentLang = lang;
+    return true;
+}
+
 function t(key, replacements = {}) {
     let text = translations[currentLang][key] || key;
     for (let k in replacements) {
@@ -62,4 +110,7 @@ export function applyTranslations() {
         if (key === 'currently_scheduled') return; // Handled dynamically
         el.innerText = t(key);
     });
+
+    // 让屏幕阅读器与浏览器用对语言（index.html 里写死的是 lang="en"）
+    document.documentElement.lang = currentLang;
 }

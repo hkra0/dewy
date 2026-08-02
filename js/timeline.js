@@ -117,6 +117,8 @@ export async function renderTimelineFrame(idx) {
     document.getElementById('timeline-date').innerText = photo.date;
 
     const imgEl = document.getElementById('timeline-img');
+    // alt 此前是空串：这张图是页面主内容，不是装饰
+    imgEl.alt = `plant photo ${photo.date}`;
     const loadingEl = document.getElementById('timeline-loading');
     const emptyEl = document.getElementById('timeline-empty');
     if (emptyEl) emptyEl.classList.add('hidden');
@@ -188,6 +190,66 @@ export function setTimelineSpeed(ms) {
     }
 }
 
+// GIF 导出的两道闸门。
+//
+// 此前既不限帧数也不并发：每张照片一次串行的 浏览器→Cloudflare→隧道→树莓派
+// 往返，几百张就是几百次串行往返，而且几百个 data URL 会同时驻留内存喂给
+// gifshot——手机上基本等于卡死或标签页崩溃。
+//
+// 按项目自己的保留策略（近 7 天必留 + 对数稀疏化），照片总数只增不减，
+// 所以上限是必需的，不是保险。
+const GIF_MAX_FRAMES = 120;
+const GIF_FETCH_CONCURRENCY = 5;
+
+/** 超过上限时均匀抽样，并保证首尾两帧一定入选（延时动图的起止最有信息量）。 */
+export function selectGifFrames(photos, max = GIF_MAX_FRAMES) {
+    if (photos.length <= max) return photos;
+    const step = (photos.length - 1) / (max - 1);
+    const picked = [];
+    for (let i = 0; i < max; i++) picked.push(photos[Math.round(i * step)]);
+    return picked;
+}
+
+/** 并发拉取并水印化所有帧，返回值按原顺序排列（失败的帧被剔除）。 */
+async function buildGifFrames(photos, onProgress) {
+    const frames = new Array(photos.length).fill(null);
+    let nextIdx = 0;
+    let done = 0;
+
+    // 单线程 JS：nextIdx++ 与后面的 await 之间没有让出点，不会取到重复下标。
+    async function worker() {
+        for (let i = nextIdx++; i < photos.length; i = nextIdx++) {
+            const photo = photos[i];
+            let imgUrl = tlThumbCache.get(photo.date);
+            let tempBlobUrl = null;
+
+            if (!imgUrl) {
+                try {
+                    const ver = getPhotoVersion(photo);
+                    const res = await apiGet(`/api/photos/${photo.date}?thumb=1${ver ? '&v=' + ver : ''}`);
+                    if (res.ok) {
+                        tempBlobUrl = URL.createObjectURL(await res.blob());
+                        imgUrl = tempBlobUrl;
+                    }
+                } catch (err) {
+                    console.error(`Error fetching frame ${photo.date}`, err);
+                }
+            }
+
+            if (imgUrl) frames[i] = await createWatermarkedFrame(imgUrl, photo.date);
+            // 临时 blob 用完即释放，不进 tlThumbCache（那是播放器的 LRU，
+            // 导出一次就把它冲掉不划算）
+            if (tempBlobUrl) URL.revokeObjectURL(tempBlobUrl);
+
+            onProgress(++done);
+        }
+    }
+
+    const pool = Math.min(GIF_FETCH_CONCURRENCY, photos.length);
+    await Promise.all(Array.from({ length: pool }, worker));
+    return frames.filter(Boolean);
+}
+
 function createWatermarkedFrame(imgUrl, dateText) {
     return new Promise((resolve) => {
         const img = new Image();
@@ -254,46 +316,26 @@ export async function exportTimelineGIF() {
     btn.innerText = t('exporting');
     showToast(t('gif_start'), 'info');
 
-    const frameUrls = [];
     let gifWidth = 480, gifHeight = 360;
 
     try {
-        for (let i = 0; i < tlPhotos.length; i++) {
-            const photo = tlPhotos[i];
-            let imgUrl = tlThumbCache.get(photo.date);
-            let tempBlobUrl = null;
-
-            if (!imgUrl) {
-                try {
-                    const ver = getPhotoVersion(photo);
-                    const res = await apiGet(`/api/photos/${photo.date}?thumb=1${ver ? '&v=' + ver : ''}`);
-                    if (res.ok) {
-                        const blob = await res.blob();
-                        tempBlobUrl = URL.createObjectURL(blob);
-                        imgUrl = tempBlobUrl;
-                    }
-                } catch (err) {
-                    console.error(`Error fetching frame ${photo.date}`, err);
-                }
-            }
-
-            if (imgUrl) {
-                const frame = await createWatermarkedFrame(imgUrl, photo.date);
-                if (frame) {
-                    frameUrls.push(frame.dataUrl);
-                    gifWidth = frame.width;
-                    gifHeight = frame.height;
-                }
-            }
-            if (tempBlobUrl) URL.revokeObjectURL(tempBlobUrl);
-
-            const percent = Math.round(((i + 1) / tlPhotos.length) * 50);
-            btn.innerText = `${percent}%`;
+        const selected = selectGifFrames(tlPhotos);
+        if (selected.length < tlPhotos.length) {
+            showToast(t('gif_sampled', { n: selected.length, total: tlPhotos.length }), 'info');
         }
 
-        if (frameUrls.length === 0) {
+        // 前 50% 进度用于拉取+水印，后 50% 交给 gifshot 的 progressCallback
+        const frames = await buildGifFrames(selected, (done) => {
+            btn.innerText = `${Math.round((done / selected.length) * 50)}%`;
+        });
+
+        if (frames.length === 0) {
             throw new Error("No frames loaded");
         }
+
+        const frameUrls = frames.map(f => f.dataUrl);
+        gifWidth = frames[0].width;
+        gifHeight = frames[0].height;
 
         const intervalSec = (tlSpeed || 500) / 1000;
 
@@ -367,6 +409,6 @@ export async function viewFullPhoto() {
         loader.style.display = 'none';
         statusText.style.display = 'block';
         statusText.innerText = t('fail_hd');
-        statusText.style.color = '#ef4444';
+        statusText.style.color = 'var(--danger)';
     }
 }

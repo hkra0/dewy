@@ -7,7 +7,46 @@ import { switchHistType } from './navigation.js';
 import { fetchAllData } from './refresh.js';
 
 let lightToggleInProgress = false;
+
+// 手动切灯后的乐观状态。存在的理由只有一个：切灯指令走 MQTT，
+// 服务端的 light_status 要等下一次轮询才会反映出来，中间这段空窗期
+// 不能让卡片弹回旧值。
+//
+// 因此它**必须会过期**。此前它一经设置就永不清空，服务端的真实状态被
+// 永久遮蔽——定时灯控到点关灯、或 manual_override 到期回归定时控制之后，
+// 界面仍然显示用户当初点的那个值。
+// 两个交还时机：服务端已经追上（提前交还），或超过 TTL（兜底交还）。
 let optimisticLightStatus = null;
+let optimisticLightUntil = 0;
+
+// 略长于一个轮询周期（refresh.js 是 30s），确保正常情况下
+// 至少有一次轮询机会把服务端值带回来。
+const OPTIMISTIC_LIGHT_TTL_MS = 35000;
+
+/** 决定这一帧该显示哪个状态，并在条件满足时把控制权交还给服务端。 */
+function effectiveLightStatus(serverStatus) {
+    if (optimisticLightStatus) {
+        const expired = Date.now() > optimisticLightUntil;
+        if (expired || serverStatus === optimisticLightStatus) {
+            optimisticLightStatus = null;
+            optimisticLightUntil = 0;
+        } else {
+            return optimisticLightStatus;
+        }
+    }
+    return serverStatus;
+}
+
+function clearOptimisticLight() {
+    optimisticLightStatus = null;
+    optimisticLightUntil = 0;
+}
+
+// 手动浇水时长的允许范围。必须与 api/routers.py 的 trigger_manual_watering
+// 保持一致——服务端仍然会钳制，这里只是提前告知，不是唯一防线。
+const WATER_MIN_S = 0.1;
+const WATER_MAX_S = 1.0;
+const WATER_DEFAULT_S = 0.5;
 
 export function renderDynamicCards(nodeData, globalData) {
     const container = document.getElementById('dynamic-cards');
@@ -27,22 +66,23 @@ export function renderDynamicCards(nodeData, globalData) {
         html += `<div class="card"><div class="card-title">` + t('humidity') + `</div><div class="card-value" style="color: var(--metric-hum);">${formatVal(nodeData.humidity, '%')}</div></div>`;
     }
     if (nodeData.soil_moisture !== undefined) {
-        html += `<div class="card"><div class="card-title">` + t('soil_moisture') + `</div><div class="card-value" style="color: var(--accent);">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
+        // --metric-soil，不是 --accent：历史曲线的土壤线用的就是 --metric-soil，
+        // 同一个指标在两个视图里必须是同一个颜色。
+        html += `<div class="card"><div class="card-title">` + t('soil_moisture') + `</div><div class="card-value" style="color: var(--metric-soil);">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
     }
     if (nodeData.pressure !== undefined) {
         html += `<div class="card"><div class="card-title">` + t('pressure') + `</div><div class="card-value" style="color: var(--metric-pres);">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
     }
 
-    // Light Status (global for now, or you can attach to specific node)
-    // Use optimistic status if available to prevent polling from reverting manual toggles
+    // 补光灯状态（目前挂在 main 节点上）。切灯后的空窗期显示乐观值，
+    // 服务端追上或 TTL 到期后自动交还——见 effectiveLightStatus。
     if (state.currentDevice === 'main') {
-        const effectiveStatus = optimisticLightStatus || globalData.light_status;
-        if (effectiveStatus && effectiveStatus !== '--') {
-            const color = effectiveStatus === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
-            html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">` + t('light_title') + `</div><div class="card-value" id="light-status" style="color: ${color};">${effectiveStatus}</div></div>`;
-        } else if (globalData.light_status) {
-            const color = globalData.light_status === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
-            html += `<div class="card" id="light-card" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">${t('light_title')}</div><div class="card-value" id="light-status" style="color: ${color};">${globalData.light_status}</div></div>`;
+        const status = effectiveLightStatus(globalData.light_status);
+        if (status) {
+            const color = status === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
+            // role/tabindex 让这张卡片可以 Tab 到达；Enter/Space 由
+            // ui.js 的 initKeyboardActivation 统一处理
+            html += `<div class="card" id="light-card" role="button" tabindex="0" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">${t('light_title')}</div><div class="card-value" id="light-status" style="color: ${color};">${status}</div></div>`;
         }
     }
 
@@ -122,14 +162,26 @@ function showConnectionLost() {
     const statusEl = document.getElementById('update-time');
     if (!statusEl) return;
     statusEl.innerText = t('conn_lost');
-    statusEl.style.color = '#ef4444';
+    statusEl.style.color = 'var(--danger)';
 }
 
 export async function triggerWatering() {
     if (!getWaterKey()) return;
     const btn = document.getElementById('water-btn');
+    const input = document.getElementById('water-duration');
+
+    // 服务端会把时长钳制在 0.1–1.0（api/routers.py 的 trigger_manual_watering），
+    // 但此前是静默钳制：用户填 5 秒，界面回"浇水指令已发送"，实际只浇了 1 秒。
+    // 在这里先钳制、告知、并把输入框改成真正生效的值。
+    const raw = parseFloat(input.value);
+    const wanted = Number.isFinite(raw) ? raw : WATER_DEFAULT_S;
+    const duration = Math.min(WATER_MAX_S, Math.max(WATER_MIN_S, wanted));
+    if (duration !== wanted) {
+        showToast(t('water_clamped', { min: WATER_MIN_S, max: WATER_MAX_S }), 'info');
+        input.value = duration;
+    }
+
     btn.disabled = true; btn.innerText = t('watering_ing');
-    const duration = parseFloat(document.getElementById('water-duration').value) || 0.5;
     try {
         const res = await apiWaterPost('/api/water', { duration, node_id: state.currentDevice });
         if (res.ok) { showToast(t('watering_cmd'), 'success'); setTimeout(() => { btn.innerText = t('water_btn'); btn.disabled = false; fetchAllData(true); }, 2000); }
@@ -146,12 +198,14 @@ export async function toggleLight() {
 
     lightToggleInProgress = true;
 
-    const currentStatus = optimisticLightStatus || statusEl.innerText.trim();
+    // statusEl 里已经是 effectiveLightStatus 的结果，直接读它即可
+    const currentStatus = statusEl.innerText.trim();
     const isCurrentlyOn = currentStatus === 'ON';
     const newStatus = isCurrentlyOn ? 'OFF' : 'ON';
 
-    // Pure optimistic update — no server refresh needed
+    // 乐观更新：只用来填补"指令已发出、服务端还没回报"的空窗期
     optimisticLightStatus = newStatus;
+    optimisticLightUntil = Date.now() + OPTIMISTIC_LIGHT_TTL_MS;
     statusEl.innerText = newStatus;
     statusEl.style.color = newStatus === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
     showToast(newStatus === 'ON' ? t('light_on') : t('light_off'), 'success');
@@ -163,9 +217,12 @@ export async function toggleLight() {
             throw new Error('fail');
         }
     } catch (e) {
-        // Revert optimistic state on failure
-        optimisticLightStatus = isCurrentlyOn ? 'ON' : null;
-        statusEl.innerText = isCurrentlyOn ? 'ON' : 'OFF';
+        // 指令没发出去，服务端状态没变过——直接丢掉乐观值回到服务端真相，
+        // 顺手把 DOM 恢复成点击前的样子（下一次轮询会重新渲染这张卡片）。
+        // 注意不要在这里写回 currentStatus 作为新的乐观值：那等于用一个
+        // 永不过期的值继续遮蔽服务端，正是本次修复要消除的问题。
+        clearOptimisticLight();
+        statusEl.innerText = currentStatus;
         statusEl.style.color = isCurrentlyOn ? 'var(--metric-light-on)' : 'var(--text-muted)';
         showToast(e.message === 'camera' ? t('cam_capturing') : t('light_fail'), 'error');
     }

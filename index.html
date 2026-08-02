@@ -38,35 +38,39 @@
 </head>
 
 <body>
-    <div id="hd-modal">
+    <!-- Esc 与点击背景关闭由 initModalDismiss() 绑定（js/camera.js） -->
+    <div id="hd-modal" role="dialog" aria-modal="true" aria-label="photo viewer">
         <div class="loader" id="hd-loader"></div>
         <div id="hd-status" data-i18n="capturing_hd">capturing hd image...</div>
         <img id="hd-img" src="" alt="hd view">
         <div id="hd-timestamp" class="hidden"></div>
-        <div class="close-btn" onclick="closeHD()" data-i18n="close">close</div>
+        <button type="button" class="close-btn" onclick="closeHD()" data-i18n="close">close</button>
     </div>
 
     <div class="container">
-        <div class="header" style="text-align: center; margin-bottom: 22px;">
-            <h1 style="margin: 0; font-size: 24px; color: var(--text-main); letter-spacing: -0.5px;">🌱 dewy</h1>
-            <div id="device-select-wrapper" class="hidden" style="display: inline-block; position: relative; margin-top: 8px;">
-                <select id="device-select" onchange="switchDevice(this.value, true)"
-                    style="appearance: none; -webkit-appearance: none; background: var(--nav-bg); color: var(--text-muted); padding: 4px 28px 4px 14px; border-radius: 16px; border: none; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); text-align: center;">
+        <div class="header">
+            <h1>🌱 dewy</h1>
+            <div id="device-select-wrapper" class="device-select-wrapper hidden">
+                <select id="device-select" class="device-select" aria-label="device"
+                    onchange="switchDevice(this.value, true)">
                     <option value="main">Loading...</option>
                 </select>
-                <span
-                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted); font-size: 9px;">▼</span>
+                <span class="device-select-caret" aria-hidden="true">▼</span>
             </div>
         </div>
 
-        <div class="nav">
-            <div class="nav-btn active" onclick="switchTab('environment')" id="tab-environment" data-i18n="env">
-                environment</div>
-            <div class="nav-btn" onclick="switchTab('system')" id="tab-system" data-i18n="sys">system</div>
-            <div class="nav-btn" onclick="switchTab('history')" id="tab-history" data-i18n="hist">history</div>
-            <div class="nav-btn hidden" onclick="switchTab('settings')" id="tab-settings" data-i18n="settings">settings
-            </div>
-        </div>
+        <!-- 这些必须是真的 <button>：换成 div 就没有 Tab 焦点、没有 Enter/Space
+             激活、屏幕阅读器也读不出"按钮"。样式在 style.css 里做了 UA 复位。 -->
+        <nav class="nav" aria-label="views">
+            <button type="button" class="nav-btn active" onclick="switchTab('environment')" id="tab-environment"
+                data-i18n="env">environment</button>
+            <button type="button" class="nav-btn" onclick="switchTab('system')" id="tab-system"
+                data-i18n="sys">system</button>
+            <button type="button" class="nav-btn" onclick="switchTab('history')" id="tab-history"
+                data-i18n="hist">history</button>
+            <button type="button" class="nav-btn hidden" onclick="switchTab('settings')" id="tab-settings"
+                data-i18n="settings">settings</button>
+        </nav>
 
         <!-- Dynamic Environment View -->
         <div id="view-environment" class="view-section">
@@ -76,27 +80,21 @@
 
             <div class="card full-width hidden" id="camera-block" style="margin-top: 15px;">
                 <div class="card-title" data-i18n="camera">camera</div>
-                <div class="camera-container"><img id="cam-img" alt="camera view" onclick="fetchHDImage()" /></div>
+                <div class="camera-container"><img id="cam-img" alt="camera view, activate for a high-res capture"
+                        role="button" tabindex="0" onclick="fetchHDImage()" /></div>
                 <div id="cam-timestamp"></div>
             </div>
 
-            <details class="card full-width hidden" id="water-block"
-                style="margin-top: 15px; padding: 10px 15px; cursor: pointer;">
-                <summary style="font-weight: 600; color: var(--text-muted); outline: none; user-select: none;"
-                    data-i18n="manual_water">manual watering
-                </summary>
-                <div
-                    style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; cursor: default;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label for="water-duration"
-                            style="font-size: 14px; color: var(--text-muted); white-space: nowrap;"
-                            data-i18n="duration_s">Duration (s):</label>
-                        <input type="number" id="water-duration" min="0.1" max="1.0" step="0.1" value="0.5"
-                            style="width: 60px; padding: 6px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-main); outline: none;">
+            <details class="card full-width water-block hidden" id="water-block">
+                <summary data-i18n="manual_water">manual watering</summary>
+                <div class="water-row">
+                    <div class="water-field">
+                        <label for="water-duration" class="water-label" data-i18n="duration_s">Duration (s):</label>
+                        <input type="number" id="water-duration" class="form-input form-input--sm" min="0.1" max="1.0"
+                            step="0.1" value="0.5">
                     </div>
-                    <button class="action-btn" id="water-btn"
-                        style="width: auto; margin: 0; padding: 8px 16px; font-size: 14px; flex-shrink: 0;"
-                        onclick="triggerWatering()" data-i18n="water_btn">Water</button>
+                    <button class="action-btn water-btn" id="water-btn" onclick="triggerWatering()"
+                        data-i18n="water_btn">Water</button>
                 </div>
             </details>
         </div>
@@ -126,14 +124,14 @@
             <div class="card full-width" style="padding-bottom: 20px;">
                 <div class="card-title" data-i18n="env_trends">environmental trends</div>
                 <div class="sub-nav" id="history-type-nav">
-                    <div class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')" data-i18n="past_24h">
-                        24h</div>
-                    <div class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')" data-i18n="daily_avg">
-                        day</div>
-                    <div class="sub-nav-btn" id="hist-watering" onclick="switchHistType('watering')"
-                        data-i18n="watering_log">water</div>
-                    <div class="sub-nav-btn hidden" id="hist-photos" onclick="switchHistType('photos')"
-                        data-i18n="photo_log">photo</div>
+                    <button type="button" class="sub-nav-btn active" id="hist-24h" onclick="switchHistType('24h')"
+                        data-i18n="past_24h">24h</button>
+                    <button type="button" class="sub-nav-btn" id="hist-daily" onclick="switchHistType('daily')"
+                        data-i18n="daily_avg">day</button>
+                    <button type="button" class="sub-nav-btn" id="hist-watering" onclick="switchHistType('watering')"
+                        data-i18n="watering_log">water</button>
+                    <button type="button" class="sub-nav-btn hidden" id="hist-photos" onclick="switchHistType('photos')"
+                        data-i18n="photo_log">photo</button>
                 </div>
 
                 <div class="chart-container" id="chart-container-wrapper">
@@ -142,7 +140,7 @@
                 </div>
                 <div id="watering-log-wrapper" class="hidden"></div>
                 <div id="photo-timeline-wrapper" class="hidden">
-                    <div class="photo-viewer" id="photo-viewer" onclick="viewFullPhoto()">
+                    <div class="photo-viewer" id="photo-viewer" role="button" tabindex="0" onclick="viewFullPhoto()">
                         <div id="timeline-loading" class="photo-empty-msg hidden" style="z-index: 5;"
                             data-i18n="chart_loading">loading...</div>
                         <img id="timeline-img" alt="" />
@@ -167,89 +165,82 @@
             </div>
         </div>
 
-        <!-- Settings View (Unchanged from original) -->
+        <!-- Settings View -->
         <div class="grid hidden view-section" id="view-settings">
-            <div class="card full-width" style="text-align: left; padding: 20px;">
-                <div
-                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
+            <div class="card full-width form-card">
+                <div class="form-card-head">
                     <span data-i18n="auto_water">Auto Watering</span>
-                    <label class="switch"><input type="checkbox" id="cfg-water-enabled"><span
+                    <label class="switch"><input type="checkbox" id="cfg-water-enabled" aria-label="auto watering"><span
                             class="slider"></span></label>
                 </div>
-                <div
-                    style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label data-i18n="threshold">Threshold (%)</label>
-                        <input type="number" id="cfg-water-threshold"
-                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
+                <div class="form-body">
+                    <div class="form-row">
+                        <label for="cfg-water-threshold" data-i18n="threshold">Threshold (%)</label>
+                        <input type="number" id="cfg-water-threshold" class="form-input form-input--sm">
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label data-i18n="duration">Duration (s)</label>
-                        <input type="number" id="cfg-water-duration" step="0.1"
-                            style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
+                    <div class="form-row">
+                        <label for="cfg-water-duration" data-i18n="duration">Duration (s)</label>
+                        <input type="number" id="cfg-water-duration" class="form-input form-input--sm" step="0.1">
                     </div>
                 </div>
             </div>
-            <div class="card full-width" style="text-align: left; padding: 20px;">
-                <div
-                    style="font-size: 14px; font-weight: bold; margin-bottom: 15px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
+            <div class="card full-width form-card">
+                <div class="form-card-head">
                     <span data-i18n="fill_light">Fill Light</span>
-                    <label class="switch"><input type="checkbox" id="cfg-light-enabled"><span
+                    <label class="switch"><input type="checkbox" id="cfg-light-enabled" aria-label="fill light"><span
                             class="slider"></span></label>
                 </div>
-                <div
-                    style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label data-i18n="mode">Mode</label>
-                        <select id="cfg-light-mode" onchange="toggleLightMode()"
-                            style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface-color); color: var(--text-main);">
+                <div class="form-body">
+                    <div class="form-row">
+                        <label for="cfg-light-mode" data-i18n="mode">Mode</label>
+                        <select id="cfg-light-mode" class="form-select" onchange="toggleLightMode()">
                             <option value="fixed" data-i18n="fixed_time">Fixed Time</option>
-                            <option value="sun" data-i18n="sunrise_sunset">Sunrise & Sunset</option>
+                            <option value="sun" data-i18n="sunrise_sunset">Sunrise &amp; Sunset</option>
                         </select>
                     </div>
-                    <div id="cfg-light-fixed-group"
-                        style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label
-                                data-i18n="turn_on">Turn On</label><input type="time" id="cfg-light-on"
-                                style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
+
+                    <div id="cfg-light-fixed-group" class="form-group">
+                        <div class="form-row">
+                            <label for="cfg-light-on" data-i18n="turn_on">Turn On</label>
+                            <input type="time" id="cfg-light-on" class="form-input">
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label
-                                data-i18n="turn_off">Turn Off</label><input type="time" id="cfg-light-off"
-                                style="padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
+                        <div class="form-row">
+                            <label for="cfg-light-off" data-i18n="turn_off">Turn Off</label>
+                            <input type="time" id="cfg-light-off" class="form-input">
                         </div>
                     </div>
-                    <div id="cfg-light-sun-group" class="hidden"
-                        style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px;">
-                        <div style="display: flex; gap: 10px;">
-                            <div style="flex: 1;"><label style="display: block; margin-bottom: 5px; font-size: 11px;"
-                                    data-i18n="lat">Latitude</label><input type="text" id="cfg-light-lat"
-                                    placeholder="auto"
-                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
+
+                    <div id="cfg-light-sun-group" class="form-group hidden">
+                        <div class="form-cols">
+                            <div class="form-col">
+                                <label for="cfg-light-lat" class="form-label-block" data-i18n="lat">Latitude</label>
+                                <input type="text" id="cfg-light-lat" class="form-input form-input--full"
+                                    placeholder="auto">
                             </div>
-                            <div style="flex: 1;"><label style="display: block; margin-bottom: 5px; font-size: 11px;"
-                                    data-i18n="lng">Longitude</label><input type="text" id="cfg-light-lng"
-                                    placeholder="auto"
-                                    style="width: 100%; box-sizing: border-box; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
+                            <div class="form-col">
+                                <label for="cfg-light-lng" class="form-label-block" data-i18n="lng">Longitude</label>
+                                <input type="text" id="cfg-light-lng" class="form-input form-input--full"
+                                    placeholder="auto">
                             </div>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label
-                                data-i18n="on_offset">On Offset (min)</label><input type="number"
-                                id="cfg-light-on-offset"
-                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
+                        <div class="form-row">
+                            <label for="cfg-light-on-offset" data-i18n="on_offset">On Offset (min)</label>
+                            <input type="number" id="cfg-light-on-offset" class="form-input form-input--sm">
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;"><label
-                                data-i18n="off_offset">Off Offset (min)</label><input type="number"
-                                id="cfg-light-off-offset"
-                                style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-main);">
+                        <div class="form-row">
+                            <label for="cfg-light-off-offset" data-i18n="off_offset">Off Offset (min)</label>
+                            <input type="number" id="cfg-light-off-offset" class="form-input form-input--sm">
                         </div>
-                        <div style="font-size: 11px; color: var(--accent); text-align: center; margin-top: 5px;"
-                            id="cfg-light-effective-times" data-i18n="currently_scheduled">Currently scheduled: --:-- to
-                            --:--</div>
+                        <div id="cfg-light-effective-times" class="form-hint" data-i18n="currently_scheduled">Currently
+                            scheduled: --:-- to --:--</div>
                     </div>
                 </div>
             </div>
-            <div class="card full-width" style="padding: 0;"><button class="action-btn" id="save-cfg-btn"
-                    style="margin-top: 0;" onclick="saveConfig()" data-i18n="save_cfg">Save Configuration</button></div>
+
+            <div class="card full-width form-card--flush">
+                <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfig()"
+                    data-i18n="save_cfg">Save Configuration</button>
+            </div>
         </div>
 
         <button class="action-btn" id="refresh-btn" onclick="fetchAllData(true)" data-i18n="refresh">refresh</button>
@@ -257,7 +248,9 @@
     </div>
 
 
-    <div id="toast-container" class="toast-container"></div>
+    <!-- role=status + aria-live: 没有它，"浇水指令已发送"这类唯一的操作反馈
+         对屏幕阅读器用户完全不存在 -->
+    <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
     <script type="module" src="/app.js"></script>
 </body>
 

@@ -14,6 +14,23 @@ export function clearHistoryCache() {
     for (const k in historyCache) delete historyCache[k];
 }
 
+/** 历史数据取不到时的提示。
+ *
+ *  屏幕上已经有缓存数据时保持沉默：这个函数在历史页会被 30 秒轮询反复调用，
+ *  每轮弹一次提示会刷屏，而 fetchSensorData 已经把状态栏切成 conn_lost 了。
+ *  只有当界面上什么都没有、否则会永远停在 "loading..." 时才需要接管。 */
+function showHistoryError(type, hasData) {
+    if (hasData) return;
+    if (type === 'watering') {
+        document.getElementById('watering-log-wrapper').innerHTML =
+            `<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">${t('load_failed')}</div>`;
+        return;
+    }
+    const el = document.getElementById('chart-loading');
+    el.innerText = t('load_failed');
+    el.classList.remove('hidden');
+}
+
 export async function renderHistoryUI(data, type, animate = false) {
     if (type === 'watering') {
         const wrapper = document.getElementById('watering-log-wrapper');
@@ -181,13 +198,26 @@ export async function loadHistoryData(forceFetch = false) {
         else { if (myChart) { myChart.destroy(); myChart = null; } document.getElementById('chart-loading').classList.remove('hidden'); }
     }
 
+    const hasData = !!historyCache[cacheKey];
+
     try {
         const res = await apiGet(`/api/history?hist_type=${reqType}&node_id=${state.currentDevice}`);
+
+        // 404 = 密钥不对/端点不存在，属访客路径，必须静默（见 agent.md「七、鉴权」）。
+        // 其余失败是真的连不上，此前被一个空 catch 一起吞掉，
+        // 界面就永远停在 loading 上，用户没有任何线索。
+        if (res.status === 404) return;
+        if (!res.ok) { showHistoryError(reqType, hasData); return; }
+
         const data = await res.json();
-        if (!data.error) {
-            historyCache[cacheKey] = data;
-            historyFetchTime[cacheKey] = Date.now();
-            if (state.currentHistType === reqType) await renderHistoryUI(data, reqType, animateUpdate);
-        }
-    } catch (e) { }
+        if (data.error) { showHistoryError(reqType, hasData); return; }
+
+        historyCache[cacheKey] = data;
+        historyFetchTime[cacheKey] = Date.now();
+        if (state.currentHistType === reqType) await renderHistoryUI(data, reqType, animateUpdate);
+    } catch (e) {
+        // fetch 抛异常或响应不是 JSON —— 网络层就没通
+        console.error('history load failed', e);
+        showHistoryError(reqType, hasData);
+    }
 }

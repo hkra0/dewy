@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 import core.state as state
@@ -59,8 +59,25 @@ def get_monitor_data():
     }
 
 @router.get("/api/image")
-def get_image(live: bool = False, hq: bool = False):
+def get_image(live: bool = False, hq: bool = False, since: int = 0):
+    """返回预览图。
+
+    `live=true` 才会真正调用 rpicam 抓新图；不带 live 时只是把磁盘上
+    已有的那张发回去。
+
+    `since` 是客户端已持有的图片时间戳（秒）。前端 30 秒轮询一次，而这张
+    图只在有人显式请求 live 时才会被重写——不带条件的话，每次轮询都在重下
+    同一张几十 KB 的 JPEG，穿过 Cloudflare 与隧道白烧流量。带上 since 后
+    未变更直接回 304，仍然保留了"别的客户端拍了新图，本客户端下一轮就能
+    看到"的语义。
+    """
     target_path = state.TMP_IMG_HQ_PATH if hq else state.TMP_IMG_PATH
+
+    # 条件请求只对非 live 有意义：live 的整个目的就是拍一张新的。
+    if not live and since > 0 and os.path.exists(target_path):
+        if int(os.path.getmtime(target_path)) <= since:
+            return Response(status_code=304, headers={"Cache-Control": "no-store"})
+
     if live:
         state.camera_in_progress = True
         try:

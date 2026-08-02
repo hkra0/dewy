@@ -11,6 +11,7 @@
 """
 
 import logging
+import os
 import subprocess
 import time
 
@@ -29,10 +30,26 @@ WATCHDOG_PET_INTERVAL_SEC = 300 # 看门狗续期间隔，须显著小于脚本�
 UPS_NODE_ID = "main"            # UPS 电流所在的节点
 UPS_FIELD = "current"           # 省电判据依赖的字段
 
-# 采样分两档：省电判据需要 2 秒级的电流，其余传感器不需要。
-# 归档是 10 分钟一轮、前端轮询 30 秒，温湿度按 2 秒读属于几百倍过采样——
+# 采样分两档：省电判据只依赖电流，其余传感器不必跟着高频读。
+# 归档是 10 分钟一轮、前端轮询 30 秒，温湿度按秒级读属于几百倍过采样——
 # 白白占用 CPU 与 I2C 总线，且 SHT30 高频读取会自热、把温度读数抬高。
-FAST_INTERVAL_SEC = 2.0
+#
+# 快档曾是 2 秒，但判据是"连续放电超过 DISCHARGE_CONFIRM_SEC(120) 秒"，
+# 10 秒一次在这个窗口里已有 12 个样本，分辨率绰绰有余。而且下面的判定里
+# **任何一个高于阈值的样本都会把计时器清零**，所以采样越快越难进省电模式——
+# 放慢不会让进入判断变得草率，只会让它更稳，同时把 I2C 事务量降到 1/5
+# （每天 43,200 次 → 8,640 次），这对一台正在省电的 Pi Zero 2 W 是实打实的。
+# 退出路径不受影响：省电模式下本就是 POWER_SAVE_INTERVAL_SEC 一轮。
+_FAST_INTERVAL_DEFAULT = 10.0
+try:
+    FAST_INTERVAL_SEC = float(os.environ.get("DEWY_UPS_SAMPLE_SEC", _FAST_INTERVAL_DEFAULT))
+    if FAST_INTERVAL_SEC <= 0:
+        raise ValueError("必须为正数")
+except ValueError as e:
+    logger.error("DEWY_UPS_SAMPLE_SEC=%r 非法（%s），退回默认 %.1f 秒",
+                 os.environ.get("DEWY_UPS_SAMPLE_SEC"), e, _FAST_INTERVAL_DEFAULT)
+    FAST_INTERVAL_SEC = _FAST_INTERVAL_DEFAULT
+
 FULL_INTERVAL_SEC = 30.0
 POWER_SAVE_INTERVAL_SEC = 60.0  # 省电模式下不再分档，整体降频
 

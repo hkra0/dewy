@@ -99,9 +99,12 @@ with get_conn() as conn:          # 自动持锁 → 正常退出 commit → 异
 `main.py` 启动两个 daemon 线程：
 
 - **`local_sensor_updater`**（`logic/power.py`）— 读本地传感器写入内存，同时监测 UPS 电流。
-  **采样分两档**：只有提供 `current` 的传感器按 2 秒读（省电判据需要这个频率），
-  其余传感器 30 秒一轮。归档是 10 分钟、前端轮询 30 秒，温湿度按 2 秒读属于几百倍过采样，
+  **采样分两档**：只有提供 `current` 的传感器按 10 秒读（`DEWY_UPS_SAMPLE_SEC` 可调），
+  其余传感器 30 秒一轮。归档是 10 分钟、前端轮询 30 秒，温湿度按秒级读属于几百倍过采样，
   白占 CPU 与 I2C 总线，且 SHT30 高频读取会自热抬高温度读数。
+  快档曾是 2 秒，放宽到 10 秒的依据：判据是"连续放电超 120 秒"，10 秒采样在窗口内仍有
+  12 个样本；而且**任何一个高于阈值的样本都会把计时器清零**，所以采样越快越难进省电模式——
+  放慢只会让判断更稳，同时把 I2C 事务量降到 1/5。
   哪些传感器进快档由 `hardware_manager.sensors_for_field("main", "current")` 在每次全量读取后
   重新探测（依据是驱动实际返回的字段，不是配置声明），坏掉又恢复的传感器会自动归队；
   节点上没有电流传感器时快档整个停掉，退化成 30 秒一轮。
@@ -207,35 +210,104 @@ topic = "sensor/esp32/env_data"
    匹配不到任何文件，js 模块会被当成普通 ES 模块打包，报
    "No matching export for import default"，整个 Worker 构建失败。改完跑
    `npx wrangler deploy --dry-run` 验证。
-2. **指标语义色一律用 CSS 变量**（`--metric-temp` / `--metric-hum` / `--metric-soil` /
-   `--metric-pres` / `--metric-water` / `--metric-light-on` / `--metric-power` / `--metric-cpu`），
-   定义在 `style.css` 的 `:root` 与暗色媒体查询里。不要再往 HTML 或 js 里写十六进制色值——
-   这些值此前在 `index.html`、`dashboard.js`、`history.js` 各存了一份且没有暗色变体。
+2. **所有色值一律用 CSS 变量**，包括指标语义色（`--metric-temp` / `--metric-hum` /
+   `--metric-soil` / `--metric-pres` / `--metric-water` / `--metric-light-on` /
+   `--metric-power` / `--metric-cpu`）**和状态色**（`--danger` / `--text-muted` / `--accent`），
+   定义在 `style.css` 的 `:root` 与暗色媒体查询里。不要再往 HTML 或 js 里写十六进制色值。
    Chart.js 只认真实色值，`history.js` 用 `getComputedStyle` 从 `:root` 读，色值来源仍是 CSS。
 
-3. **模块作用域不是全局作用域**。`index.html` 和 `dashboard.js` 生成的 HTML 里用了
+   两个容易踩的点：
+   - **土壤湿度是 `--metric-soil`，不是 `--accent`。** 卡片曾用 `--accent`、曲线用
+     `--metric-soil`，同一个指标在两个视图里是两种颜色。
+   - **背景是 `--accent` 的控件，文字必须用 `--on-accent`**（按钮、`.sub-nav-btn.active`）。
+     暗色下 `--accent` 是浅绿 `#81c995`，写死白字对比度只有 ~1.9:1。
+
+   仅有的合法例外：`timeline.js` 里烧进导出 GIF 的水印色（画布没有 CSS 变量，
+   而且导出结果不该随浏览器主题变），以及 `history.js` 里 `getComputedStyle` 取不到时的兜底值。
+
+   圆角同理用 `--radius-sm|md|lg`，不要再写字面 px。
+
+3. **带 `onclick` 的元素必须可聚焦**：优先用真正的 `<button>`；实在只能是 `div`/`img` 时
+   加 `role="button" tabindex="0"`。Enter/Space 由 `js/ui.js` 的 `initKeyboardActivation()`
+   委托到 `document` 统一处理（认 `role="button"`），所以 `dashboard.js` 每轮重新生成的
+   灯卡片也自动覆盖，**不需要**在渲染处重复绑定键盘事件。
+
+4. **模块作用域不是全局作用域**。`index.html` 和 `dashboard.js` 生成的 HTML 里用了
    `onclick="xxx()"`，这类内联处理器只认 `window` 上的函数。新增内联处理器时，
    必须在 `app.js` 顶部的 `Object.assign(window, {...})` 里同步登记，否则点击即报错。
-4. **不要直接调 `fetch('/api/...')`**。一律走 `js/api.js`：只读端点用 `apiGet`，
+5. **不要直接调 `fetch('/api/...')`**。一律走 `js/api.js`：只读端点用 `apiGet`，
    高危端点用 `apiWater` / `apiWaterPost`，鉴权头由它注入（`bust()` 用于加时间戳防缓存）。
    新增端点时把它归到哪把钥匙下想清楚——这是 Worker 侧鉴权分支的镜像。
 
 前端四个视图：`environment`（实时数据 + 摄像头）、`system`（供电/CPU/内存/磁盘）、
 `history`（Chart.js 曲线 + 浇水日志）、`settings`（自动浇水/补光/拍照配置）。
-另有照片时间轴播放器与 GIF 导出。中英双语，按 `navigator.language` 自动选择。
+另有照片时间轴播放器与 GIF 导出。
+
+中英双语：默认按 `navigator.language` 选择，覆盖走链接参数 `?lang=zh` / `#lang=zh`，
+存进 localStorage 的 `dewy_lang` 后长期生效。
+
+**刻意不做界面上的语言开关。** 页面只有四个 tab，任何常驻的语言控件都会跟主导航
+抢视觉权重、显得比实际功能还重要；而设置页要浇水密钥才可见，访客够不着。
+链接参数则是这个项目**已有**的习惯（魔法链接本来就在传 `key`/`water_key`），
+零像素占用。曾经在页头加过一个 EN/中 的 pill 开关，因为喧宾夺主已移除——
+要再加请先想清楚放哪里，而不是放回标题正下方。
+
+因为没有运行时切换入口，语言在 `checkMagicLink()` 里就定下来了，**早于**
+`applyTranslations()`（`app.js` 的调用顺序保证了这点），所以不需要任何重绘逻辑。
+若将来真要加运行时切换，记住：光改 `currentLang` 不够，指标卡片、图表数据集标签、
+日志表头都是渲染时经 `t()` 生成的，必须连带重绘。
 
 **Chart.js 与 gifshot 都由 `js/cdn.js` 按需加载**（各有三个备用 CDN），不要再写回
 `index.html` 的 `<head>`——那样每个只看环境页的访客都要白下载约 240KB。
 `renderHistoryUI` 因此是 async 的，调用处需要 await。
 
+### 预览图的条件请求（改这三处任一处前必读）
+
+`/api/image` 只在带 `live=true` 时才真的跑 `rpicam-jpeg` 重写 `data/live.jpg`；
+不带 `live` 只是把磁盘上那张发回去。而前端 30 秒轮询一次——**不带条件的话，
+每轮都在重下同一张几十 KB 的图**，穿过 Cloudflare 与隧道白烧流量。
+
+因此轮询路径带 `?since=<已持有图片的 mtime 秒>`，未变更时链路上三处配合返回 304：
+
+- `api/routers.py` 的 `get_image`：`not live and since >= mtime` → `Response(304)`。
+- `worker.js`：**304 的判断必须排在 `!piResponse.ok` 之前**，因为 `Response.ok` 只认 2xx，
+  落到下面会被当成故障、回一个带 `"offline"` body 的 304——而 304 本就不允许带 body。
+- `js/camera.js`：`currentCamEpoch` 记着当前这张的时间戳；收到 304 只重绘时间戳标签
+  （是否 `⏳` 取决于当前时刻，不取决于响应），不碰 `img.src`。
+
+不要"优化"成轮询时也 `live=true`：那等于让树莓派全天候每 30 秒唤醒一次 ISP。
+也不要去掉 `since` 退回无条件 GET。
+
 ### 静态资源缓存
 
-`worker.js` 在模块初始化时对所有静态资源算一个哈希作为共用 `ETag`，
-响应带 `Cache-Control: public, max-age=0, must-revalidate`，命中 `If-None-Match` 返回 304。
+`worker.js` 给所有静态资源一个共用 `ETag`，响应带
+`Cache-Control: public, max-age=0, must-revalidate`，命中 `If-None-Match` 返回 304。
 
 **所有资源共用同一个 ETag 是有意的**：它们本来就同一次部署，共用 ETag 才能保证
 `index.html` 与 `js/*.js` 不会各自缓存到不同版本。URL 里没有内容哈希，
 所以也**不能**改成长 `max-age`——那样改完发上去，用户手里还是旧版本。
+
+ETag 的值取自 `wrangler.toml` 的 `[version_metadata]` 绑定（`env.CF_VERSION_METADATA.id`），
+每次部署自动变——"同一次部署"正是这个 id 的语义，且零计算。绑定缺失时（本地 dev、
+旧版 wrangler）才退回逐字符的内容哈希，并且是懒计算，正常路径下那个循环根本不会跑。
+**不要把它改回模块初始化时无条件哈希**：那是每个 isolate 冷启动都要付的十几万次循环。
+
+### 安全响应头
+
+所有响应带 `X-Content-Type-Options: nosniff` 与 `Referrer-Policy: no-referrer`
+（后者也兜住旧格式魔法链接的密钥泄漏）。HTML 文档额外带一条 CSP。
+
+CSP 的 `script-src` **保留了 `'unsafe-inline'`**，因为内联 `onclick` 是本项目的既定约定
+（见上文第 4 条）。所以它挡不住注入的内联脚本，挡的是**主机**：外部脚本加载不了，
+`connect-src 'self'` 让数据无法外发到任意域名。想拿掉 `'unsafe-inline'` 就得先把全部
+内联处理器改成 `addEventListener`，那是另一件事。
+
+**改 `js/cdn.js` 的 CDN 列表时必须同步 CSP 的 `script-src`**，否则库会被拦掉、
+图表与 GIF 导出静默失效。`worker-src blob:` 是 gifshot 的 worker 需要的。
+
+API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头、跨源必须过预检，
+这里又没有 OPTIONS 处理器——之前那行 `Access-Control-Allow-Origin: *` 是死代码，已移除。
+不要因为"看着少了个头"再加回来。
 
 ### 浏览器历史
 
@@ -258,6 +330,7 @@ topic = "sensor/esp32/env_data"
 | `DEWY_DATA_RETENTION_DAYS` | `365` | `node_data` 保留天数，超期行每天清理一次。设 0 关闭清理 |
 | `DEWY_LOG_LEVEL` | `INFO` | 日志级别 |
 | `DEWY_LOG_FILE` | 未设 | 设置后额外落盘，按 5MB × 3 份轮转 |
+| `DEWY_UPS_SAMPLE_SEC` | `10` | UPS 电流的快档采样间隔（秒）。必须显著小于 `DISCHARGE_CONFIRM_SEC`(120) |
 
 用户可调配置存于 `data/config.json`（`auto_water` / `auto_light` / `daily_photo`），
 经 `/api/config` 读写，缺失字段会与 `DEFAULT_CONFIG` 自动合并。
@@ -284,7 +357,24 @@ topic = "sensor/esp32/env_data"
    新增端点自动受保护，不会因为忘了粘贴校验代码而默默敞开。要放开某个端点必须显式声明。
    比较用 `hmac.compare_digest`，避免逐字节比较带来的时序差异。
 
-前端首次通过魔法链接 `?key=` 把 viewer key 写入 localStorage；浇水密钥单独存 `robin_water_key`。
+前端首次通过魔法链接把 viewer key 写入 localStorage；浇水密钥单独存 `robin_water_key`。
+
+**新链接一律用片段**：`https://…/#key=xxx&water_key=yyy`（可再带 `&lang=zh`）。
+片段不随请求上行，密钥不会进 Cloudflare 的边缘访问日志，也不会出现在发往第三方
+CDN/字体服务的 Referer 里。`?key=` 两处都会泄漏，而 `replaceState` 只擦得掉地址栏、
+擦不掉已经写下的日志。`checkMagicLink` 仍然接受 `?key=`（否则已分享出去的旧链接全部失效），
+但**不要再用它生成新链接**。
+
+密钥挪进片段后多出一条路径需要照顾：**只改 hash 的导航不会重新加载文档**，
+`window.onload` 不触发，`checkMagicLink` 也就不跑——用户已经开着页面时再点一条
+`#key=` 链接会毫无反应。`initMagicLinkNav()` 监听 `hashchange` 补上这一段，
+消费到参数后直接 `location.reload()`（此时参数已落盘、URL 已擦净，重载即走正常启动流程）。
+`replaceState` 不触发 `hashchange`，所以不会自我循环。query 形式不受影响——
+换 query 一定是整页导航。
+
+`setLang()` **即使新值与当前生效值相同也要落盘**。用户点 `?lang=zh` 是显式选择，
+不该因为"碰巧和 `navigator.language` 一致"就不被记住，否则哪天浏览器语言变了这个选择会静默失效。
+落盘与"是否需要重绘"是两件事，返回值只表示后者。
 
 ### 无密钥＝访客路径，必须保持静默
 
@@ -369,6 +459,20 @@ SQLite（WAL 模式），三张表：
   指令幂等、无实际影响，属已知行为。
 - **`cleanup_old_photos` 里的 `MIN_PHOTOS_TO_CLEAN = 30` 是触发门槛，不是删除下限**。
   一旦触发会沿曲线一直删到磁盘够用，实测 120 张可删到 18 张。
+- **切灯的乐观状态必须会过期**（`dashboard.js` 的 `optimisticLightStatus` /
+  `optimisticLightUntil`）。它只用来填补"MQTT 指令已发、服务端 `light_status` 还没回报"
+  的那一个轮询周期。两个交还时机缺一不可：服务端追上时提前交还、超过 TTL(35s) 兜底交还。
+  历史上它一经设置就永不清空，结果是定时灯控到点关灯、或 `manual_override` 到期之后，
+  界面仍显示用户当初点的那个值。**失败分支也不要把点击前的状态写回成新的乐观值**——
+  那同样是一个永不过期的遮蔽。
+- **`fetchAllData` 在启动路径上只应被调用一次**。`parseURLAndNavigate()` 里的
+  `switchDevice`/`switchTab` 都传 `skipFetch=true`，取数由 `app.js` 统一发起。
+  给 `switchDevice` 补 `fetchAllData` 会让每次打开页面都多打一轮请求、多跑一次 rpicam。
+  popstate 分支相反，那里需要 `switchDevice` 自己取数。
+- **GIF 导出的帧数上限与并发不是保险，是必需**（`timeline.js` 的 `GIF_MAX_FRAMES=120`、
+  `GIF_FETCH_CONCURRENCY=5`）。照片按对数稀疏化策略只增不减，而每帧是一次
+  浏览器→Cloudflare→隧道→Pi 的往返；去掉上限后几百个 data URL 同时驻留内存喂给
+  gifshot，手机上等于标签页崩溃。`selectGifFrames` 均匀抽样并保证首尾入选。
 - **`can_water_now` 用 `datetime.utcnow()` 与库里的 UTC 时间戳比较**，二者时区一致。
   不要改成本地时间，会导致间隔判断错 8 小时。（注：`utcnow()` 在 Python 3.12+ 已废弃，
   未来迁移到 `datetime.now(timezone.utc)` 时两侧要一起改。）

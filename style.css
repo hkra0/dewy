@@ -10,6 +10,10 @@
     --text-muted: rgba(0, 0, 0, 0.55);
     --accent: #188038;
     --accent-hover: #137333;
+    /* 压在 --accent 上的文字色。浅色下 accent 是深绿，配白字；
+       暗色下 accent 变成浅绿 #81c995，白字对比度只有 ~1.9:1，
+       必须翻成深色。所有 background:var(--accent) 的控件都用它。 */
+    --on-accent: #ffffff;
     --accent-blue: #1a73e8;
     --accent-blue-hover: #174ea6;
     --danger: #d93025;
@@ -17,6 +21,8 @@
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.03);
     --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.1);
+    /* 内联样式里此前混用 5px/6px/8px/10px 四套圆角，统一收进这三档 */
+    --radius-sm: 6px;
     --radius-md: 12px;
     --radius-lg: 20px;
 
@@ -42,8 +48,12 @@
         --border-hover: #437851;
         --accent: #81c995;
         --accent-hover: #a5d6a7;
+        --on-accent: #0d1f14;
         --toast-bg: #e8f5e9;
         --toast-text: #0d1f14;
+        /* 浅色的 #d93025 压在 --bg-color(#0d1f14) 上偏暗、对比不足。
+           各处曾硬编码 #ef4444 正是为了绕开这一点，现在收进 token。 */
+        --danger: #ef4444;
         --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
         --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.5);
         --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6);
@@ -81,7 +91,9 @@ body {
     box-shadow: var(--shadow-md);
     margin-top: 20px;
     box-sizing: border-box;
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    /* 曾是写死的 rgba(255,255,255,0.5)：浅色下是看不见的高光边，
+       暗色下变成一条明显的白发丝线。 */
+    border: 1px solid var(--border);
 }
 
 @media (max-width: 600px) {
@@ -96,8 +108,33 @@ body {
         border-radius: 0;
         border: none;
         box-shadow: none;
+        /* dvh 而非 vh：iOS Safari 地址栏收放时 100vh 会让页面高度跳动 */
         min-height: 100vh;
+        min-height: 100dvh;
     }
+}
+
+/* 导航项与关闭按钮现在是真正的 <button>（为了 Tab 焦点与 Enter/Space 激活），
+   这里把 UA 默认样式复位掉，保持原有外观。 */
+.nav-btn,
+.sub-nav-btn,
+.close-btn {
+    font-family: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.nav-btn {
+    background: none;
+    border: none;
+}
+
+/* 全站统一的键盘焦点环。只用 :focus-visible——鼠标点击不会触发，
+   不影响原有的视觉观感。 */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
 }
 
 /* Nav */
@@ -144,9 +181,12 @@ body {
     transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 
-.card:hover {
-    box-shadow: var(--shadow-md);
-    border-color: var(--border-hover);
+/* 触屏上 :hover 会一直粘着直到点别处，只对真正有指针悬停的设备启用 */
+@media (hover: hover) {
+    .card:hover {
+        box-shadow: var(--shadow-md);
+        border-color: var(--border-hover);
+    }
 }
 
 .card-title {
@@ -189,6 +229,186 @@ body {
     display: none !important;
 }
 
+/* ========== 表单 / 设置页 ==========
+   设置页此前几乎每一行都是手写的内联 style，间距与圆角没有任何一致性。
+   这些类是从那些内联样式里抽出来的，行为完全等价。 */
+
+.form-card {
+    text-align: left;
+    padding: 20px;
+}
+
+/* 卡片标题行：标题 + 右侧开关 */
+.form-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.form-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* 一行一个 label + 控件 */
+.form-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 条件显示的子分组（定时 / 日出日落） */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 5px;
+}
+
+.form-cols {
+    display: flex;
+    gap: 10px;
+}
+
+.form-col {
+    flex: 1;
+}
+
+.form-label-block {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 11px;
+}
+
+.form-input,
+.form-select {
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface-color);
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: 13px;
+}
+
+/* 数值/时间这类短输入 */
+.form-input--sm {
+    width: 60px;
+}
+
+.form-input--full {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.form-hint {
+    font-size: 11px;
+    color: var(--accent);
+    text-align: center;
+    margin-top: 5px;
+}
+
+/* 保存按钮所在的卡片不需要内边距，按钮自己铺满 */
+.form-card--flush {
+    padding: 0;
+}
+
+/* ========== 头部与设备选择 ========== */
+.header {
+    text-align: center;
+    margin-bottom: 22px;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 24px;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+}
+
+.device-select-wrapper {
+    display: inline-block;
+    position: relative;
+    margin-top: 8px;
+}
+
+.device-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--nav-bg);
+    color: var(--text-muted);
+    padding: 4px 28px 4px 14px;
+    border-radius: 16px;
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    box-shadow: var(--shadow-sm);
+    text-align: center;
+}
+
+.device-select-caret {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--text-muted);
+    font-size: 9px;
+}
+
+/* ========== 手动浇水（可折叠） ========== */
+.water-block {
+    margin-top: 15px;
+    padding: 10px 15px;
+    cursor: pointer;
+}
+
+.water-block summary {
+    font-weight: 600;
+    color: var(--text-muted);
+    outline: none;
+    user-select: none;
+}
+
+.water-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+    cursor: default;
+}
+
+.water-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.water-label {
+    font-size: 14px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+button.action-btn.water-btn {
+    width: auto;
+    margin: 0;
+    padding: 8px 16px;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
 /* Sub Nav */
 .sub-nav {
     display: flex;
@@ -219,7 +439,7 @@ body {
 
 .sub-nav-btn.active {
     background: var(--accent);
-    color: #ffffff;
+    color: var(--on-accent);
     border-color: var(--accent);
 }
 
@@ -228,7 +448,7 @@ button.action-btn {
     width: 100%;
     padding: 14px;
     background: var(--accent);
-    color: #ffffff;
+    color: var(--on-accent);
     border: none;
     border-radius: 10px;
     font-size: 15px;
@@ -478,25 +698,6 @@ button.action-btn:active {
     }
 }
 
-/* Skeleton Loader */
-.skeleton {
-    background: linear-gradient(90deg, #e2e8f0 25%, #cbd5e1 50%, #e2e8f0 75%);
-    background-size: 200% 100%;
-    animation: skeletonLoading 1.5s infinite;
-    border-radius: 4px;
-    color: transparent !important;
-}
-
-@keyframes skeletonLoading {
-    0% {
-        background-position: 200% 0;
-    }
-
-    100% {
-        background-position: -200% 0;
-    }
-}
-
 /* Toggles */
 .switch {
     position: relative;
@@ -743,9 +944,9 @@ input:checked+.slider:before {
 }
 
 .tl-action-btn:hover:not(:disabled) {
-    border-color: #10b981;
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.05);
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .tl-action-btn:disabled {

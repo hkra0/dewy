@@ -14,11 +14,13 @@ import {
     switchDevice,
     switchHistType,
     checkMagicLink,
+    initMagicLinkNav,
     parseURLAndNavigate,
     initHistoryNav,
 } from './js/navigation.js';
 import { triggerWatering, toggleLight } from './js/dashboard.js';
-import { fetchHDImage, closeHD } from './js/camera.js';
+import { fetchHDImage, closeHD, initModalDismiss } from './js/camera.js';
+import { initKeyboardActivation } from './js/ui.js';
 import { saveConfig, toggleLightMode } from './js/settings.js';
 import {
     toggleTimelinePlay,
@@ -54,8 +56,14 @@ window.onload = async () => {
     checkMagicLink();
     applyTranslations();
     await initNodes();
+    // parseURLAndNavigate 只摆好视图、不取数，首屏的唯一一轮请求在这里发出。
+    // 两边都取的话首屏会打两轮 /api/monitor，且其中一轮带 live=true，
+    // 等于每次打开页面都让树莓派多跑一次 rpicam。
     parseURLAndNavigate();
     initHistoryNav();
+    initMagicLinkNav();
+    initKeyboardActivation();
+    initModalDismiss();
     fetchAllData(true);
 
     // 页面不可见时不轮询，省流量也省树莓派的电
