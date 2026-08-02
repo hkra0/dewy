@@ -21,7 +21,7 @@ export async function fetchConfig() {
 
         // 设置页只对持有浇水密钥的人可见，所以这里的失败不是访客路径——
         // 多半是密钥失效或树莓派掉线，必须让用户看见。
-        // 此前不检查 res.ok，403 时静默返回，留下一屏空输入框。
+        // 不检查 res.ok 的话，403 会静默返回，留下一屏空输入框。
         if (!res.ok) { showToast(t('fail_load_cfg'), 'error'); return; }
 
         const data = await res.json();

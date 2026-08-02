@@ -65,7 +65,8 @@ js/                      前端 ES 模块
   refresh.js             fetchAllData（单独成模块以打断循环引用）
 firmware/plant_node/     ESP32 固件（PlatformIO / Arduino）
 scripts/migrate_db.py    历史库迁移（env_log → node_data）
-test/                    手动硬件调试脚本，不是自动化测试
+scripts/hardware_check/  传感器/水泵的交互式排查脚本（需接真实硬件，不是自动化测试）
+tests/                   自动化单元测试：python3 -m unittest discover -s tests -t .
 ```
 
 ---
@@ -105,7 +106,7 @@ with get_conn() as conn:          # 自动持锁 → 正常退出 commit → 异
   **采样分两档**：只有提供 `current` 的传感器按 10 秒读（`DEWY_UPS_SAMPLE_SEC` 可调），
   其余传感器 30 秒一轮。归档是 10 分钟、前端轮询 30 秒，温湿度按秒级读属于几百倍过采样，
   白占 CPU 与 I2C 总线，且 SHT30 高频读取会自热抬高温度读数。
-  快档曾是 2 秒，放宽到 10 秒的依据：判据是"连续放电超 120 秒"，10 秒采样在窗口内仍有
+  快档取 10 秒而非更密的依据：判据是"连续放电超 120 秒"，10 秒采样在窗口内仍有
   12 个样本；而且**任何一个高于阈值的样本都会把计时器清零**，所以采样越快越难进省电模式——
   放慢只会让判断更稳，同时把 I2C 事务量降到 1/5。
   哪些传感器进快档由 `hardware_manager.sensors_for_field("main", "current")` 在每次全量读取后
@@ -220,8 +221,8 @@ topic = "sensor/esp32/env_data"
    Chart.js 只认真实色值，`history.js` 用 `getComputedStyle` 从 `:root` 读，色值来源仍是 CSS。
 
    两个容易踩的点：
-   - **土壤湿度是 `--metric-soil`，不是 `--accent`。** 卡片曾用 `--accent`、曲线用
-     `--metric-soil`，同一个指标在两个视图里是两种颜色。
+   - **土壤湿度是 `--metric-soil`，不是 `--accent`。** 卡片与曲线共用这一个变量，
+     写成 `--accent` 会让同一个指标在两个视图里是两种颜色。
    - **背景是 `--accent` 的控件，文字必须用 `--on-accent`**（按钮、`.sub-nav-btn.active`）。
      暗色下 `--accent` 是浅绿 `#81c995`，写死白字对比度只有 ~1.9:1。
 
@@ -252,8 +253,7 @@ topic = "sensor/esp32/env_data"
 **刻意不做界面上的语言开关。** 页面只有四个 tab，任何常驻的语言控件都会跟主导航
 抢视觉权重、显得比实际功能还重要；而设置页要浇水密钥才可见，访客够不着。
 链接参数则是这个项目**已有**的习惯（魔法链接本来就在传 `key`/`water_key`），
-零像素占用。曾经在页头加过一个 EN/中 的 pill 开关，因为喧宾夺主已移除——
-要再加请先想清楚放哪里，而不是放回标题正下方。
+零像素占用。要加常驻开关请先想清楚放哪里——标题正下方那个位置试过，喧宾夺主。
 
 因为没有运行时切换入口，语言在 `checkMagicLink()` 里就定下来了，**早于**
 `applyTranslations()`（`app.js` 的调用顺序保证了这点），所以不需要任何重绘逻辑。
@@ -309,8 +309,8 @@ CSP 的 `script-src` **保留了 `'unsafe-inline'`**，因为内联 `onclick` �
 图表与 GIF 导出静默失效。`worker-src blob:` 是 gifshot 的 worker 需要的。
 
 API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头、跨源必须过预检，
-这里又没有 OPTIONS 处理器——之前那行 `Access-Control-Allow-Origin: *` 是死代码，已移除。
-不要因为"看着少了个头"再加回来。
+这里又没有 OPTIONS 处理器——`Access-Control-Allow-Origin: *` 在这套结构下是死代码。
+不要因为"看着少了个头"就加上。
 
 ### 浏览器历史
 
@@ -392,10 +392,8 @@ CDN/字体服务的 Referer 里。`?key=` 两处都会泄漏，而 `replaceState
 那是持有有效密钥的用户，需要能分辨"数据没变"和"已经断了"。
 新增前端请求时照此区分：`404 → 静默`，`其余失败 → 提示`。
 
-> 历史注记：`/api/monitor`、`/api/history`、`/api/nodes` 曾接受
-> `X-Requested-By: Robin-Web` 作为 `X-Viewer-Key` 的替代凭证。该头是写死在前端的
-> 非机密字符串，等同于无鉴权，已于 2026-08 移除。新增只读端点时**不要**再引入类似的
-> "标识头即凭证"设计。
+> 新增只读端点时**不要**引入"标识头即凭证"的设计（例如凭 `X-Requested-By` 之类
+> 写死在前端的固定字符串放行）——那是非机密值，等同于无鉴权。
 
 ---
 
@@ -431,11 +429,12 @@ SQLite（WAL 模式），三张表：
 ### 必须遵守
 
 - **不要在 `core/logic/*` 或 `api/routers.py` 里 `import sqlite3`**——所有 SQL 归 `core/database.py`。
-  历史上这里出过连接泄漏（持锁时提前 `return`），DAL 的上下文管理器就是为杜绝此类问题而存在。
+  持锁时提前 `return` 会漏连接，DAL 的上下文管理器就是为杜绝此类问题而存在。
 - **不要写死路径**。一律从 `core/paths.py` 取，它由 `__file__` 推导，换用户名/换部署目录都不受影响。
 - **`main.py` 里 `setup_logging()` 必须在任何 `core.*` 导入之前执行**（故意不放在 import 块顶部，
   已加 `# noqa: E402`）。否则 `core.state` 的密钥告警和 `hardware.manager` 的配置日志会丢失。
-- **用 logging 不用 print**。服务代码全部已改造完毕；`scripts/` 和 `test/` 下的独立脚本除外。
+- **用 logging 不用 print**。服务代码一律如此；`scripts/` 下的独立脚本除外
+  （`scripts/hardware_check/` 靠 print 输出实时读数，本来就是给人看的）。
 - **高频路径上的失败日志必须用 `core/logfold.py` 折叠**。判断标准：这行日志所在的代码
   是否可能被每秒/每几秒调用一次（传感器轮询、MQTT 回调、API 处理）。
   直接 `logger.warning` 会在硬件故障时产生每天十几万条日志，既刷屏又损耗 SD 卡。
@@ -465,8 +464,8 @@ SQLite（WAL 模式），三张表：
 - **切灯的乐观状态必须会过期**（`dashboard.js` 的 `optimisticLightStatus` /
   `optimisticLightUntil`）。它只用来填补"MQTT 指令已发、服务端 `light_status` 还没回报"
   的那一个轮询周期。两个交还时机缺一不可：服务端追上时提前交还、超过 TTL(35s) 兜底交还。
-  历史上它一经设置就永不清空，结果是定时灯控到点关灯、或 `manual_override` 到期之后，
-  界面仍显示用户当初点的那个值。**失败分支也不要把点击前的状态写回成新的乐观值**——
+  一经设置就永不清空的话，定时灯控到点关灯、或 `manual_override` 到期之后，
+  界面会一直显示用户当初点的那个值。**失败分支也不要把点击前的状态写回成新的乐观值**——
   那同样是一个永不过期的遮蔽。
 - **`fetchAllData` 在启动路径上只应被调用一次**。`parseURLAndNavigate()` 里的
   `switchDevice`/`switchTab` 都传 `skipFetch=true`，取数由 `app.js` 统一发起。
@@ -480,7 +479,23 @@ SQLite（WAL 模式），三张表：
   不要改成本地时间，会导致间隔判断错 8 小时。（注：`utcnow()` 在 Python 3.12+ 已废弃，
   未来迁移到 `datetime.now(timezone.utc)` 时两侧要一起改。）
 
+### 测试
+
+- 自动化测试在 `tests/`，纯 stdlib（unittest），无需 pytest，任意机器可离线跑：
+
+  ```
+  python3 -m unittest discover -s tests -t .
+  ```
+
+  已覆盖 `compute_next_boundary`、`_select_photos_to_delete`、`clean_soil_anomalies` 三处判定逻辑。
+- **`tests/__init__.py` 里的模块打桩不能删**。`core/logic/*` 都 `import core.state`，
+  而 `core/state.py` 在导入期就会实例化 `HardwareManager`（读 hardware_config、加载
+  smbus2/RPi.GPIO、生成密钥文件），非树莓派机器上直接抛异常。所以要在导入被测模块之前
+  把 `core.state` / `core.config` / `core.database` 换成空壳。新增测试请沿用这一入口。
+- **手动硬件排查脚本放 `scripts/hardware_check/`，不要建 `test/` 目录、也不要用
+  `test_` 前缀命名**。它们要接真实 I2C/GPIO，导入期就摸总线，只能在树莓派上手工跑；
+  叫 `test` 既跟 `tests/` 混淆，也会被 pytest 的默认规则收进去。
+
 ### 已知待办
 
-- `test/` 目录名不副实，里面是手动硬件调试脚本而非自动化测试。
-  `compute_next_boundary`、`_select_photos_to_delete`、土壤离群值过滤这三处是纯函数，最适合先补测试。
+- 暂无。

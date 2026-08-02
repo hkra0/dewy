@@ -231,8 +231,8 @@ export function parseURLAndNavigate() {
     switchTab(tab, false, true);
 }
 
-/** 浏览器前进/后退。updateURL() 一直在 pushState，但此前没人监听，
- *  结果是地址栏变了、界面不变。 */
+/** 浏览器前进/后退。updateURL() 在 pushState，没人监听 popstate 的话
+ *  就是地址栏变了、界面不变。 */
 export function initHistoryNav() {
     window.addEventListener('popstate', () => {
         const { dev, tab } = parseURL();

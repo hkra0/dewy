@@ -42,7 +42,8 @@ index.html / style.css / app.js / js/   frontend SPA (native ES modules, no buil
 firmware/plant_node/     ESP32 firmware (PlatformIO / Arduino)
 power_saver.sh           power saver with auto-revert watchdog
 scripts/                 DB migration, Pi setup helpers
-test/                    manual hardware debugging scripts (not automated tests)
+  hardware_check/        interactive sensor/pump probes (need real hardware attached)
+tests/                   automated unit tests: python3 -m unittest discover -s tests -t .
 AGENTS.md                in-depth maintenance notes (Chinese)
 ```
 

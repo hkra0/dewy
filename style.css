@@ -21,7 +21,7 @@
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.03);
     --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.1);
-    /* 内联样式里此前混用 5px/6px/8px/10px 四套圆角，统一收进这三档 */
+    /* 圆角只有这三档，别再引入 5px/8px/10px 之类的中间值 */
     --radius-sm: 6px;
     --radius-md: 12px;
     --radius-lg: 20px;
@@ -51,8 +51,8 @@
         --on-accent: #0d1f14;
         --toast-bg: #e8f5e9;
         --toast-text: #0d1f14;
-        /* 浅色的 #d93025 压在 --bg-color(#0d1f14) 上偏暗、对比不足。
-           各处曾硬编码 #ef4444 正是为了绕开这一点，现在收进 token。 */
+        /* 浅色的 #d93025 压在 --bg-color(#0d1f14) 上偏暗、对比不足，
+           所以暗色单独给一支更亮的红。危险色一律走这个 token，别再硬编码。 */
         --danger: #ef4444;
         --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
         --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.5);
@@ -91,8 +91,8 @@ body {
     box-shadow: var(--shadow-md);
     margin-top: 20px;
     box-sizing: border-box;
-    /* 曾是写死的 rgba(255,255,255,0.5)：浅色下是看不见的高光边，
-       暗色下变成一条明显的白发丝线。 */
+    /* 必须走 --border：写死 rgba(255,255,255,0.5) 的话，浅色下是看不见的
+       高光边，暗色下会变成一条明显的白发丝线。 */
     border: 1px solid var(--border);
 }
 
@@ -230,8 +230,7 @@ body {
 }
 
 /* ========== 表单 / 设置页 ==========
-   设置页此前几乎每一行都是手写的内联 style，间距与圆角没有任何一致性。
-   这些类是从那些内联样式里抽出来的，行为完全等价。 */
+   设置页的间距与圆角都走这些类，不要在 HTML 里写内联 style。 */
 
 .form-card {
     text-align: left;

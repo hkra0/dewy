@@ -41,9 +41,9 @@ const JS_MODULES = {
 // js/*.js 不可能各自缓存到不同版本。
 //
 // ETag 的来源优先用部署版本号（wrangler.toml 的 [version_metadata] 绑定）：
-// "同一次部署" 正是这个 id 的语义，而且零计算。此前是在模块初始化时逐字符
-// 哈希全部资源（约 110KB → 十几万次循环），每个 isolate 冷启动都要付一次。
-// 绑定缺失时（本地 dev、旧版 wrangler）才退回内容哈希，且改成懒计算。
+// "同一次部署" 正是这个 id 的语义，而且零计算。绑定缺失时（本地 dev、旧版
+// wrangler）才退回内容哈希——那要逐字符扫全部资源（约 110KB → 十几万次循环），
+// 所以必须懒计算，不能放在模块初始化里让每个 isolate 冷启动都付一次。
 let _contentHash = null;
 function contentHash() {
     if (_contentHash === null) {
@@ -131,9 +131,9 @@ export default {
             // 与只读端点一律回 404、不暴露端点存在的原则相悖。
             //
             // Authorization
-            // 所有只读端点一律要求 X-Viewer-Key。
-            // 注意：这里曾有 `|| X-Requested-By === "Robin-Web"` 的旁路，
-            // 但该头是写死在前端的非机密字符串，等同于无鉴权，已移除。
+            // 所有只读端点一律要求 X-Viewer-Key。不要给它加"标识头即凭证"式的
+            // 旁路（如 X-Requested-By 之类固定字符串）——写死在前端的非机密值
+            // 等同于无鉴权。
             if (url.pathname === "/api/monitor" || url.pathname === "/api/history" || url.pathname === "/api/nodes"
                 || url.pathname === "/api/image" || url.pathname === "/api/photos" || url.pathname.startsWith("/api/photos/")) {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });

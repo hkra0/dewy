@@ -42,7 +42,8 @@ index.html / style.css / app.js / js/   前端单页应用（原生 ES 模块，
 firmware/plant_node/     ESP32 固件（PlatformIO / Arduino）
 power_saver.sh           带自动恢复看门狗的省电脚本
 scripts/                 数据库迁移、树莓派初始化脚本
-test/                    手动硬件调试脚本（非自动化测试）
+  hardware_check/        传感器/水泵的交互式排查脚本（需接真实硬件）
+tests/                   自动化单元测试：python3 -m unittest discover -s tests -t .
 AGENTS.md                深入维护笔记（分层约定、看门狗、既有行为说明）
 ```
 

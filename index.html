@@ -18,8 +18,8 @@
     </noscript>
     <link rel="stylesheet" href="/style.css">
 
-    <!-- Chart.js 与 gifshot 曾写死在这里，每个访客都要下载约 240KB，
-         哪怕从不打开历史或照片页。现在由 js/cdn.js 在进入对应视图时按需加载。 -->
+    <!-- 不要在这里引 Chart.js / gifshot：约 240KB，且只有历史页与照片页用得上。
+         由 js/cdn.js 在进入对应视图时按需加载。 -->
 
     <!-- 模块图是串行发现的：浏览器要先下 app.js 才知道有 js/*.js。
          预声明一遍，把瀑布压平。新增模块时记得同步这里和 worker.js 的 JS_MODULES。 -->

@@ -12,7 +12,7 @@ let lightToggleInProgress = false;
 // 服务端的 light_status 要等下一次轮询才会反映出来，中间这段空窗期
 // 不能让卡片弹回旧值。
 //
-// 因此它**必须会过期**。此前它一经设置就永不清空，服务端的真实状态被
+// 因此它**必须会过期**。一经设置就永不清空的话，服务端的真实状态会被
 // 永久遮蔽——定时灯控到点关灯、或 manual_override 到期回归定时控制之后，
 // 界面仍然显示用户当初点的那个值。
 // 两个交还时机：服务端已经追上（提前交还），或超过 TTL（兜底交还）。
@@ -171,8 +171,8 @@ export async function triggerWatering() {
     const input = document.getElementById('water-duration');
 
     // 服务端会把时长钳制在 0.1–1.0（api/routers.py 的 trigger_manual_watering），
-    // 但此前是静默钳制：用户填 5 秒，界面回"浇水指令已发送"，实际只浇了 1 秒。
-    // 在这里先钳制、告知、并把输入框改成真正生效的值。
+    // 但静默钳制会骗人：用户填 5 秒，界面回"浇水指令已发送"，实际只浇了 1 秒。
+    // 所以在这里先钳制、告知、并把输入框改成真正生效的值。
     const raw = parseFloat(input.value);
     const wanted = Number.isFinite(raw) ? raw : WATER_DEFAULT_S;
     const duration = Math.min(WATER_MAX_S, Math.max(WATER_MIN_S, wanted));

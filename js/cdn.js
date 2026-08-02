@@ -1,8 +1,8 @@
 // 按需加载第三方库。无依赖。
 //
-// Chart.js 与 gifshot 都只在特定视图才用得上，却曾经写死在 index.html 的
-// <head> 里——每个访客首屏都要下载约 240KB，哪怕从不打开历史或照片页。
-// 改为进入对应视图时再加载，并保留多个 CDN 兜底。
+// Chart.js 与 gifshot 合计约 240KB，且都只在特定视图才用得上——写进
+// index.html 的 <head> 会让每个访客首屏都下载一遍，哪怕从不打开历史或
+// 照片页。这里在进入对应视图时才加载，并保留多个 CDN 兜底。
 
 const loaded = new Map();   // url -> Promise<boolean>
 

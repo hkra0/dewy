@@ -117,7 +117,7 @@ export async function renderTimelineFrame(idx) {
     document.getElementById('timeline-date').innerText = photo.date;
 
     const imgEl = document.getElementById('timeline-img');
-    // alt 此前是空串：这张图是页面主内容，不是装饰
+    // alt 不能留空串：这张图是页面主内容，不是装饰
     imgEl.alt = `plant photo ${photo.date}`;
     const loadingEl = document.getElementById('timeline-loading');
     const emptyEl = document.getElementById('timeline-empty');
@@ -192,8 +192,8 @@ export function setTimelineSpeed(ms) {
 
 // GIF 导出的两道闸门。
 //
-// 此前既不限帧数也不并发：每张照片一次串行的 浏览器→Cloudflare→隧道→树莓派
-// 往返，几百张就是几百次串行往返，而且几百个 data URL 会同时驻留内存喂给
+// 每张照片都是一次 浏览器→Cloudflare→隧道→树莓派 的往返。不限帧数、不控并发
+// 的话，几百张就是几百次串行往返，而且几百个 data URL 会同时驻留内存喂给
 // gifshot——手机上基本等于卡死或标签页崩溃。
 //
 // 按项目自己的保留策略（近 7 天必留 + 对数稀疏化），照片总数只增不减，

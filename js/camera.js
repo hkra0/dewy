@@ -163,7 +163,7 @@ export function closeHD() { document.getElementById('hd-modal').style.display = 
 
 /** 弹窗的 Esc 与点击背景关闭。
  *
- *  此前唯一的出口是那个 close 按钮——手机上按返回键或点背景都关不掉，
+ *  只留 close 按钮一个出口的话，手机上按返回键或点背景都关不掉，
  *  是很常见的挫败点。app.js 启动时调用一次。 */
 export function initModalDismiss() {
     const modal = document.getElementById('hd-modal');

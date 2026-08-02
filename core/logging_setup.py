@@ -26,7 +26,7 @@ def setup_logging():
     level_name = os.environ.get("DEWY_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
-    # 时间格式沿用原先 print 里的 [HH:MM:SS]，日志行观感不变
+    # 只到秒的 [HH:MM:SS]：日志是给人看运行状态的，日期由 journalctl 提供
     formatter = logging.Formatter(
         fmt="[%(asctime)s] %(levelname)-7s %(name)-20s %(message)s",
         datefmt="%H:%M:%S",

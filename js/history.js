@@ -204,8 +204,8 @@ export async function loadHistoryData(forceFetch = false) {
         const res = await apiGet(`/api/history?hist_type=${reqType}&node_id=${state.currentDevice}`);
 
         // 404 = 密钥不对/端点不存在，属访客路径，必须静默（见 AGENTS.md「七、鉴权」）。
-        // 其余失败是真的连不上，此前被一个空 catch 一起吞掉，
-        // 界面就永远停在 loading 上，用户没有任何线索。
+        // 其余失败是真的连不上，必须报出来——一起吞掉的话界面就永远停在
+        // loading 上，用户没有任何线索。
         if (res.status === 404) return;
         if (!res.ok) { showHistoryError(reqType, hasData); return; }
 
