@@ -1,4 +1,7 @@
-import requests
+try:
+    import requests
+except ImportError:  # 未启用本驱动时不该因为缺依赖而拖垮整个驱动包的扫描
+    requests = None
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,9 +20,11 @@ class Driver:
     url = "http://192.168.1.100/data"
     timeout = 3
     """
-    def __init__(self, config):
-        self.url = config.get("url")
-        self.timeout = config.get("timeout", 5)
+    def __init__(self, **kwargs):
+        if requests is None:
+            raise ImportError("Please install requests: pip install requests")
+        self.url = kwargs.get("url")
+        self.timeout = kwargs.get("timeout", 5)
         
         if not self.url:
             raise ValueError("HTTP sensor requires a 'url' in configuration.")

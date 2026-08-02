@@ -18,14 +18,14 @@ flowchart LR
 
 ## Features
 
-- **Live environment dashboard** — temperature, humidity, soil moisture, pressure per node, plus UPS power draw and system health (CPU / memory / disk).
+- **Live environment dashboard** — temperature, humidity, soil moisture, pressure per node, plus UPS power draw and system health (CPU / memory / disk). Any other numeric field a driver returns (illuminance, CO₂, EC …) gets its own card and a toggleable history series automatically — no frontend change needed.
 - **Automatic watering** — checked daily at 06:00; the pump runs (default 0.5 s) only if > 12 h since the last watering and soil moisture is below threshold (default 50%). Manual watering via UI is clamped to 0.1–1.0 s.
 - **Grow light scheduling** — fixed time window, or real sunrise/sunset computed from coordinates (IP geolocation fallback). Manual toggles auto-expire at the next schedule boundary.
-- **Camera** — live preview, on-demand HD captures, a daily 2592×1944 photo + thumbnail, a photo timeline player, and GIF export. When disk space runs low, old photos are thinned on a logarithmic curve (recent days stay dense; the last 7 days are never deleted).
+- **Camera** — driven through the HAL (Pi CSI via `rpicam`, or any USB/IP camera via a command template): live preview, on-demand HD captures, a daily photo + thumbnail, a photo timeline player, and GIF export. When disk space runs low, old photos are thinned on a logarithmic curve (recent days stay dense; the last 7 days are never deleted).
 - **UPS power saver** — on sustained battery discharge with no network, the Pi shuts down HDMI/LEDs/Wi-Fi and parks 3 CPU cores. A systemd watchdog guarantees the network comes back even if the service dies.
 - **Multi-node** — add a plant by adding a node to `hardware_config.toml`; the UI gains a device switcher automatically.
 - **Bilingual UI** (中文 / English), selected from `navigator.language` or `?lang=` / `#lang=`.
-- **Hardware abstraction layer** — sensors and actuators are declared in TOML and loaded dynamically; adding a new sensor never requires touching core code.
+- **Hardware abstraction layer** — sensors and actuators are declared in TOML and their drivers discovered automatically from `hardware/drivers/`; adding a new sensor never requires touching core code or registering it anywhere.
 
 ## Repository layout
 
@@ -35,8 +35,10 @@ core/                    state, config, SQLite DAL, MQTT handler
 core/logic/              watering, light, power, photo, scheduler, system
 api/routers.py           all HTTP endpoints (router-level token dependency)
 hardware/                hardware abstraction layer
-  manager.py             reads config, dynamically loads drivers
-  drivers/               13 drivers (SHT30, ADS1115, INA219, GPIO relay, MQTT relay, …)
+  manager.py             reads config, discovers and loads drivers by name
+  drivers/               15 drivers (SHT30, BME280, BH1750, AHT20, DHT, DS18B20,
+                         ADS1115, INA219, GPIO/MQTT relay, rpicam, command camera,
+                         HTTP, script, dummy)
 worker.js                Cloudflare Worker: auth + reverse proxy + static assets
 index.html / style.css / app.js / js/   frontend SPA (native ES modules, no build step)
 firmware/plant_node/     ESP32 firmware (PlatformIO / Arduino)
@@ -85,7 +87,7 @@ pio run -t upload     # default env: esp32s3mini (lolin_s3_mini)
 
 Three gates, progressively stricter:
 
-1. **Read-only** (`/api/monitor`, `/api/history`, `/api/nodes`, `/api/image`, `/api/photos*`): requires header `X-Viewer-Key` matching `VIEWER_MAGIC_KEY`; mismatches get a plain 404 so the endpoint's existence is never revealed.
+1. **Read-only** (`/api/monitor`, `/api/history`, `/api/metrics`, `/api/nodes`, `/api/image`, `/api/photos*`): requires header `X-Viewer-Key` matching `VIEWER_MAGIC_KEY`; mismatches get a plain 404 so the endpoint's existence is never revealed.
 2. **High-risk actions** (`/api/water`, `/api/light`, `/api/config`): require `x-water-key` matching `WATER_MAGIC_KEY`. The two keys are independent.
 3. **Worker → Pi**: every Pi endpoint requires `X-BFF-To-Pi-Token` matching `PI_SECRET_TOKEN`, enforced by a router-level dependency so new endpoints are protected by default.
 
@@ -104,7 +106,8 @@ Without a key the page stays deliberately silent: no API calls, no prompts — i
 | `PI_SECRET_TOKEN` | auto-generated | Worker→Pi shared secret |
 | `DEWY_DATA_DIR` | `<repo>/data` | database, photos, config, secrets |
 | `DEWY_POWER_SAVER` | `<repo>/power_saver.sh` | power saver script path |
-| `DEWY_DATA_RETENTION_DAYS` | `365` | days to keep sensor rows (`0` disables pruning) |
+| `DEWY_DATA_RETENTION_DAYS` | `365` | days to keep sensor rows in `node_data` / `node_metrics` (`0` disables pruning) |
+| `DEWY_NET_INTERFACE` | auto | interface name for the connectivity check; empty scans all physical interfaces |
 | `DEWY_LOG_LEVEL` | `INFO` | log level |
 | `DEWY_LOG_FILE` | unset | if set, also log to file (5 MB × 3 rotation) |
 | `DEWY_UPS_SAMPLE_SEC` | `10` | fast-lane UPS current sampling interval |
@@ -112,15 +115,14 @@ Without a key the page stays deliberately silent: no API calls, no prompts — i
 
 ## Adding a sensor or actuator
 
-1. Drop a class in `hardware/drivers/` implementing `read()` (sensors) or `trigger(**kwargs)` (actuators).
-2. Register one line in `hardware/manager.py`'s `driver_map`.
-3. Declare it in `hardware_config.toml`.
+1. Drop a `.py` file in `hardware/drivers/` with a class implementing `__init__(**kwargs)` plus `read()` (sensors) or `trigger(**kwargs)` (actuators).
+2. Declare it in `hardware_config.toml` — `driver` may be the module name or the class name.
 
-No changes to `core/` or `api/` are needed. Generic `http_sensor` and `script_sensor` drivers can integrate external data sources without writing any Python. See [hardware/README.md](hardware/README.md).
+Drivers are discovered automatically; there is no registry to update. No changes to `manager.py`, `core/` or `api/` are needed. Generic `http_sensor` and `script_sensor` drivers can integrate external data sources without writing any Python. See [hardware/README.md](hardware/README.md).
 
 ## Database
 
-SQLite in WAL mode, three tables: `node_data` (environment samples, pruned after retention), `watering_log` and `photo_log` (kept indefinitely). All SQL lives in `core/database.py`; timestamps are UTC.
+SQLite in WAL mode, four tables: `node_data` (environment samples in fixed columns) and `node_metrics` (any other numeric field a driver returns, as `node_id/key/value` rows) — both pruned after retention — plus `watering_log` and `photo_log` (kept indefinitely). All SQL lives in `core/database.py`; timestamps are UTC.
 
 ## Development notes
 

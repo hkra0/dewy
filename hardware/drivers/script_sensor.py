@@ -17,8 +17,8 @@ class Driver:
     driver = "script_sensor"
     command = "python3 /path/to/your/custom_reader.py"
     """
-    def __init__(self, config):
-        self.command = config.get("command")
+    def __init__(self, **kwargs):
+        self.command = kwargs.get("command")
         
         if not self.command:
             raise ValueError("Script sensor requires a 'command' in configuration.")

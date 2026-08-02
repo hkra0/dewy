@@ -1,7 +1,7 @@
 // 照片时间轴播放器与 GIF 导出。
 import { t } from './i18n.js';
 import { showToast } from './ui.js';
-import { state, getViewerKey } from './state.js';
+import { state, getViewerKey, nodeCaps } from './state.js';
 import { apiGet } from './api.js';
 import { ensureGifshot } from './cdn.js';
 
@@ -20,9 +20,7 @@ export function getPhotoVersion(photo) {
 }
 
 export async function loadPhotoTimeline(forceFetch = false) {
-    const nodeInfo = state.availableNodes[state.currentDevice] || {};
-    const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
-    if (!getViewerKey() || !hasCamera) return;
+    if (!getViewerKey() || !nodeCaps().camera) return;
 
     const loadingEl = document.getElementById('timeline-loading');
     const imgEl = document.getElementById('timeline-img');

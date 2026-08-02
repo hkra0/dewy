@@ -18,14 +18,14 @@ flowchart LR
 
 ## 功能
 
-- **实时环境面板** — 按节点展示温湿度、土壤湿度、气压，以及 UPS 功耗与系统健康（CPU / 内存 / 磁盘）。
+- **实时环境面板** — 按节点展示温湿度、土壤湿度、气压，以及 UPS 功耗与系统健康（CPU / 内存 / 磁盘）。驱动返回的其它数值字段（照度、CO₂、EC…）会自动获得独立卡片与可折叠的历史曲线，无需改前端。
 - **自动浇水** — 每天 06:00 检查，距上次浇水超过 12 小时且土壤湿度低于阈值（默认 50%）时启泵（默认 0.5 秒）。手动浇水时长被钳制在 0.1–1.0 秒。
 - **补光灯调度** — 固定时段，或按经纬度实时推算日出日落（缺经纬度时用 IP 定位）。手动切灯在下一个定时边界自动失效。
-- **摄像头** — 实时预览、高清抓拍、每日一张 2592×1944 照片 + 缩略图、照片时间轴播放器与 GIF 导出。磁盘不足时按对数曲线稀疏化历史照片（近期密集、远期稀疏，最近 7 天永不删除）。
+- **摄像头** — 经硬件抽象层驱动（树莓派 CSI 用 `rpicam`，USB/网络摄像头用命令模板）：实时预览、高清抓拍、每日一张照片 + 缩略图、照片时间轴播放器与 GIF 导出。磁盘不足时按对数曲线稀疏化历史照片（近期密集、远期稀疏，最近 7 天永不删除）。
 - **UPS 省电模式** — 持续放电且无网络时自动关 HDMI/LED、断 WiFi、下线 3 个 CPU 核；内置 systemd 看门狗，即使服务崩溃也能保证网络自动恢复。
 - **多节点** — 在 `hardware_config.toml` 里加一个节点即多一株植物，前端自动出现设备切换。
 - **中英双语界面** — 按 `navigator.language` 自动选择，或用 `?lang=` / `#lang=` 指定。
-- **硬件抽象层** — 传感器与执行器在 TOML 中声明、动态加载，新增器件无需改动核心代码。
+- **硬件抽象层** — 传感器与执行器在 TOML 中声明，驱动从 `hardware/drivers/` 自动发现，新增器件无需改动核心代码、也无需在任何地方登记。
 
 ## 目录结构
 
@@ -35,8 +35,10 @@ core/                    全局状态、用户配置、SQLite 数据访问层、
 core/logic/              浇水、灯控、省电、拍照、调度主循环、系统信息
 api/routers.py           全部 HTTP 端点（路由级密钥校验，新端点默认受保护）
 hardware/                硬件抽象层
-  manager.py             读配置、动态加载驱动
-  drivers/               13 个驱动（SHT30、ADS1115、INA219、GPIO 继电器、MQTT 继电器…）
+  manager.py             读配置、按名字发现并加载驱动
+  drivers/               15 个驱动（SHT30、BME280、BH1750、AHT20、DHT、DS18B20、
+                         ADS1115、INA219、GPIO/MQTT 继电器、rpicam、命令行相机、
+                         HTTP、脚本、dummy）
 worker.js                Cloudflare Worker：鉴权 + 反代 + 下发静态资源
 index.html / style.css / app.js / js/   前端单页应用（原生 ES 模块，无构建步骤）
 firmware/plant_node/     ESP32 固件（PlatformIO / Arduino）
@@ -85,7 +87,7 @@ pio run -t upload     # 默认环境：esp32s3mini（lolin_s3_mini）
 
 三道关卡，逐级收紧：
 
-1. **只读端点**（`/api/monitor`、`/api/history`、`/api/nodes`、`/api/image`、`/api/photos*`）：要求请求头 `X-Viewer-Key` 匹配 `VIEWER_MAGIC_KEY`，不匹配一律返回 404，不暴露端点存在。
+1. **只读端点**（`/api/monitor`、`/api/history`、`/api/metrics`、`/api/nodes`、`/api/image`、`/api/photos*`）：要求请求头 `X-Viewer-Key` 匹配 `VIEWER_MAGIC_KEY`，不匹配一律返回 404，不暴露端点存在。
 2. **高危操作**（`/api/water`、`/api/light`、`/api/config`）：要求 `x-water-key` 匹配 `WATER_MAGIC_KEY`。两把钥匙互相独立。
 3. **Worker → 树莓派**：所有端点要求 `X-BFF-To-Pi-Token` 匹配 `PI_SECRET_TOKEN`，挂在路由级依赖上，新增端点默认自动受保护。
 
@@ -105,6 +107,7 @@ https://<你的-worker-域名>/#key=<VIEWER_MAGIC_KEY>&water_key=<WATER_MAGIC_KE
 | `DEWY_DATA_DIR` | `<项目根>/data` | 数据目录（数据库、照片、配置、密钥） |
 | `DEWY_POWER_SAVER` | `<项目根>/power_saver.sh` | 省电脚本路径 |
 | `DEWY_DATA_RETENTION_DAYS` | `365` | 传感器数据保留天数（设 0 关闭清理） |
+| `DEWY_NET_INTERFACE` | 自动 | 网络连通性检查用的网卡名，留空则扫描所有物理网卡 |
 | `DEWY_LOG_LEVEL` | `INFO` | 日志级别 |
 | `DEWY_LOG_FILE` | 未设 | 设置后额外落盘（5MB × 3 份轮转） |
 | `DEWY_UPS_SAMPLE_SEC` | `10` | UPS 电流快档采样间隔（秒） |
@@ -112,15 +115,14 @@ https://<你的-worker-域名>/#key=<VIEWER_MAGIC_KEY>&water_key=<WATER_MAGIC_KE
 
 ## 新增传感器 / 执行器
 
-1. 在 `hardware/drivers/` 写一个类，实现 `read()`（传感器）或 `trigger(**kwargs)`（执行器）。
-2. 在 `hardware/manager.py` 的 `driver_map` 里注册一行。
-3. 在 `hardware_config.toml` 里声明。
+1. 在 `hardware/drivers/` 下新建一个 `.py`，类里实现 `__init__(**kwargs)`，以及 `read()`（传感器）或 `trigger(**kwargs)`（执行器）。
+2. 在 `hardware_config.toml` 里声明，`driver` 写模块名或类名均可。
 
-不需要改动 `core/` 或 `api/` 的任何代码。通用的 `http_sensor` 与 `script_sensor` 驱动可以不写 Python 就接入外部数据源。详见 [hardware/README.md](hardware/README.md)。
+驱动会被自动发现，不需要在任何注册表里登记，也不需要改动 `manager.py`、`core/` 或 `api/`。通用的 `http_sensor` 与 `script_sensor` 驱动可以不写 Python 就接入外部数据源。详见 [hardware/README.md](hardware/README.md)。
 
 ## 数据库
 
-SQLite（WAL 模式），三张表：`node_data`（环境采样，超期清理）、`watering_log` 与 `photo_log`（永久保留）。所有 SQL 集中在 `core/database.py`，时间戳统一用 UTC。
+SQLite（WAL 模式），四张表：`node_data`（环境采样的固定列）与 `node_metrics`（驱动返回的其它数值字段，按 `node_id/key/value` 存）——两者都超期清理——以及 `watering_log` 与 `photo_log`（永久保留）。所有 SQL 集中在 `core/database.py`，时间戳统一用 UTC。
 
 ## 开发须知
 

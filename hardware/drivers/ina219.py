@@ -1,5 +1,8 @@
 import logging
-import smbus2
+try:
+    import smbus2
+except ImportError:  # 非树莓派环境下允许导入本模块，实例化时再报错
+    smbus2 = None
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +15,11 @@ class INA219_UPS:
         else:
             self.address = addr
             
+        if smbus2 is None:
+            logger.error("未安装 smbus2，INA219 不可用（pip install smbus2）")
+            self.bus = None
+            return
+
         try:
             self.bus = smbus2.SMBus(self.bus_num)
             self.bus.write_i2c_block_data(self.address, 0x00, [0x39, 0x9F])

@@ -13,10 +13,14 @@ pydantic>=2.0
 paho-mqtt>=2.0
 
 # ---- 硬件 I/O ----
+# 下面两项只在 Linux/ARM 上安装。x86 机器与 macOS 上装不了，
+# 而在这些机器上开发、跑测试、或只用 http_sensor/script_sensor 接数据都是合理用法，
+# 不该因此让 pip install -r 直接失败——驱动本身也都做了缺依赖时的降级。
+#
 # I2C 总线：SHT30 / ADS1115 / INA219 / BH1750 / BME280 驱动共用
-smbus2>=0.4
-# GPIO 继电器（水泵）。仅树莓派可装，非 Pi 环境请注释掉此行
-RPi.GPIO>=0.7
+smbus2>=0.4; platform_system == "Linux"
+# GPIO 继电器（水泵）
+RPi.GPIO>=0.7; platform_system == "Linux" and platform_machine in "armv6l armv7l aarch64"
 
 # ---- 图像处理 ----
 # 每日照片的缩略图生成（core/logic.py），缺失时会跳过缩略图但不影响拍照

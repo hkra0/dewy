@@ -21,7 +21,13 @@ const translations = {
         photo_log: "photo", no_photos: "no photos yet",
         export_gif: "GIF", exporting: "creating...", gif_start: "Synthesizing GIF timeline, please wait...", gif_success: "GIF downloaded successfully", gif_error: "Failed to generate GIF.", gif_lib_missing: "GIF library loading, please try again in a moment.",
         load_failed: "failed to load, check connection", fail_load_cfg: "Failed to load configuration.", water_clamped: "Duration must be {min}–{max}s, adjusted.",
-        gif_sampled: "Sampled {n} of {total} photos to keep the GIF manageable"
+        gif_sampled: "Sampled {n} of {total} photos to keep the GIF manageable",
+        other_metrics: "other metrics",
+        metric_illuminance: "illuminance", metric_lux: "illuminance", metric_co2: "co₂",
+        metric_tvoc: "tvoc", metric_ec: "conductivity", metric_ph: "ph",
+        metric_altitude: "altitude", metric_gas_resistance: "gas resistance",
+        metric_battery: "battery", metric_uv_index: "uv index",
+        metric_pm25: "pm2.5", metric_pm10: "pm10", metric_rssi: "signal",
     },
     zh: {
         env: "环境", sys: "系统", hist: "历史", settings: "设置",
@@ -44,7 +50,13 @@ const translations = {
         photo_log: "照片", no_photos: "暂无照片",
         export_gif: "导出 GIF", exporting: "合成中...", gif_start: "正在高速合成延时动图，请稍候...", gif_success: "GIF 动图已生成", gif_error: "GIF 合成失败，请重试。", gif_lib_missing: "动图组件准备中，请稍后再试",
         load_failed: "加载失败，请检查连接", fail_load_cfg: "配置读取失败。", water_clamped: "浇水时长需在 {min}–{max} 秒之间，已自动调整。",
-        gif_sampled: "照片较多，已从 {total} 张中均匀抽取 {n} 张合成"
+        gif_sampled: "照片较多，已从 {total} 张中均匀抽取 {n} 张合成",
+        other_metrics: "其它指标",
+        metric_illuminance: "光照强度", metric_lux: "光照强度", metric_co2: "二氧化碳",
+        metric_tvoc: "挥发性有机物", metric_ec: "电导率", metric_ph: "酸碱度",
+        metric_altitude: "海拔", metric_gas_resistance: "气体电阻",
+        metric_battery: "电量", metric_uv_index: "紫外线指数",
+        metric_pm25: "pm2.5", metric_pm10: "pm10", metric_rssi: "信号强度",
     }
 };
 
@@ -100,6 +112,15 @@ function t(key, replacements = {}) {
         text = text.replace(`{${k}}`, replacements[k]);
     }
     return text;
+}
+
+/** 带兜底的翻译：查不到就用调用方给的 fallback，而不是把 key 显示出来。
+ *
+ *  给字段名不可预知的场合用（额外指标的标签）——那里 key 是运行时才知道的，
+ *  未收录是常态而非疏漏，直接显示 "metric_co2" 才是错的。
+ */
+export function tf(key, fallback) {
+    return translations[currentLang][key] || fallback;
 }
 
 export { t };

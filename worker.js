@@ -17,6 +17,7 @@ import M_CAMERA from "./js/camera.js";
 import M_TIMELINE from "./js/timeline.js";
 import M_NAVIGATION from "./js/navigation.js";
 import M_REFRESH from "./js/refresh.js";
+import M_METRICS from "./js/metrics.js";
 
 const JS_MODULES = {
     "/app.js": JS_TEMPLATE,
@@ -32,6 +33,7 @@ const JS_MODULES = {
     "/js/timeline.js": M_TIMELINE,
     "/js/navigation.js": M_NAVIGATION,
     "/js/refresh.js": M_REFRESH,
+    "/js/metrics.js": M_METRICS,
 };
 // 静态资源随 Worker 一起部署，URL 里没有内容哈希，所以不能用长 max-age——
 // 那样改完发上去，用户手里还是旧版本。改用 ETag：仍然每次回源校验，
@@ -135,6 +137,7 @@ export default {
             // 旁路（如 X-Requested-By 之类固定字符串）——写死在前端的非机密值
             // 等同于无鉴权。
             if (url.pathname === "/api/monitor" || url.pathname === "/api/history" || url.pathname === "/api/nodes"
+                || url.pathname === "/api/metrics"
                 || url.pathname === "/api/image" || url.pathname === "/api/photos" || url.pathname.startsWith("/api/photos/")) {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
             } else if (url.pathname === "/api/water" || url.pathname === "/api/light" || url.pathname === "/api/config") {
@@ -154,7 +157,7 @@ export default {
             const targetURL = PI_BASE_URL + url.pathname + url.search;
             const newHeaders = new Headers();
             newHeaders.set("X-BFF-To-Pi-Token", PI_SECRET_TOKEN || "");
-            if (url.pathname === "/api/monitor" || url.pathname === "/api/history") {
+            if (url.pathname === "/api/monitor" || url.pathname === "/api/history" || url.pathname === "/api/metrics") {
                 newHeaders.set("Accept", "application/json");
             }
             if (request.headers.has("Content-Type")) {

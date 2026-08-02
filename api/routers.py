@@ -2,7 +2,6 @@ import hmac
 import logging
 import os
 import re
-import subprocess
 import time
 from datetime import datetime
 
@@ -13,7 +12,7 @@ from pydantic import BaseModel
 import core.state as state
 import core.config as config
 import core.database as db
-from core.logic import trigger_watering, get_effective_light_times, get_system_stats, compute_next_boundary
+from core.logic import trigger_watering, get_effective_light_times, get_system_stats, compute_next_boundary, set_light
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +34,38 @@ class WaterRequest(BaseModel):
     duration: float = 0.5
     node_id: str = "main"
 
+# 允许发给前端的节点字段。白名单而非黑名单：hardware_config 的节点段里还放着
+# ESP32 的构建参数（wifi_password、mqtt_host…），逐个去黑名单迟早漏一个，
+# 而这个端点只要 viewer key 就能读。
+_PUBLIC_NODE_FIELDS = ("type", "description")
+
+
 @router.get("/api/nodes")
 def get_nodes():
-    return state.hardware_manager.nodes
+    """节点列表与各节点的能力。
+
+    前端据此决定显示哪些卡片与页签。能力在这里算而不是让前端翻原始配置：
+    水泵/灯的执行器 id 是可配的，相机也可能压根没在配置里出现（此时用默认相机），
+    这些判断规则不该散落在五个前端模块里各写一份。
+    """
+    hm = state.hardware_manager
+    pump_id = config.global_config["auto_water"].get("actuator_id", "pump")
+    light_id = config.global_config["auto_light"].get("actuator_id", "light")
+
+    result = {}
+    for node_id, node_info in hm.nodes.items():
+        actuators = hm.actuators.get(node_id, {})
+        public = {k: node_info[k] for k in _PUBLIC_NODE_FIELDS if k in node_info}
+        public["sensors"] = sorted(hm.local_sensors.get(node_id, {}))
+        public["actuators"] = sorted(actuators)
+        public["capabilities"] = {
+            "camera": hm.has_camera(node_id),
+            "pump": pump_id in actuators,
+            "light": light_id in actuators,
+        }
+        result[node_id] = public
+
+    return result
 
 @router.get("/api/monitor")
 def get_monitor_data():
@@ -62,7 +90,7 @@ def get_monitor_data():
 def get_image(live: bool = False, hq: bool = False, since: int = 0):
     """返回预览图。
 
-    `live=true` 才会真正调用 rpicam 抓新图；不带 live 时只是把磁盘上
+    `live=true` 才会真正驱动相机抓新图；不带 live 时只是把磁盘上
     已有的那张发回去。
 
     `since` 是客户端已持有的图片时间戳（秒）。前端 30 秒轮询一次，而这张
@@ -96,10 +124,12 @@ def get_image(live: bool = False, hq: bool = False, since: int = 0):
                 except Exception as e:
                     logger.warning("拍照前临时补光失败: %s", e)
 
-            with state.camera_lock:
-                if hq: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "2000", "--width", "2592", "--height", "1944", "-q", "90", "--vflip", "--hflip", "--nopreview"]
-                else: cmd = ["rpicam-jpeg", "-o", target_path, "-t", "500", "--width", "648", "--height", "486", "-q", "60", "--vflip", "--hflip", "--nopreview"]
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            camera = state.hardware_manager.get_camera()
+            if camera is None:
+                logger.error("未配置任何相机，无法拍照")
+            else:
+                with state.camera_lock:
+                    camera.capture(target_path, hq=hq)
         except Exception:
             logger.exception("实时拍照失败 (hq=%s)", hq)
         finally:
@@ -108,6 +138,20 @@ def get_image(live: bool = False, hq: bool = False, since: int = 0):
         img_timestamp = str(int(os.path.getmtime(target_path)))
         return FileResponse(target_path, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Image-Timestamp": img_timestamp})
     raise HTTPException(status_code=404, detail="Image not ready")
+
+def _group_metrics(rows):
+    """[(时间桶, key, 值), ...] → {时间桶: {key: 值}}。
+
+    同一个桶里同名 key 出现多次时后者覆盖前者（24h 视图里一分钟内
+    多次采样才会发生），与 node_data 那边"同一时刻只留一行"的行为一致。
+    """
+    grouped = {}
+    for bucket, key, value in rows:
+        if value is None:
+            continue
+        grouped.setdefault(bucket, {})[key] = round(value, 2)
+    return grouped
+
 
 @router.get("/api/history")
 def get_history_data(hist_type: str = "24h", node_id: str = "main"):
@@ -119,16 +163,19 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main"):
         elif hist_type == "daily":
             rows, water_rows = db.query_daily_history(node_id)
             watering_map = {r[0]: round(r[1], 1) if r[1] is not None else 0 for r in water_rows}
+            extra_map = _group_metrics(db.query_daily_metrics(node_id))
             rows = list(rows)
             rows.reverse()
             return [{"time": r[0][5:], "temp": round(r[1], 1) if r[1] is not None else None,
                      "hum": round(r[2], 1) if r[2] is not None else None,
                      "soil": round(r[3], 1) if r[3] is not None else None,
                      "pressure": round(r[4], 1) if r[4] is not None else None,
-                     "water": watering_map.get(r[0], 0)} for r in rows]
+                     "water": watering_map.get(r[0], 0),
+                     "extra": extra_map.get(r[0], {})} for r in rows]
 
         else: # 24h
             sensor_rows, water_rows = db.query_24h_history(node_id)
+            extra_map = _group_metrics(db.query_24h_metrics(node_id))
 
             timeline = {}
             for r in sensor_rows:
@@ -141,7 +188,8 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main"):
                     "hum": round(r[2], 1) if r[2] is not None else None,
                     "soil": round(r[3], 1) if r[3] is not None else None,
                     "pressure": round(r[4], 1) if r[4] is not None else None,
-                    "water": 0
+                    "water": 0,
+                    "extra": extra_map.get(time_str, {})
                 }
 
             for w in water_rows:
@@ -162,7 +210,8 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main"):
                         "hum": None,
                         "soil": soil_val,
                         "pressure": None,
-                        "water": dur
+                        "water": dur,
+                        "extra": extra_map.get(time_str, {})
                     }
 
             sorted_points = sorted(timeline.values(), key=lambda x: x["epoch"])
@@ -171,10 +220,31 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main"):
                      "hum": p["hum"],
                      "soil": p["soil"],
                      "pressure": p["pressure"],
-                     "water": p["water"] if p["water"] > 0 else 0} for p in sorted_points]
+                     "water": p["water"] if p["water"] > 0 else 0,
+                     "extra": p["extra"]} for p in sorted_points]
     except Exception:
         logger.exception("查询历史数据失败 (type=%s node=%s)", hist_type, node_id)
         return []
+
+@router.get("/api/metrics")
+def get_extra_metrics(node_id: str = "main", key: str = None, hours: int = 24):
+    """node_data 固定列之外的测量量（照度、EC、CO₂…）。
+
+    不带 key 时列出该节点有哪些指标及其最新值；带 key 时返回该指标的历史序列。
+    内置图表只画固定列，这些指标供外部消费与自定义前端使用。
+    """
+    try:
+        if key:
+            points = db.query_metric_history(node_id, key, hours=hours)
+            return {"node_id": node_id, "key": key,
+                    "points": [{"time": t, "value": v} for t, v in points]}
+        return {"node_id": node_id,
+                "keys": db.query_metric_keys(node_id),
+                "latest": db.query_latest_metrics(node_id)}
+    except Exception:
+        logger.exception("查询额外指标失败 (node=%s key=%s)", node_id, key)
+        return {"node_id": node_id, "keys": [], "latest": {}}
+
 
 @router.post("/api/water")
 def trigger_manual_watering(req: WaterRequest):
@@ -218,21 +288,19 @@ def toggle_manual_light():
     if state.camera_in_progress:
         raise HTTPException(status_code=409, detail="Camera capture in progress")
         
-    new_cmd = "a1" if state.light_status != "ON" else "b1"
-    
+    turn_on = state.light_status != "ON"
+
     now = datetime.now()
     on_time, off_time = get_effective_light_times()
     state.manual_override = True
     state.manual_override_until = compute_next_boundary(now, on_time, off_time)
-    
-    state.light_status = "ON" if new_cmd == "a1" else "OFF"
+
+    state.light_status = "ON" if turn_on else "OFF"
     logger.info("🔧 手动切灯: %s，覆盖至 %s",
                 state.light_status, state.manual_override_until.strftime('%H:%M'))
-    
-    l_node = config.global_config["auto_light"]["node_id"]
-    l_act = config.global_config["auto_light"]["actuator_id"]
-    success = state.hardware_manager.trigger_actuator(l_node, l_act, mqtt_client=state.global_mqtt_client, command=new_cmd, retain=True)
-    
+
+    success = set_light(turn_on, retain=True)
+
     if success:
         return {"status": "success"}
     else:

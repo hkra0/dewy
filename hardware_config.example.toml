@@ -26,7 +26,10 @@ description = "Raspberry Pi Zero 2 W"
 
 # ---- Sensors ----
 # Format: [nodes.<node_id>.sensors.<sensor_id>]
-# driver: Python class name inside `hardware.drivers`
+# driver: a module name in `hardware/drivers/` (e.g. "bh1750_sensor", "http_sensor")
+#         or a class name inside one (e.g. "SHT30"). Drivers are discovered
+#         automatically — dropping a .py file in hardware/drivers/ is enough.
+#         Every other key here is passed to the driver's __init__ as a keyword.
 [nodes.main.sensors.sht30]
 driver = "SHT30"
 bus = 1
@@ -42,10 +45,40 @@ driver = "INA219_UPS"
 bus = 1
 address = "0x43"
 
-[nodes.main.sensors.camera]
-driver = "dummy"
+# ---- Other bundled drivers (uncomment the ones you actually have) ----
+# See hardware/README.md for the full list and their optional dependencies.
+
+# [nodes.main.sensors.env]           # BME280 / BMP280 — temperature + humidity + pressure
+# driver = "bme280_sensor"
+# i2c_port = 1
+# address = "0x76"
+
+# [nodes.main.sensors.lux]           # BH1750 ambient light
+# driver = "bh1750_sensor"
+# i2c_port = 1
+# address = "0x23"
+
+# [nodes.main.sensors.probe]         # DS18B20 1-Wire probe (auto-detects if device_id omitted)
+# driver = "ds18b20_sensor"
+# device_id = "28-00000xxxxxxx"
+
+# [nodes.main.sensors.external]      # Any endpoint returning a flat JSON object
+# driver = "http_sensor"
+# url = "http://192.168.1.100/data"
+# timeout = 3
+
+# [nodes.main.sensors.custom]        # Any command whose stdout is a JSON object
+# driver = "script_sensor"
+# command = "python3 /home/pi/my_reader.py"
+
+# [nodes.main.sensors.fake]          # Generates plausible readings — useful with no hardware
+# driver = "dummy_sensor"
+# base_temp = 25.0
+# base_hum = 50.0
 
 # ---- Actuators ----
+# The ids used by the app are configurable in the UI's settings tab:
+# auto_water.actuator_id (default "pump") and auto_light.actuator_id (default "light").
 [nodes.main.actuators.pump]
 driver = "GPIO_Relay"
 pin = 4
@@ -54,6 +87,35 @@ active_low = true        # If true, LOW triggers the relay
 [nodes.main.actuators.light]
 driver = "MQTT_Relay"
 topic = "YOUR_MQTT_RELAY_TOPIC"
+# Command/feedback strings are firmware-specific. The defaults below match this
+# project's ESP32 firmware — change them to match a different relay, no code edit.
+# on_command = "a1"
+# off_command = "b1"
+# query_command = "q1"
+# pulse_command = "c1={duration}"   # timed pulse; {duration} is seconds
+# on_feedback = "n1"                # substring of the `information` field
+# off_feedback = "f1"
+
+# ---- Camera ----
+# Delete this section if the node has no camera; the camera UI then stays hidden.
+[nodes.main.camera]
+driver = "rpicam"           # Raspberry Pi CSI camera
+# command = "rpicam-jpeg"   # "libcamera-jpeg" on Bullseye and older
+# vflip = true
+# hflip = true
+# hq_width = 2592
+# hq_height = 1944
+# hq_quality = 90
+# preview_width = 648
+# preview_height = 486
+# preview_quality = 60
+
+# USB webcam / IP camera snapshot instead — any command that writes one image.
+# {path} is replaced with the destination file:
+# [nodes.main.camera]
+# driver = "command_camera"
+# command = "fswebcam -r 640x480 --no-banner {path}"
+# hq_command = "fswebcam -r 1920x1080 --no-banner {path}"
 
 
 # ==============================================================================
@@ -64,8 +126,10 @@ type = "mqtt_node"       # mqtt_node: Receives data via MQTT
 topic = "sensor/esp32/env_data"
 description = "ESP32 Bedroom Sensor"
 
-# For mqtt_node, the sensors are determined by the JSON payload received.
-# You can optionally define the expected metrics.
+# For mqtt_node, the readings come from the JSON payload the node publishes.
+# By default every numeric field in the payload is stored, so a node that starts
+# reporting a new value needs no change here. Listing `metrics` turns that into a
+# whitelist instead — useful to keep self-reported status (rssi, uptime, …) out.
 metrics = ["temperature", "humidity", "pressure"]
 
 # ---- ESP32 Specific Config (Used during PlatformIO Build) ----

@@ -31,6 +31,13 @@ except ValueError:
 
 PRUNE_BATCH_SIZE = 500  # 每批删除的行数，避免长时间独占 db_lock
 
+# node_data 的固定列。驱动 read() 返回的其它字段落到 node_metrics 长表，
+# 这样新增一个测量量（照度、EC、CO₂…）不必改 schema。
+NODE_DATA_FIELDS = ("temperature", "humidity", "soil_moisture", "pressure", "voltage", "current")
+
+# 采样字典里不属于测量值、不该被当作指标存起来的键
+_NON_METRIC_KEYS = frozenset({"node_id", "timestamp", "is_anomaly"})
+
 
 @contextmanager
 def get_conn():
@@ -105,14 +112,52 @@ def init_db():
             )
         ''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_photo_log_date ON photo_log (date)')
+        # node_data 之外的测量量。长表而非加列：第三方驱动能返回什么字段
+        # 事先不可知，加一个传感器不应该要求改 schema 和迁移脚本
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS node_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                node_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value REAL
+            )
+        ''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_node_metrics_query ON node_metrics (node_id, key, timestamp)')
 
 
 # ==================== node_data（传感器归档） ====================
 
+def _extra_metric_rows(record):
+    """一条采样里不属于 node_data 固定列的数值字段。
+
+    只收数值：驱动返回状态字符串（"ok"、设备型号之类）是常见写法，
+    把它们塞进 value REAL 列没有意义。None 也跳过，长表里存空行没价值。
+    """
+    node_id = record.get("node_id")
+    rows = []
+    for key, value in record.items():
+        if key in _NON_METRIC_KEYS or key in NODE_DATA_FIELDS:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        rows.append((node_id, key, float(value)))
+    return rows
+
+
 def insert_node_data(records):
-    """批量写入一轮采样。records 为 dict 列表，需含 node_id。"""
+    """批量写入一轮采样。records 为 dict 列表，需含 node_id。
+
+    固定列进 node_data，其余数值字段进 node_metrics——两张表同一个事务，
+    以免一半写进去一半没写。
+    """
     if not records:
         return
+
+    extra_rows = []
+    for d in records:
+        extra_rows.extend(_extra_metric_rows(d))
+
     with get_conn() as conn:
         conn.executemany('''
             INSERT INTO node_data (node_id, temperature, humidity, soil_moisture, pressure, voltage, current)
@@ -123,6 +168,11 @@ def insert_node_data(records):
              d.get("pressure"), d.get("voltage"), d.get("current"))
             for d in records
         ])
+        if extra_rows:
+            conn.executemany(
+                "INSERT INTO node_metrics (node_id, key, value) VALUES (?, ?, ?)",
+                extra_rows,
+            )
 
 
 def query_recent_soil(node_id, limit=5):
@@ -136,7 +186,7 @@ def query_recent_soil(node_id, limit=5):
 def prune_node_data(retention_days=None):
     """删除超出保留窗口的采样行，返回删除条数。
 
-    只清 node_data——浇水与照片记录是稀疏的人类可读事件，全部保留。
+    只清 node_data 与 node_metrics——浇水与照片记录是稀疏的人类可读事件，全部保留。
     分批删除：单条 DELETE 删掉几十万行会长时间持有 db_lock，
     把 /api/monitor 一起卡住。
 
@@ -156,17 +206,80 @@ def prune_node_data(retention_days=None):
     # 递增，而 scripts/migrate_db.py 会写入带历史时间戳的行，一旦顺序
     # 不成立就会连未过期的数据一起删掉。
     total = 0
-    while True:
-        deleted = execute('''
-            DELETE FROM node_data WHERE id IN (
-                SELECT id FROM node_data WHERE timestamp < datetime('now', ?)
-                ORDER BY id LIMIT ?
-            )
-        ''', (cutoff, PRUNE_BATCH_SIZE))
-        total += deleted
-        if deleted < PRUNE_BATCH_SIZE:
-            break
+    for table in ("node_data", "node_metrics"):
+        while True:
+            deleted = execute(f'''
+                DELETE FROM {table} WHERE id IN (
+                    SELECT id FROM {table} WHERE timestamp < datetime('now', ?)
+                    ORDER BY id LIMIT ?
+                )
+            ''', (cutoff, PRUNE_BATCH_SIZE))
+            total += deleted
+            if deleted < PRUNE_BATCH_SIZE:
+                break
     return total
+
+
+# ==================== node_metrics（固定列之外的测量量） ====================
+
+def query_metric_keys(node_id):
+    """该节点存过哪些额外指标，按名字排序。"""
+    rows = query(
+        "SELECT DISTINCT key FROM node_metrics WHERE node_id=? ORDER BY key",
+        (node_id,),
+    )
+    return [r[0] for r in rows]
+
+
+def query_metric_history(node_id, key, hours=24, limit=2000):
+    """某个额外指标的近期序列，返回 [(本地时间, 值), ...] 正序。
+
+    limit 是兜底：调用方给了很大的 hours 时，仍不至于把几万行塞进一次响应。
+    """
+    rows = query('''
+        SELECT strftime('%H:%M', timestamp, 'localtime'), value, strftime('%s', timestamp)
+        FROM node_metrics
+        WHERE node_id=? AND key=? AND timestamp >= datetime('now', ?)
+        ORDER BY id DESC LIMIT ?
+    ''', (node_id, key, f"-{int(hours)} hours", limit))
+    return [(r[0], r[1]) for r in reversed(rows)]
+
+
+def query_24h_metrics(node_id):
+    """24 小时内的额外指标，返回 [(时刻, key, 值), ...]。
+
+    时刻的格式与 query_24h_history 一致，调用方据此并进同一条时间轴。
+    """
+    return query('''
+        SELECT strftime('%H:%M', timestamp, 'localtime'), key, value
+        FROM node_metrics
+        WHERE node_id=? AND timestamp >= datetime('now', '-24 hours')
+        ORDER BY timestamp ASC
+    ''', (node_id,))
+
+
+def query_daily_metrics(node_id, days=30):
+    """按天聚合的额外指标，返回 [(日期, key, 均值), ...]。
+
+    与 query_daily_history 一样必须带时间窗口：按 date() 分组是表达式分组，
+    索引用不上，没有 WHERE 就是全表扫描且逐年变慢。
+    """
+    return query('''
+        SELECT date(timestamp, 'localtime') as day, key, AVG(value)
+        FROM node_metrics
+        WHERE node_id=? AND timestamp >= datetime('now', ?)
+        GROUP BY day, key
+        ORDER BY day ASC
+    ''', (node_id, f"-{int(days)} days"))
+
+
+def query_latest_metrics(node_id):
+    """该节点每个额外指标的最新值，返回 {key: value}。"""
+    rows = query('''
+        SELECT key, value FROM node_metrics
+        WHERE id IN (SELECT MAX(id) FROM node_metrics WHERE node_id=? GROUP BY key)
+    ''', (node_id,))
+    return {r[0]: r[1] for r in rows}
 
 
 def mark_anomalies(row_ids):

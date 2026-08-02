@@ -12,17 +12,17 @@ except ImportError:
     Adafruit_DHT = None
 
 class Driver:
-    def __init__(self, config):
+    def __init__(self, **kwargs):
         if Adafruit_DHT is None:
             raise ImportError("Please install Adafruit_DHT library: sudo pip3 install Adafruit_DHT")
             
-        sensor_model = config.get("model", "DHT22").upper()
+        sensor_model = kwargs.get("model", "DHT22").upper()
         if sensor_model == "DHT11":
             self.sensor = Adafruit_DHT.DHT11
         else:
             self.sensor = Adafruit_DHT.DHT22
             
-        self.pin = config.get("pin")
+        self.pin = kwargs.get("pin")
         if self.pin is None:
             raise ValueError("DHT sensor requires a 'pin' in configuration.")
 

@@ -11,7 +11,16 @@ logger = logging.getLogger(__name__)
 
 MIN_WATER_INTERVAL_HOURS = 12   # 两次自动浇水的最小间隔
 AUTO_WATER_HOUR = 6             # 每天检查自动浇水的时刻
-PUMP_ACTUATOR_ID = "pump"
+DEFAULT_PUMP_ACTUATOR_ID = "pump"
+
+
+def _pump_actuator_id():
+    """水泵执行器在 hardware_config 里的 id。
+
+    别人的接线未必也叫 pump（多株植物常见 pump_a / pump_b），
+    因此可在 data/config.json 的 auto_water.actuator_id 里改。
+    """
+    return config.global_config["auto_water"].get("actuator_id", DEFAULT_PUMP_ACTUATOR_ID)
 
 
 def clean_soil_anomalies(node_id):
@@ -48,14 +57,15 @@ def trigger_watering(node_id, soil_before, duration=None):
     """驱动水泵并记录浇水日志。手动浇水与自动浇水共用此入口。"""
     if duration is None: duration = config.global_config["auto_water"]["duration"]
 
+    pump_id = _pump_actuator_id()
     logger.info("💦 开启水泵 (Node: %s), 时长: %ss", node_id, duration)
-    success = state.hardware_manager.trigger_actuator(node_id, PUMP_ACTUATOR_ID, duration=duration)
+    success = state.hardware_manager.trigger_actuator(node_id, pump_id, duration=duration)
 
     if success:
         db.insert_watering(node_id, duration, soil_before)
         return True
     else:
-        logger.error("❌ 浇水失败：节点 %s 未配置 %s 继电器或硬件异常", node_id, PUMP_ACTUATOR_ID)
+        logger.error("❌ 浇水失败：节点 %s 未配置 %s 继电器或硬件异常", node_id, pump_id)
         return False
 
 

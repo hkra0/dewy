@@ -18,3 +18,14 @@ export const state = {
 
 export const getViewerKey = () => localStorage.getItem(STORAGE_KEY) || '';
 export const getWaterKey = () => localStorage.getItem(WATER_KEY);
+
+/** 某个节点的硬件能力。由服务端 /api/nodes 算好，前端不再翻原始配置。
+ *
+ *  水泵/灯的执行器 id 是可配的（auto_water.actuator_id 等），相机也可能
+ *  以别的形式声明——这些规则只应存在于服务端一处。节点信息还没取回来时
+ *  返回全 false，调用方据此隐藏对应界面。
+ */
+export function nodeCaps(dev = state.currentDevice) {
+    const info = state.availableNodes[dev];
+    return (info && info.capabilities) || { camera: false, pump: false, light: false };
+}

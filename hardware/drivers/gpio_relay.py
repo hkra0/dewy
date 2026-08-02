@@ -11,13 +11,20 @@ class GPIO_Relay:
     def __init__(self, **kwargs):
         self.pin = int(kwargs.get("pin", 4))
         self.active_low = kwargs.get("active_low", True)
+
+        # 没有 RPi.GPIO 的机器（开发机、非 Pi 的 Linux）上不要在构造时就炸：
+        # 配置里其它器件仍应正常工作，本继电器在 trigger() 时明确报不可用
+        if GPIO is None:
+            logger.warning("未安装 RPi.GPIO，GPIO 继电器 pin=%s 不可用", self.pin)
+            self.on_state = self.off_state = None
+            return
+
         self.on_state = GPIO.LOW if self.active_low else GPIO.HIGH
         self.off_state = GPIO.HIGH if self.active_low else GPIO.LOW
-        
-        if GPIO:
-            GPIO.setwarnings(False)
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.pin, GPIO.IN)
+
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.pin, GPIO.IN)
 
     def trigger(self, duration=0.5):
         if not GPIO: return False

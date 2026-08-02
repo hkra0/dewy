@@ -3,7 +3,6 @@
 import logging
 import math
 import os
-import subprocess
 import time
 from datetime import datetime
 
@@ -54,19 +53,16 @@ def daily_photo_capture():
                 # 补光失败不影响拍照，只是照片会偏暗
                 logger.warning("拍照前临时补光失败: %s", e)
 
-        # 使用 rpicam-jpeg 拍摄 HQ 照片
+        camera = state.hardware_manager.get_camera()
+        if camera is None:
+            logger.error("❌ 每日照片拍摄失败：未配置任何相机")
+            return
+
         with state.camera_lock:
-            cmd = [
-                "rpicam-jpeg", "-o", photo_path,
-                "-t", "2000",
-                "--width", "2592", "--height", "1944",
-                "-q", "90",
-                "--vflip", "--hflip", "--nopreview"
-            ]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            camera.capture(photo_path, hq=True)
 
         if not os.path.exists(photo_path):
-            logger.error("❌ 每日照片拍摄失败：rpicam-jpeg 未生成 %s", photo_path)
+            logger.error("❌ 每日照片拍摄失败：相机未生成 %s", photo_path)
             return
 
         file_size = os.path.getsize(photo_path)

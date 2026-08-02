@@ -7,7 +7,7 @@ import core.state as state
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
-    "auto_water": {"enabled": True, "duration": 0.5, "threshold": 50.0, "node_id": "main"},
+    "auto_water": {"enabled": True, "duration": 0.5, "threshold": 50.0, "node_id": "main", "actuator_id": "pump"},
     "auto_light": {"enabled": True, "mode": "fixed", "on_time": "07:30", "off_time": "21:30", "sun_on_offset": 0, "sun_off_offset": 0, "lat": "", "lng": "", "node_id": "main", "actuator_id": "light"},
     "daily_photo": {"enabled": True, "hour": 12, "disk_limit_free_gb": 20}
 }

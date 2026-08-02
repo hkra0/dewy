@@ -34,6 +34,13 @@
     --metric-light-on: #ca8a04;
     --metric-power: #0284c7;
     --metric-cpu: #e11d48;
+
+    /* 额外指标（驱动返回的、schema 里没有的量）按字段名轮转取用，
+       见 js/metrics.js。刻意与上面的固定指标色拉开，避免误读成同一个量。 */
+    --metric-extra-1: #0d9488;
+    --metric-extra-2: #c2410c;
+    --metric-extra-3: #4f46e5;
+    --metric-extra-4: #a21caf;
 }
 
 
@@ -66,6 +73,11 @@
         --metric-light-on: #facc15;
         --metric-power: #38bdf8;
         --metric-cpu: #fb7185;
+
+        --metric-extra-1: #2dd4bf;
+        --metric-extra-2: #fb923c;
+        --metric-extra-3: #818cf8;
+        --metric-extra-4: #e879f9;
 
         color-scheme: dark;
     }

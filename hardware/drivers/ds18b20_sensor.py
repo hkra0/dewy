@@ -14,8 +14,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Driver:
-    def __init__(self, config):
-        self.device_id = config.get("device_id") # e.g., "28-00000xxxxxxx"
+    def __init__(self, **kwargs):
+        self.device_id = kwargs.get("device_id") # e.g., "28-00000xxxxxxx"
         
         base_dir = '/sys/bus/w1/devices/'
         

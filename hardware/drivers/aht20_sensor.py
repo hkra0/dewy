@@ -13,7 +13,7 @@ except ImportError:
     board = None
 
 class Driver:
-    def __init__(self, config):
+    def __init__(self, **kwargs):
         if board is None:
             raise ImportError("Please install dependencies: sudo pip3 install adafruit-circuitpython-ahtx0")
             

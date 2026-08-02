@@ -1,8 +1,9 @@
 // 环境视图：动态指标卡片、实时数据、浇水与切灯。
 import { t } from './i18n.js';
-import { showToast } from './ui.js';
-import { state, getViewerKey, getWaterKey } from './state.js';
+import { showToast, escapeHtml } from './ui.js';
+import { state, getViewerKey, getWaterKey, nodeCaps } from './state.js';
 import { apiGet, apiWater, apiWaterPost } from './api.js';
+import { extraMetricEntries, metricLabel, metricUnit, metricColor } from './metrics.js';
 import { switchHistType } from './navigation.js';
 import { fetchAllData } from './refresh.js';
 
@@ -56,7 +57,8 @@ export function renderDynamicCards(nodeData, globalData) {
         return;
     }
 
-    const formatVal = (v, unit) => (v !== undefined && v !== null) ? `${v} ${unit}` : '--';
+    const caps = nodeCaps();
+    const formatVal = (v, unit) => (v !== undefined && v !== null) ? `${v}${unit ? ' ' + unit : ''}` : '--';
     let html = '';
 
     if (nodeData.temperature !== undefined) {
@@ -74,9 +76,20 @@ export function renderDynamicCards(nodeData, globalData) {
         html += `<div class="card"><div class="card-title">` + t('pressure') + `</div><div class="card-value" style="color: var(--metric-pres);">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
     }
 
-    // 补光灯状态（目前挂在 main 节点上）。切灯后的空窗期显示乐观值，
+    // 固定四项之外，驱动返回什么就显示什么（照度、CO₂、EC…）。
+    // 这些字段事先不可知，所以标签查不到时用字段名本身，而不是不显示——
+    // 用户接了传感器却在界面上找不到读数，比标签不好看严重得多。
+    for (const [key, value] of extraMetricEntries(nodeData)) {
+        const label = escapeHtml(metricLabel(key));
+        const unit = metricUnit(key);
+        html += `<div class="card"><div class="card-title">${label}</div>`
+             + `<div class="card-value" style="color: ${metricColor(key)};">${formatVal(value, unit)}</div></div>`;
+    }
+
+    // 补光灯状态。挂在哪个节点上由配置决定（auto_light.node_id/actuator_id），
+    // 所以看能力而不是写死 'main'。切灯后的空窗期显示乐观值，
     // 服务端追上或 TTL 到期后自动交还——见 effectiveLightStatus。
-    if (state.currentDevice === 'main') {
+    if (caps.light) {
         const status = effectiveLightStatus(globalData.light_status);
         if (status) {
             const color = status === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
@@ -93,9 +106,8 @@ export function renderDynamicCards(nodeData, globalData) {
     // Hardware Actions (Camera / Water)
     const hasKey = !!getViewerKey();
     const hasWaterKey = !!getWaterKey();
-    const nodeInfo = state.availableNodes[state.currentDevice] || {};
-    const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
-    const hasPump = nodeInfo.actuators && ('pump' in nodeInfo.actuators);
+    const hasCamera = caps.camera;
+    const hasPump = caps.pump;
 
     if (hasKey && hasCamera) {
         document.getElementById('camera-block').classList.remove('hidden');

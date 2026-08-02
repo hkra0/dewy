@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { apiGet } from './api.js';
 import { ensureChart } from './cdn.js';
 import { loadPhotoTimeline } from './timeline.js';
+import { metricLabel, metricUnit, metricColor } from './metrics.js';
 
 let myChart = null;
 const historyCache = {};
@@ -61,6 +62,10 @@ export async function renderHistoryUI(data, type, animate = false) {
     const hasPres = chartData.some(d => d.pressure !== null && d.pressure !== undefined);
     const hasWater = chartData.some(d => d.water !== null && d.water !== undefined && d.water > 0);
 
+    // 后端按时间桶并进来的额外指标。哪些字段存在完全取决于用户接了什么传感器，
+    // 所以要从数据里收集，不能有一张预设清单。
+    const extraKeys = [...new Set(chartData.flatMap(d => Object.keys(d.extra || {})))].sort();
+
     // Chart.js 只认真实色值，取不到 var()，所以从 :root 上把 token 读出来。
     // 色值的唯一来源仍是 style.css，暗色模式会自动跟着变。
     const metric = (name, fallback) =>
@@ -71,10 +76,31 @@ export async function renderHistoryUI(data, type, animate = false) {
     const cPres = metric('--metric-pres', '#7c3aed');
     const cWater = metric('--metric-water', '#0891b2');
 
+    // metrics.js 给的是 var(--x) 形式（卡片直接用得上），Chart.js 只认真实色值
+    const resolveColor = (value) => {
+        const m = /^var\((--[\w-]+)\)$/.exec(value.trim());
+        return m ? metric(m[1], '#888') : value;
+    };
+
     if (hasTemp) datasets.push({ label: t('chart_temp'), data: chartData.map(d => d.temp), borderColor: cTemp, backgroundColor: cTemp, tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
     if (hasHum) datasets.push({ label: t('chart_hum'), data: chartData.map(d => d.hum), borderColor: cHum, backgroundColor: cHum, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: cSoil, backgroundColor: cSoil, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: cPres, backgroundColor: cPres, tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
+    // 额外指标（照度、CO₂…）。默认折叠：它们的量纲与温湿度差着几个数量级，
+    // 直接画出来会把原本的曲线压成直线；放进图例让用户按需点开，
+    // 数据可达，默认视图又不被破坏。
+    for (const key of extraKeys) {
+        const unit = metricUnit(key);
+        datasets.push({
+            label: metricLabel(key) + (unit ? ` (${unit})` : ''),
+            data: chartData.map(d => (d.extra && d.extra[key] !== undefined) ? d.extra[key] : null),
+            borderColor: resolveColor(metricColor(key)),
+            backgroundColor: resolveColor(metricColor(key)),
+            tension: 0.4, pointRadius: 0, yAxisID: 'y3', spanGaps: true,
+            hidden: true,
+        });
+    }
+
     if (hasWater) datasets.push({
         type: 'line',
         label: t('chart_water'),
@@ -110,8 +136,21 @@ export async function renderHistoryUI(data, type, animate = false) {
     const gridColor = computedStyle.getPropertyValue('--border').trim() || 'rgba(0,0,0,0.1)';
 
     if (myChart) {
+        // 先记下用户在图例上的显示/隐藏选择。历史页 30 秒轮询一次，
+        // 每轮都整体换掉 datasets——不还原的话，用户刚点开的额外指标
+        // 下一轮就被 hidden 的默认值重新收起来了。按 label 而非下标匹配：
+        // 传感器上下线会让下标错位。
+        const wasVisible = new Map();
+        myChart.data.datasets.forEach((ds, i) => wasVisible.set(ds.label, myChart.isDatasetVisible(i)));
+
         myChart.data.labels = labels;
         myChart.data.datasets = datasets;
+
+        datasets.forEach((ds, i) => {
+            if (wasVisible.has(ds.label)) {
+                myChart.getDatasetMeta(i).hidden = !wasVisible.get(ds.label);
+            }
+        });
 
         myChart.options.plugins.legend.labels.color = textColor;
         myChart.options.plugins.tooltip.titleColor = tooltipText;
@@ -166,7 +205,9 @@ export async function renderHistoryUI(data, type, animate = false) {
                 x: { grid: { display: false, color: gridColor }, ticks: { color: textColor, maxTicksLimit: 6, font: { size: 10 } } },
                 y: { type: 'linear', display: true, position: 'left', grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
                 y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false, color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
-                y2: { type: 'linear', display: false, grid: { drawOnChartArea: false, color: gridColor } }
+                y2: { type: 'linear', display: false, grid: { drawOnChartArea: false, color: gridColor } },
+                // 额外指标共用一条隐藏轴：它们彼此量纲也不同，但都不该去挤压主轴
+                y3: { type: 'linear', display: false, grid: { drawOnChartArea: false, color: gridColor } }
             }
         }
     });

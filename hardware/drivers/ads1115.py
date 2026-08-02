@@ -1,5 +1,8 @@
 import logging
-import smbus2
+try:
+    import smbus2
+except ImportError:  # 非树莓派环境下允许导入本模块，实例化时再报错
+    smbus2 = None
 import time
 
 logger = logging.getLogger(__name__)
@@ -16,6 +19,11 @@ class ADS1115_Soil:
         self.VAL_AIR = int(kwargs.get("val_air", 17545))
         self.VAL_WATER = int(kwargs.get("val_water", 6883))
         
+        if smbus2 is None:
+            logger.error("未安装 smbus2，ADS1115 不可用（pip install smbus2）")
+            self.bus = None
+            return
+
         try:
             self.bus = smbus2.SMBus(self.bus_num)
         except Exception as e:

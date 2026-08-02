@@ -11,13 +11,13 @@ except ImportError:
     smbus2 = None
 
 class Driver:
-    def __init__(self, config):
+    def __init__(self, **kwargs):
         if smbus2 is None:
             raise ImportError("Please install smbus2: sudo pip3 install smbus2")
             
-        self.port = config.get("i2c_port", 1)
+        self.port = kwargs.get("i2c_port", 1)
         
-        addr_config = config.get("address", "0x23")
+        addr_config = kwargs.get("address", "0x23")
         if isinstance(addr_config, str) and addr_config.startswith("0x"):
             self.address = int(addr_config, 16)
         else:

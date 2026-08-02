@@ -54,8 +54,9 @@ app.js                   前端入口：挂载 window 全局、绑定 onload
 js/                      前端 ES 模块
   api.js                 所有 API 调用的唯一出口，鉴权头在此注入
   i18n.js                中英文案与 t()
-  state.js               跨模块共享状态（可变对象）与 localStorage 键
-  ui.js                  showToast
+  state.js               跨模块共享状态（可变对象）、localStorage 键、nodeCaps()
+  ui.js                  showToast、escapeHtml
+  metrics.js             额外指标的标签/单位/配色（固定六列之外的量）
   navigation.js          设备/标签页/历史子页切换与 URL 同步
   dashboard.js           环境视图：指标卡片、浇水、切灯
   history.js             Chart.js 曲线与浇水日志
@@ -151,7 +152,7 @@ Python 侧的续期**只写在"确认仍需省电"的那个分支里**（`logic/
   手动浇水经 `/api/water`，时长被钳制在 0.1–1.0 秒。
 - **补光灯**：`fixed` 固定时段，或按经纬度实时推算日出日落（支持偏移量，经纬度缺失时用 IP 定位）。
   手动切灯置 `manual_override`，到下一个开/关边界自动失效。
-- **每日照片**：到点拍一张 2592×1944 HQ 图 + 320×240 缩略图。磁盘剩余空间低于阈值（默认 20GB）时，
+- **每日照片**：到点拍一张 HQ 图（默认 2592×1944）+ 320×240 缩略图。磁盘剩余空间低于阈值（默认 20GB）时，
   按 `min_gap(d) = max(1, floor(3·ln(d+1)))` 稀疏化历史照片——近期密集、远期稀疏，最近 7 天永不删除。
 
 ---
@@ -166,7 +167,7 @@ Python 侧的续期**只写在"确认仍需省电"的那个分支里**（`logic/
 type = "local"                    # local: 直连 I2C/GPIO
 
 [nodes.main.sensors.sht30]
-driver = "SHT30"                  # 对应 driver_map 里的键
+driver = "SHT30"                  # 模块名或类名，manager 自动解析
 bus = 1
 address = "0x44"
 
@@ -182,14 +183,53 @@ topic = "sensor/esp32/env_data"
 
 ### 新增一个传感器
 
-1. 在 `hardware/drivers/` 写一个类，实现 `read()` 返回 dict（执行器实现 `trigger(**kwargs)` 返回 bool）
+1. 在 `hardware/drivers/` 下新建 `.py`，类名用 `Driver` 或与配置里的 `driver` 同名，
+   实现 `__init__(**kwargs)` + `read()` 返回 dict（执行器实现 `trigger(**kwargs)` 返回 bool）
    （`read()` 返回的键会被 manager 记下来，供 `sensors_for_field` 按字段挑传感器——见分档采样）
-2. 在 `hardware/manager.py` 的 `driver_map` 里注册一行
-3. 在 `hardware_config.toml` 里声明
+2. 在 `hardware_config.toml` 里声明
 
-**不需要改动 core 或 api 的任何代码。** 已注册：`SHT30`、`ADS1115_Soil`、`INA219_UPS`、`GPIO_Relay`、`MQTT_Relay`。
-`drivers/` 下另有 8 个未注册的驱动（DHT、BME280、BH1750、AHT20、DS18B20、HTTP、Script、Dummy），
-它们都是惰性 import，依赖未安装也不影响启动——要用时在 `driver_map` 注册即可。
+**不需要改动 manager、core 或 api 的任何代码。** 驱动由 `_resolve_driver_class` 自动发现：
+依次试模块名、小写、`<name>_sensor`、`<name>_relay`，最后全包扫同名类；
+解析不到会 `logger.error` 说明试过哪些候选，绝不静默跳过。
+`_LEGACY_DRIVER_ALIASES` 只为 `ADS1115_Soil`/`INA219_UPS` 这两个推导不出模块名的老驱动名而存在。
+`_instantiate` 按签名兼容旧的 `__init__(self, config)` 写法，`trigger_actuator` 兼容旧的 `set(state, **kwargs)`。
+驱动的第三方依赖一律在模块顶部 try/except 兜住、实例化时再抛，
+这样某个驱动缺依赖不会拖垮整个驱动包的扫描；单个驱动构造失败也只跳过它自己
+（`HardwareManager` 在 `core.state` 导入期构造，异常上抛会导致整个服务起不来）。
+
+### 相机
+
+相机也走 HAL：节点配置里的 `[nodes.<id>.camera]` 段，驱动实现 `capture(path, hq=False)`。
+内置 `rpicam`（树莓派 CSI，分辨率/画质/翻转/命令名全可配）与 `command_camera`
+（任意命令模板，`{path}` 占位，用于 USB 摄像头与网络摄像头快照）。
+`get_camera()` 不带参数时返回第一个配置了相机的节点上的那个——拍照相关的端点
+与每日照片都只认一个相机，没有节点维度。**配置里没有 camera 段时退回默认的
+`rpicam` 实例**，所以老配置不改也照常拍照。
+
+### 执行器的语义化调用
+
+`trigger_actuator(node, act, state=True/False)` 表示开/关，`duration=秒` 表示定时通电。
+具体下发什么字面量由驱动按配置决定——`MQTT_Relay` 的 `on_command`/`off_command`/
+`query_command`/`pulse_command` 与回报解析用的 `on_feedback`/`off_feedback` 都在
+hardware_config 里，默认值是本项目 ESP32 固件那一套。**core/ 与 api/ 里不应再出现
+`a1`/`b1`/`n1`/`f1` 这类固件私有字面量**；灯控统一走 `core.logic.light.set_light(on)`，
+MQTT 回报统一走 `actuator.parse_feedback(information)`。
+
+水泵执行器的 id 默认为 `pump`、灯为 `light`，分别由 `data/config.json` 的
+`auto_water.actuator_id` 与 `auto_light.actuator_id` 决定（多株植物常见 pump_a / pump_b）。
+
+### 节点能力由服务端下发
+
+`/api/nodes` 除节点信息外还返回 `capabilities: {camera, pump, light}`，
+前端一律用 `state.js` 的 `nodeCaps()` 读它来决定显示哪些卡片与页签。
+**不要回到前端翻原始配置的老做法**（`'pump' in nodeInfo.actuators` 之类）：
+水泵/灯的执行器 id 可配，相机的声明形式也变过，这些规则散在五个前端模块里
+各写一份，改一次配置就要同步五处，漏一处就是"接了硬件但界面上没有"。
+
+`/api/nodes` 返回的是**白名单字段**（`_PUBLIC_NODE_FIELDS`）加上传感器/执行器
+的 id 列表，不是原始节点配置——节点段里还放着 ESP32 的 `wifi_password`、
+`mqtt_host` 等构建参数，而这个端点只要 viewer key 就能读。
+新增字段请加进白名单，不要改成黑名单。
 
 ### 多节点
 
@@ -266,7 +306,7 @@ topic = "sensor/esp32/env_data"
 
 ### 预览图的条件请求（改这三处任一处前必读）
 
-`/api/image` 只在带 `live=true` 时才真的跑 `rpicam-jpeg` 重写 `data/live.jpg`；
+`/api/image` 只在带 `live=true` 时才真的驱动相机重写 `data/live.jpg`；
 不带 `live` 只是把磁盘上那张发回去。而前端 30 秒轮询一次——**不带条件的话，
 每轮都在重下同一张几十 KB 的图**，穿过 Cloudflare 与隧道白烧流量。
 
@@ -330,7 +370,8 @@ API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头�
 | `PI_SECRET_TOKEN` | 自动生成 | BFF→Pi 共享密钥。未设时自动生成并写入 `data/secret_token`（权限 600），启动日志会打印，需同步到 Worker |
 | `DEWY_DATA_DIR` | `<项目根>/data` | 数据目录（数据库、照片、配置、密钥） |
 | `DEWY_POWER_SAVER` | `<项目根>/power_saver.sh` | 省电脚本路径 |
-| `DEWY_DATA_RETENTION_DAYS` | `365` | `node_data` 保留天数，超期行每天清理一次。设 0 关闭清理 |
+| `DEWY_DATA_RETENTION_DAYS` | `365` | `node_data` / `node_metrics` 保留天数，超期行每天清理一次。设 0 关闭清理 |
+| `DEWY_NET_INTERFACE` | 自动 | 网络连通性检查用的网卡名。留空时扫描所有物理网卡的 carrier |
 | `DEWY_LOG_LEVEL` | `INFO` | 日志级别 |
 | `DEWY_LOG_FILE` | 未设 | 设置后额外落盘，按 5MB × 3 份轮转 |
 | `DEWY_UPS_SAMPLE_SEC` | `10` | UPS 电流的快档采样间隔（秒）。必须显著小于 `DISCHARGE_CONFIRM_SEC`(120) |
@@ -349,7 +390,7 @@ API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头�
 
 三道关卡，逐级收紧：
 
-1. **Client → Worker（只读）**：`/api/monitor`、`/api/history`、`/api/nodes`、
+1. **Client → Worker（只读）**：`/api/monitor`、`/api/history`、`/api/metrics`、`/api/nodes`、
    `/api/image`、`/api/photos*` 一律要求请求头 `X-Viewer-Key` 匹配 `VIEWER_MAGIC_KEY`，
    不匹配返回 404（不暴露端点存在）。**无任何旁路。**
 2. **Client → Worker（高危操作）**：`/api/water`、`/api/light`、`/api/config` 要求
@@ -399,9 +440,19 @@ CDN/字体服务的 Referer 里。`?key=` 两处都会泄漏，而 `replaceState
 
 ## 八、数据库
 
-SQLite（WAL 模式），三张表：
+SQLite（WAL 模式），四张表：
 
-- **`node_data`** — 环境采样。`is_anomaly=1` 的行会被所有统计与图表排除。
+- **`node_data`** — 环境采样的固定列（`NODE_DATA_FIELDS`）。`is_anomaly=1` 的行会被所有统计与图表排除。
+- **`node_metrics`** — 固定列之外的测量量，`(node_id, key, value)` 长表。
+  第三方驱动能返回什么字段事先不可知，装一个 BH1750 不该要求改 schema 和迁移脚本，
+  故 `insert_node_data()` 把认识的键写进 `node_data`、其余数值键写进这里（同一事务）。
+  非数值与 None 一律跳过。
+  前端：环境页按 `js/metrics.js` 的标签/单位/配色自动生成卡片（i18n 里没收录的
+  字段回退成字段名本身，绝不因为"不认识"就不显示）；历史图表把它们并进
+  `/api/history` 的 `extra` 字段，画在隐藏的 `y3` 轴上且**默认折叠**——
+  照度、CO₂ 与温湿度差着几个数量级，直接画会把原有曲线压成直线。
+  图例上的显示/隐藏选择在轮询刷新时按 label 还原，否则 30 秒后就被重置。
+  另有 `/api/metrics` 端点供外部消费。
 - **`watering_log`** — 浇水记录（时长、浇水前土壤湿度）。
 - **`photo_log`** — 每日照片索引，`date` 唯一。
 
@@ -409,7 +460,7 @@ SQLite（WAL 模式），三张表：
 
 ### 保留策略
 
-`node_data` 每天清理一次超过 `DEWY_DATA_RETENTION_DAYS`（默认 365 天）的行；
+`node_data` 与 `node_metrics` 每天清理一次超过 `DEWY_DATA_RETENTION_DAYS`（默认 365 天）的行；
 `watering_log` 与 `photo_log` 是稀疏的人类可读事件，**全部保留**（照片文件本身另有对数稀疏化清理）。
 
 历史查询**必须带 timestamp 条件**。`daily` 视图按 `date(timestamp,'localtime')` 分组，
@@ -447,7 +498,7 @@ SQLite（WAL 模式），三张表：
 三把锁，用途不同，**不要混用或嵌套错顺序**：
 
 - `state.db_lock`（**RLock**，可重入）— 由 `database.get_conn()` 自动持有，业务代码不要手动获取。
-- `state.camera_lock` — `rpicam-jpeg` 同一时刻只能有一个实例。
+- `state.camera_lock` — 拍照命令同一时刻只能有一个实例。
 - `HardwareManager.sensor_lock` — I2C 总线互斥，并发访问会导致总线挂死。
 
 ### 容易被"误修"的既有行为
@@ -469,7 +520,7 @@ SQLite（WAL 模式），三张表：
   那同样是一个永不过期的遮蔽。
 - **`fetchAllData` 在启动路径上只应被调用一次**。`parseURLAndNavigate()` 里的
   `switchDevice`/`switchTab` 都传 `skipFetch=true`，取数由 `app.js` 统一发起。
-  给 `switchDevice` 补 `fetchAllData` 会让每次打开页面都多打一轮请求、多跑一次 rpicam。
+  给 `switchDevice` 补 `fetchAllData` 会让每次打开页面都多打一轮请求、多拍一次照。
   popstate 分支相反，那里需要 `switchDevice` 自己取数。
 - **GIF 导出的帧数上限与并发不是保险，是必需**（`timeline.js` 的 `GIF_MAX_FRAMES=120`、
   `GIF_FETCH_CONCURRENCY=5`）。照片按对数稀疏化策略只增不减，而每帧是一次
@@ -490,7 +541,8 @@ SQLite（WAL 模式），三张表：
   已覆盖 `compute_next_boundary`、`_select_photos_to_delete`、`clean_soil_anomalies` 三处判定逻辑。
 - **`tests/__init__.py` 里的模块打桩不能删**。`core/logic/*` 都 `import core.state`，
   而 `core/state.py` 在导入期就会实例化 `HardwareManager`（读 hardware_config、加载
-  smbus2/RPi.GPIO、生成密钥文件），非树莓派机器上直接抛异常。所以要在导入被测模块之前
+  smbus2/RPi.GPIO、生成密钥文件）。单个驱动的失败现在由 `_build_device` 兜住，
+  但生成密钥文件等副作用仍不该发生在测试里。所以要在导入被测模块之前
   把 `core.state` / `core.config` / `core.database` 换成空壳。新增测试请沿用这一入口。
 - **手动硬件排查脚本放 `scripts/hardware_check/`，不要建 `test/` 目录、也不要用
   `test_` 前缀命名**。它们要接真实 I2C/GPIO，导入期就摸总线，只能在树莓派上手工跑；

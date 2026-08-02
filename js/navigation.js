@@ -1,5 +1,5 @@
 // 设备/标签页/历史子页的切换与 URL 同步。
-import { state, STORAGE_KEY, WATER_KEY, getViewerKey } from './state.js';
+import { state, STORAGE_KEY, WATER_KEY, getViewerKey, nodeCaps } from './state.js';
 import { setLang } from './i18n.js';
 import { apiGet } from './api.js';
 import { clearHistoryCache, loadHistoryData } from './history.js';
@@ -64,12 +64,13 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     clearHistoryCache();
 
     const nodeInfo = state.availableNodes[dev] || {};
+    const caps = nodeCaps(dev);
     const hasSystem = nodeInfo.type === 'local';
-    const hasPump = nodeInfo.actuators && ('pump' in nodeInfo.actuators);
-    const hasSettings = nodeInfo.actuators && ('pump' in nodeInfo.actuators || 'light' in nodeInfo.actuators) && !!localStorage.getItem(WATER_KEY);
+    const hasPump = caps.pump;
+    const hasSettings = (caps.pump || caps.light) && !!localStorage.getItem(WATER_KEY);
 
     const hasKey = !!localStorage.getItem(STORAGE_KEY);
-    const hasCamera = nodeInfo.sensors && ('camera' in nodeInfo.sensors);
+    const hasCamera = caps.camera;
 
     if (hasSystem) document.getElementById('tab-system').classList.remove('hidden');
     else document.getElementById('tab-system').classList.add('hidden');
@@ -100,8 +101,9 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
 
 export function switchTab(tabName, pushState = true, skipFetch = false) {
     const nodeInfo = state.availableNodes[state.currentDevice] || {};
+    const caps = nodeCaps();
     const hasSystem = nodeInfo.type === 'local';
-    const hasSettings = nodeInfo.actuators && ('pump' in nodeInfo.actuators || 'light' in nodeInfo.actuators) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light) && !!localStorage.getItem(WATER_KEY);
 
     if (tabName === 'system' && !hasSystem) tabName = 'environment';
     if (tabName === 'settings' && !hasSettings) tabName = 'environment';

@@ -12,14 +12,14 @@ except ImportError:
     smbus2 = None
 
 class Driver:
-    def __init__(self, config):
+    def __init__(self, **kwargs):
         if smbus2 is None:
             raise ImportError("Please install dependencies: sudo pip3 install smbus2 RPi.bme280")
         
-        self.port = config.get("i2c_port", 1)
+        self.port = kwargs.get("i2c_port", 1)
         
         # 处理地址格式，支持配置中写入 "0x76" 或直接 118
-        addr_config = config.get("address", "0x76")
+        addr_config = kwargs.get("address", "0x76")
         if isinstance(addr_config, str) and addr_config.startswith("0x"):
             self.address = int(addr_config, 16)
         else:

@@ -13,9 +13,11 @@
 先把 `core.state` / `core.config` / `core.database` 替换成空壳模块，
 测试模块随后 import `core.logic.*` 时拿到的就是桩。
 
-被测的三个函数（compute_next_boundary / _select_photos_to_delete /
-clean_soil_anomalies 的判定逻辑）都不碰这些桩的真实行为，只有
-clean_soil_anomalies 会调 db 的两个函数，由各测试自行替换。
+大多数被测函数都不碰这些桩的真实行为，需要时由各测试自行替换桩上的属性
+（如 test_soil_anomalies 替换 db 的两个查询函数）。
+
+要测桩模块本身的实现时——`test_node_metrics.py` 测的正是 `core/database.py`——
+用 `importlib` 另外加载一份真实模块，并给桩上它实际用到的那几个属性赋真值。
 """
 
 import sys

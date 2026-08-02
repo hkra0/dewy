@@ -19,9 +19,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_ON_MINUTES = 7 * 60 + 30    # 推算失败时的兜底：07:30
 DEFAULT_OFF_MINUTES = 21 * 60 + 30  # 兜底：21:30
 
-CMD_ON = "a1"
-CMD_OFF = "b1"
-
 
 def compute_next_boundary(now, on_minutes, off_minutes):
     """手动覆盖的失效时刻：下一个开灯或关灯边界。"""
@@ -102,11 +99,12 @@ def get_effective_light_times():
             return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
 
 
-def _send_light_command(cmd):
+def set_light(on, retain=False):
+    """开灯或关灯。具体下发什么指令由继电器驱动按配置决定。"""
     l_node = config.global_config["auto_light"]["node_id"]
     l_act = config.global_config["auto_light"]["actuator_id"]
-    state.hardware_manager.trigger_actuator(
-        l_node, l_act, mqtt_client=state.global_mqtt_client, command=cmd
+    return state.hardware_manager.trigger_actuator(
+        l_node, l_act, mqtt_client=state.global_mqtt_client, state=on, retain=retain
     )
 
 
@@ -138,11 +136,11 @@ def apply_light_schedule(now):
             logger.info("🔄 手动覆盖已到期，恢复定时控制")
 
             desired = "ON" if is_light_time else "OFF"
-            _send_light_command(CMD_ON if desired == "ON" else CMD_OFF)
+            set_light(desired == "ON")
             state.light_status = desired
         else:
             # 覆盖期内：维持用户选定的状态
-            _send_light_command(CMD_ON if state.light_status == "ON" else CMD_OFF)
+            set_light(state.light_status == "ON")
 
     if not state.manual_override:
         desired = "ON" if is_light_time else "OFF"
@@ -151,4 +149,4 @@ def apply_light_schedule(now):
             logger.info("💡 定时灯控: %s", desired)
             state.light_status = desired
 
-        _send_light_command(CMD_ON if desired == "ON" else CMD_OFF)
+        set_light(desired == "ON")

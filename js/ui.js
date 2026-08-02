@@ -18,6 +18,16 @@ export function initKeyboardActivation() {
     });
 }
 
+/** 拼进 innerHTML 的文本必须先过这里。
+ *
+ *  额外指标的标签来自字段名，而字段名可能来自 MQTT 节点上报的 JSON——
+ *  那是网络上来的数据，不该被当作可信标记直接插进 DOM。 */
+export function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[ch]));
+}
+
 export function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
