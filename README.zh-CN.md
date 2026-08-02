@@ -43,7 +43,7 @@ firmware/plant_node/     ESP32 固件（PlatformIO / Arduino）
 power_saver.sh           带自动恢复看门狗的省电脚本
 scripts/                 数据库迁移、树莓派初始化脚本
 test/                    手动硬件调试脚本（非自动化测试）
-agent.md                 深入维护笔记（分层约定、看门狗、既有行为说明）
+AGENTS.md                深入维护笔记（分层约定、看门狗、既有行为说明）
 ```
 
 ## 快速开始
@@ -124,4 +124,4 @@ SQLite（WAL 模式），三张表：`node_data`（环境采样，超期清理�
 ## 开发须知
 
 - 前端**无构建步骤**——原生 ES 模块由 Worker 以文本形式下发。新增 `js/` 模块要同步改三处：`worker.js` 的 `JS_MODULES`、`index.html` 的 `modulepreload`、以及 import 它的模块。
-- `agent.md` 详细记录了分层约定、并发锁、省电看门狗以及大量"看着像 bug 实则有意为之"的既有行为，改动核心逻辑前请先阅读。
+- `AGENTS.md` 详细记录了分层约定、并发锁、省电看门狗以及大量"看着像 bug 实则有意为之"的既有行为，改动核心逻辑前请先阅读。

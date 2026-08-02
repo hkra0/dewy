@@ -77,7 +77,7 @@ const BASE_SECURITY_HEADERS = {
 // 只对 HTML 文档生效（CSP 是文档级策略，挂在 json/图片上没有意义）。
 //
 // script-src 保留 'unsafe-inline'：index.html 与 dashboard.js 生成的 HTML 里
-// 用的是内联 onclick，这是 agent.md 第五节明确的约定，不是疏漏。
+// 用的是内联 onclick，这是 AGENTS.md 第五节明确的约定，不是疏漏。
 // 因此这条 CSP 挡不住注入的内联脚本，它挡的是**主机**——注入的外部脚本加载不了，
 // connect-src 'self' 也让数据无法外发到任意域名。这是在不推翻既有约定前提下
 // 能拿到的那一半，且是更值钱的那一半。

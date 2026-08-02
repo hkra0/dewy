@@ -22,7 +22,7 @@ def verify_pi_token(x_bff_to_pi_token: str = Header(None)):
     """校验 BFF(Worker) → Pi 的共享密钥。
 
     挂在 router 上而不是逐个端点写：新增端点自动受保护，
-    漏写一处就是一个鉴权洞——这正是 agent.md「七、鉴权」强调的"无旁路"。
+    漏写一处就是一个鉴权洞——这正是 AGENTS.md「七、鉴权」强调的"无旁路"。
     要放开某个端点必须显式声明，不会因为忘了粘贴而默默敞开。
     """
     if not x_bff_to_pi_token or not hmac.compare_digest(x_bff_to_pi_token, state.PI_SECRET_TOKEN):

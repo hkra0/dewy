@@ -1,5 +1,8 @@
 # dewy — 植物自动化监控与浇水系统
 
+> Maintenance notes for contributors and coding agents, written in Chinese.
+> Machine translation reads fine — the content is architectural, not idiomatic.
+
 基于树莓派（Raspberry Pi Zero 2 WH）+ Cloudflare Workers 边缘代理的植物监控系统。
 约 5400 行代码，四层架构：ESP32 固件 → 树莓派后端 → 边缘代理 → 浏览器前端。
 

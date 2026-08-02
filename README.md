@@ -43,7 +43,7 @@ firmware/plant_node/     ESP32 firmware (PlatformIO / Arduino)
 power_saver.sh           power saver with auto-revert watchdog
 scripts/                 DB migration, Pi setup helpers
 test/                    manual hardware debugging scripts (not automated tests)
-agent.md                 in-depth maintenance notes (Chinese)
+AGENTS.md                in-depth maintenance notes (Chinese)
 ```
 
 ## Getting started
@@ -124,4 +124,4 @@ SQLite in WAL mode, three tables: `node_data` (environment samples, pruned after
 ## Development notes
 
 - The frontend has **no build step** — native ES modules served as text by the Worker. When adding a `js/` module, update three places: `worker.js` (`JS_MODULES`), `index.html` (`modulepreload`), and the importing module.
-- `agent.md` (Chinese) documents the layering rules, concurrency locks, the power-saver watchdog, and many "looks wrong but is intentional" behaviors. Read it before modifying core logic.
+- `AGENTS.md` (Chinese) documents the layering rules, concurrency locks, the power-saver watchdog, and many "looks wrong but is intentional" behaviors. Read it before modifying core logic.

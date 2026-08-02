@@ -1,6 +1,6 @@
 // 统一的 API 调用封装：鉴权头只在这里注入。
 //
-// 两把钥匙互相独立，端点决定用哪一把（见 agent.md「七、鉴权」）：
+// 两把钥匙互相独立，端点决定用哪一把（见 AGENTS.md「七、鉴权」）：
 //   - 只读端点 /api/monitor|history|nodes|image|photos*  → X-Viewer-Key，不匹配 404
 //   - 高危端点 /api/water|light|config                   → x-water-key，不匹配 403
 // 业务模块一律走 apiGet / apiWater，不要再自己拼 headers。
