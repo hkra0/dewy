@@ -4,6 +4,8 @@ import logging
 import os
 import threading
 
+from core.logfold import log_failure, log_recovery
+
 logger = logging.getLogger(__name__)
 
 def load_config_file(data_dir):
@@ -102,12 +104,16 @@ class HardwareManager:
         if node_id in self.local_sensors:
             with self.sensor_lock:
                 for s_id, sensor in self.local_sensors[node_id].items():
+                    # 本方法每 2 秒被轮询一次，坏掉的传感器若每次都打日志
+                    # 一天就是十几万条，故用折叠告警
+                    key = f"sensor:{node_id}:{s_id}"
                     try:
                         res = sensor.read()
                         if res:
                             data.update(res)
+                        log_recovery(logger, key, "传感器 %s (节点 %s) 已恢复", s_id, node_id)
                     except Exception as e:
-                        logger.warning("传感器 %s (节点 %s) 读取失败: %s", s_id, node_id, e)
+                        log_failure(logger, key, "传感器 %s (节点 %s) 读取失败: %s", s_id, node_id, e)
         return data
 
     def trigger_actuator(self, node_id, actuator_id, **kwargs):

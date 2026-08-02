@@ -63,7 +63,11 @@ test/                    手动硬件调试脚本，不是自动化测试
 | `api/routers.py` | 鉴权、参数校验、调用 logic/DAL、组装响应 | 直接 `import sqlite3` |
 | `core/logic/*` | 业务判断与硬件编排 | 直接 `import sqlite3`、写死路径 |
 | `core/database.py` | 所有 SQL | 业务判断 |
-| `hardware/*` | 与器件对话 | 依赖 core 里的任何东西 |
+| `hardware/*` | 与器件对话 | 依赖 `core.state` / `config` / `database` / `logic` |
+
+`hardware/*` 只允许依赖 core 里**零依赖的基础设施模块**（目前是 `core.logfold`，
+纯标准库、无副作用）。禁止的是业务状态与数据层——那会让硬件层无法脱离本项目复用。
+新增此类共享模块前先确认它不 import 任何其它 core 模块。
 
 **数据库访问一律走 `core/database.py`。** 它提供上下文管理器：
 
@@ -241,6 +245,11 @@ SQLite（WAL 模式），三张表：
 - **`main.py` 里 `setup_logging()` 必须在任何 `core.*` 导入之前执行**（故意不放在 import 块顶部，
   已加 `# noqa: E402`）。否则 `core.state` 的密钥告警和 `hardware.manager` 的配置日志会丢失。
 - **用 logging 不用 print**。服务代码全部已改造完毕；`scripts/` 和 `test/` 下的独立脚本除外。
+- **高频路径上的失败日志必须用 `core/logfold.py` 折叠**。判断标准：这行日志所在的代码
+  是否可能被每秒/每几秒调用一次（传感器轮询、MQTT 回调、API 处理）。
+  直接 `logger.warning` 会在硬件故障时产生每天十几万条日志，既刷屏又损耗 SD 卡。
+  用法：`log_failure(logger, key, msg, *args)` + 成功时 `log_recovery(logger, key, ...)`，
+  key 需能区分不同故障源（如 `f"sensor:{node_id}:{s_id}"`）。
 - **不要写裸 `except:`**——它会连 `KeyboardInterrupt` 一起吞掉，导致 Ctrl-C 停不掉服务。
 
 ### 并发与硬件锁

@@ -3,6 +3,7 @@ import logging
 import time
 
 import core.state as state
+from core.logfold import log_failure
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,9 @@ def on_mqtt_message(client, userdata, msg):
             state.mqtt_latest_data[node_id]["updated"] = True
             
     except (UnicodeDecodeError, ValueError) as e:
-        # 节点发来非 JSON 报文：常见于固件升级期间，不致命但要能查
-        logger.warning("MQTT 报文解析失败 (topic=%s): %s", msg.topic, e)
+        # 节点发来非 JSON 报文：常见于固件升级期间，不致命但要能查。
+        # 固件若持续发坏包，频率等同于其上报频率，同样需要折叠
+        log_failure(logger, f"mqtt:parse:{msg.topic}",
+                    "MQTT 报文解析失败 (topic=%s): %s", msg.topic, e)
     except Exception:
         logger.exception("MQTT 消息处理异常 (topic=%s)", msg.topic)
