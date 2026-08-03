@@ -7,6 +7,20 @@ import { loadPhotoTimeline } from './timeline.js';
 import { fetchConfig } from './settings.js';
 import { fetchAllData } from './refresh.js';
 
+/** 取节点列表。
+ *
+ *  返回 { ok, reason, status }，由调用方（app.js）决定是进主界面还是停在
+ *  加载层报错。这里刻意不自己弹 toast：首屏还没露出来，toast 会飘在一片
+ *  空白上，而且用户此刻需要的是一个能重试的落点，不是一条会自己消失的提示。
+ *
+ *  reason 取值：
+ *    'ok'           成功
+ *    'no-key'       没有 viewer key —— 访客路径，不算错误
+ *    'network'      fetch 直接失败：断网 / DNS / Worker 不可达
+ *    'unauthorized' 404，密钥不匹配（Worker 对只读端点一律回 404）
+ *    'pi'           5xx，Worker 通了但树莓派或隧道没通
+ *    'http'         其它非 2xx
+ */
 export async function initNodes() {
     const wrapper = document.getElementById('device-select-wrapper');
 
@@ -14,14 +28,22 @@ export async function initNodes() {
     // 也不要留下 "Loading..." 这种"有东西没加载出来"的痕迹。
     if (!getViewerKey()) {
         if (wrapper) wrapper.classList.add('hidden');
-        return;
+        return { ok: false, reason: 'no-key' };
+    }
+
+    let res;
+    try {
+        res = await apiGet('/api/nodes');
+    } catch (e) {
+        if (wrapper) wrapper.classList.add('hidden');
+        return { ok: false, reason: 'network' };
     }
 
     try {
-        const res = await apiGet('/api/nodes');
         if (!res.ok) {
             if (wrapper) wrapper.classList.add('hidden');
-            return;
+            const reason = res.status === 404 ? 'unauthorized' : (res.status >= 500 ? 'pi' : 'http');
+            return { ok: false, reason, status: res.status };
         }
         state.availableNodes = await res.json();
         const select = document.getElementById('device-select');
@@ -36,8 +58,12 @@ export async function initNodes() {
         else if (Object.keys(state.availableNodes).length > 0) state.currentDevice = Object.keys(state.availableNodes)[0];
 
         if (wrapper) wrapper.classList.remove('hidden');
+        return { ok: true, reason: 'ok' };
     } catch (e) {
+        // 走到这里只剩 json() 解析失败：响应是 200 但不是 JSON，
+        // 通常是中间有东西（门户、代理）把响应换掉了。
         if (wrapper) wrapper.classList.add('hidden');
+        return { ok: false, reason: 'http', status: res.status };
     }
 }
 

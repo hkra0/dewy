@@ -48,7 +48,23 @@
         <button type="button" class="close-btn" onclick="closeHD()" data-i18n="close">close</button>
     </div>
 
-    <div class="container">
+    <!-- 首屏加载态。节点列表（/api/nodes）决定哪些标签页/卡片该出现，
+         没拿到就渲染主界面的话，用户会先看到一份"设备叫 main、没有系统页"的
+         错误界面，再被 initNodes 改写一次。所以主界面先藏着，由 app.js
+         在 initNodes 结束后（成功或失败都要）拆掉这层。 -->
+    <div id="app-boot" class="app-boot" role="status" aria-live="polite">
+        <div id="boot-spinner" class="boot-spinner" aria-hidden="true"></div>
+        <div id="boot-text" class="boot-text" data-i18n="booting">loading...</div>
+        <!-- 出错时才出现：重试是主路径，"仍然进入"留给想看空壳界面的人 -->
+        <div id="boot-actions" class="boot-actions hidden">
+            <button type="button" class="action-btn boot-retry-btn" id="boot-retry-btn"
+                data-i18n="boot_retry">retry</button>
+            <button type="button" class="boot-skip-btn" id="boot-skip-btn"
+                data-i18n="boot_enter_anyway">continue anyway</button>
+        </div>
+    </div>
+
+    <div class="container hidden" id="app-root">
         <div class="header">
             <h1>🌱 dewy</h1>
             <div id="device-select-wrapper" class="device-select-wrapper hidden">

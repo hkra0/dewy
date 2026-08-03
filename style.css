@@ -241,6 +241,83 @@ body {
     display: none !important;
 }
 
+/* ========== 首屏加载态 ==========
+   主界面在拿到节点列表前是藏着的（index.html 里 .container 带 hidden），
+   这里占住它的位置，免得页面在拆掉加载层的瞬间从空白跳到满屏。 */
+
+.app-boot {
+    max-width: 600px;
+    width: 100%;
+    margin-top: 20px;
+    padding: 60px 30px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    min-height: 180px;
+}
+
+.boot-spinner {
+    border: 3px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    animation: spin 1s linear infinite;
+}
+
+/* 动效敏感的用户看到的是一个静止的圆环，而不是不停打转的东西 */
+@media (prefers-reduced-motion: reduce) {
+    .boot-spinner {
+        animation: none;
+    }
+}
+
+.boot-text {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    max-width: 320px;
+    line-height: 1.6;
+}
+
+/* 报错时文案是要读的正文，不再是一句转场提示 */
+.app-boot.is-error .boot-text {
+    color: var(--text-main);
+    font-size: 14px;
+}
+
+.boot-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 260px;
+}
+
+.boot-retry-btn {
+    margin-top: 0;
+    width: 100%;
+}
+
+.boot-skip-btn {
+    font-family: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
 /* ========== 表单 / 设置页 ==========
    设置页的间距与圆角都走这些类，不要在 HTML 里写内联 style。 */
 
