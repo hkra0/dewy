@@ -39,6 +39,7 @@ core/
   mqtt_handler.py        MQTT 连接与消息回调
   logic/                 业务逻辑，按职责拆分
     system.py            网络探测、CPU/内存/磁盘查询
+    capabilities.py      节点能力（界面该显示什么的唯一判据）
     power.py             UPS 放电监测与省电模式进出
     light.py             补光灯定时、日出日落推算、手动覆盖
     watering.py          浇水触发、间隔判定、土壤离群值过滤
@@ -152,7 +153,9 @@ Python 侧的续期**只写在"确认仍需省电"的那个分支里**（`logic/
   手动浇水经 `/api/water`，时长被钳制在 0.1–1.0 秒。
 - **补光灯**：`fixed` 固定时段，或按经纬度实时推算日出日落（支持偏移量，经纬度缺失时用 IP 定位）。
   手动切灯置 `manual_override`，到下一个开/关边界自动失效。
-- **每日照片**：到点（`daily_photo.hour`，按整点判断）拍一张 HQ 图（默认 2592×1944）+ 320×240 缩略图。
+- **每日照片**：`daily_photo.enabled` 这个开关**既管拍、也管看**——关掉后后台不再拍，
+  前端的"照片"子页签与时间轴也一起收起（经 `capabilities.daily_photo` 下发）。
+  开着时到点（`daily_photo.hour`，按整点判断）拍一张 HQ 图（默认 2592×1944）+ 320×240 缩略图。
   磁盘剩余空间低于阈值（默认 20GB）时，按 `min_gap(d) = max(1, floor(3·ln(d+1)))` 稀疏化历史照片——
   近期密集、远期稀疏，最近 7 天永不删除。
 - **拍照补光**：**所有**拍摄路径（实时预览、高清抓拍、每日照片、手动重拍）在拍之前都点亮补光灯几秒，
@@ -230,12 +233,28 @@ MQTT 回报统一走 `actuator.parse_feedback(information)`。
 
 ### 节点能力由服务端下发
 
-`/api/nodes` 除节点信息外还返回 `capabilities: {camera, pump, light}`，
-前端一律用 `state.js` 的 `nodeCaps()` 读它来决定显示哪些卡片与页签。
+`/api/nodes` 除节点信息外还返回 `capabilities: {camera, daily_photo, pump, light}`，
+由 `core/logic/capabilities.py` 的 `node_capabilities()` 算出——**这条规则只应存在于那一处**，
+router 只负责组装响应。前端一律用 `state.js` 的 `nodeCaps()` 读它来决定显示哪些卡片与页签。
+
+**`camera` 与 `daily_photo` 是两个能力位，不要合并。** 前者只问"这个节点有没有相机"，
+管实时预览与高清抓拍；后者还叠加了 `daily_photo.enabled`，管照片时间轴与"照片"子页签——
+每日照片的那个开关既管拍、也管看。关掉它不该把实时画面一起关掉。
+能力放在 `/api/nodes` 而不是 `/api/config`：后者要浇水密钥，而页签显隐对只有 viewer key 的访客同样要成立。
+
 显隐统一在 `navigation.js` 的 `switchDevice` 里做（切设备也要重算），
 设置页的"拍照"卡看 `camera`，卡里的"拍照时开启补光灯"那一行看 `camera && light`——
 只有灯没相机时这个开关无从生效，只有相机没灯时它切了也没有灯可点。
 隐藏的输入框不影响保存：`fetchConfig` 已经把服务端的值填了进去，提交时原样回传。
+
+`dashboard.js` 里也有一份 `hist-photos` 的显隐（它每轮重绘卡片时会跑），
+两处的判据必须一致——那里同样是 `daily_photo`，不是 `camera`。
+
+保存配置会改变能力，所以"保存配置"按钮挂的是 `navigation.js` 的
+`saveConfigAndRefresh()` 而不是裸的 `saveConfig()`：保存成功后要重新取一次
+`/api/nodes` 并重算显隐，否则关掉每日照片后"照片"子页签要等下次刷新页面才消失。
+组合放在 navigation 而不是 settings，是因为 navigation → settings 这条依赖边已经存在，
+反过来 import 会造出循环引用。
 **不要回到前端翻原始配置的老做法**（`'pump' in nodeInfo.actuators` 之类）：
 水泵/灯的执行器 id 可配，相机的声明形式也变过，这些规则散在五个前端模块里
 各写一份，改一次配置就要同步五处，漏一处就是"接了硬件但界面上没有"。

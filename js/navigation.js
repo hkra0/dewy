@@ -4,7 +4,7 @@ import { setLang } from './i18n.js';
 import { apiGet } from './api.js';
 import { clearHistoryCache, loadHistoryData } from './history.js';
 import { loadPhotoTimeline } from './timeline.js';
-import { fetchConfig } from './settings.js';
+import { fetchConfig, saveConfig } from './settings.js';
 import { fetchAllData } from './refresh.js';
 
 /** 取节点列表。
@@ -97,6 +97,10 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
 
     const hasKey = !!localStorage.getItem(STORAGE_KEY);
     const hasCamera = caps.camera;
+    // "照片"看 daily_photo 而不是 camera：关掉每日照片的开关，历史里的照片
+    // 栏目也一起收起来——同一个开关既管拍、也管看（服务端已把 enabled
+    // 叠进这个能力位）。实时画面不受影响，那个仍看 camera。
+    const hasPhotos = hasKey && caps.daily_photo;
 
     if (hasSystem) document.getElementById('tab-system').classList.remove('hidden');
     else document.getElementById('tab-system').classList.add('hidden');
@@ -107,7 +111,7 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     if (hasPump) document.getElementById('hist-watering').classList.remove('hidden');
     else document.getElementById('hist-watering').classList.add('hidden');
 
-    if (hasKey && hasCamera) document.getElementById('hist-photos').classList.remove('hidden');
+    if (hasPhotos) document.getElementById('hist-photos').classList.remove('hidden');
     else document.getElementById('hist-photos').classList.add('hidden');
 
     // 没有相机就没有拍照设置可言，"重新拍摄"点了也必然失败
@@ -127,12 +131,30 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     if (state.currentHistType === 'watering' && !hasPump) {
         switchHistType('24h');
     }
-    if (state.currentHistType === 'photos' && !(hasKey && hasCamera)) {
+    if (state.currentHistType === 'photos' && !hasPhotos) {
         switchHistType('24h');
     }
 
     if (pushState) updateURL();
     if (!skipFetch) fetchAllData(false);
+}
+
+/** 设置页"保存配置"按钮的实际处理器。
+ *
+ *  保存本身在 settings.js，这里只多做一件事：**保存成功后重新取一次能力并
+ *  重算显隐**。每日照片的开关会改变 `capabilities.daily_photo`，也就是"照片"
+ *  子页签在不在——不重算的话，用户关掉开关、保存，页签要等到下次刷新页面
+ *  才消失，看起来像没生效。
+ *
+ *  组合放在这里而不是 settings.js：显隐一直是本模块的职责，反过来让
+ *  settings.js 去 import navigation.js 会造出一个新的循环引用
+ *  （navigation → settings 这条边已经存在）。
+ */
+export async function saveConfigAndRefresh() {
+    const saved = await saveConfig();
+    if (!saved) return;
+    await initNodes();
+    switchDevice(state.currentDevice, false, true);
 }
 
 export function switchTab(tabName, pushState = true, skipFetch = false) {

@@ -111,14 +111,16 @@ export function renderDynamicCards(nodeData, globalData) {
 
     if (hasKey && hasCamera) {
         document.getElementById('camera-block').classList.remove('hidden');
-        const pBtn = document.getElementById('hist-photos');
-        if (pBtn) pBtn.classList.remove('hidden');
     } else {
         document.getElementById('camera-block').classList.add('hidden');
-        const pBtn = document.getElementById('hist-photos');
-        if (pBtn) pBtn.classList.add('hidden');
-        if (state.currentHistType === 'photos') switchHistType('24h');
     }
+
+    // "照片"子页签跟每日照片开关走，不跟相机走：相机还在、只是不再拍每日照片时，
+    // 实时画面要留下，照片栏目要收起。两者判据不同，所以不能合进上面那个分支。
+    const hasPhotos = hasKey && caps.daily_photo;
+    const pBtn = document.getElementById('hist-photos');
+    if (pBtn) pBtn.classList.toggle('hidden', !hasPhotos);
+    if (!hasPhotos && state.currentHistType === 'photos') switchHistType('24h');
 
     if (hasWaterKey && hasPump) {
         document.getElementById('water-block').classList.remove('hidden');

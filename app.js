@@ -15,13 +15,14 @@ import {
     switchHistType,
     checkMagicLink,
     initMagicLinkNav,
+    saveConfigAndRefresh,
     parseURLAndNavigate,
     initHistoryNav,
 } from './js/navigation.js';
 import { triggerWatering, toggleLight } from './js/dashboard.js';
 import { fetchHDImage, closeHD, initModalDismiss } from './js/camera.js';
 import { initKeyboardActivation } from './js/ui.js';
-import { saveConfig, toggleLightMode, retakeTodayPhoto } from './js/settings.js';
+import { toggleLightMode, toggleDailyPhoto, retakeTodayPhoto } from './js/settings.js';
 import {
     toggleTimelinePlay,
     seekTimeline,
@@ -37,7 +38,8 @@ Object.assign(window, {
     switchDevice,
     switchHistType,
     toggleLightMode,
-    saveConfig,
+    toggleDailyPhoto,
+    saveConfigAndRefresh,   // 保存 + 重算显隐（见 navigation.js），不是裸的 saveConfig
     retakeTodayPhoto,
     triggerWatering,
     toggleLight,          // 由 dashboard.js 生成的卡片 HTML 内联调用

@@ -20,7 +20,7 @@ export function getPhotoVersion(photo) {
 }
 
 export async function loadPhotoTimeline(forceFetch = false) {
-    if (!getViewerKey() || !nodeCaps().camera) return;
+    if (!getViewerKey() || !nodeCaps().daily_photo) return;
 
     const loadingEl = document.getElementById('timeline-loading');
     const imgEl = document.getElementById('timeline-img');

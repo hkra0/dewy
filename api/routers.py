@@ -20,6 +20,7 @@ from core.logic import (
     set_light,
     fill_light_for_capture,
     daily_photo_capture,
+    node_capabilities,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,25 +53,22 @@ _PUBLIC_NODE_FIELDS = ("type", "description")
 def get_nodes():
     """节点列表与各节点的能力。
 
-    前端据此决定显示哪些卡片与页签。能力在这里算而不是让前端翻原始配置：
-    水泵/灯的执行器 id 是可配的，相机也可能压根没在配置里出现（此时用默认相机），
-    这些判断规则不该散落在五个前端模块里各写一份。
+    前端据此决定显示哪些卡片与页签。能力由 `logic.node_capabilities` 算而不是
+    让前端翻原始配置：水泵/灯的执行器 id 是可配的，相机也可能压根没在配置里
+    出现（此时用默认相机），每日照片还能被开关关掉——这些判断规则不该散落在
+    五个前端模块里各写一份。此处只负责组装响应。
+
+    能力放在这个端点而不是 `/api/config`：后者要浇水密钥，而页签显隐对只有
+    viewer key 的访客同样要成立。
     """
     hm = state.hardware_manager
-    pump_id = config.global_config["auto_water"].get("actuator_id", "pump")
-    light_id = config.global_config["auto_light"].get("actuator_id", "light")
 
     result = {}
     for node_id, node_info in hm.nodes.items():
-        actuators = hm.actuators.get(node_id, {})
         public = {k: node_info[k] for k in _PUBLIC_NODE_FIELDS if k in node_info}
         public["sensors"] = sorted(hm.local_sensors.get(node_id, {}))
-        public["actuators"] = sorted(actuators)
-        public["capabilities"] = {
-            "camera": hm.has_camera(node_id),
-            "pump": pump_id in actuators,
-            "light": light_id in actuators,
-        }
+        public["actuators"] = sorted(hm.actuators.get(node_id, {}))
+        public["capabilities"] = node_capabilities(node_id)
         result[node_id] = public
 
     return result

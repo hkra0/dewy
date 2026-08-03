@@ -269,10 +269,12 @@
                     </div>
                     <div class="form-row">
                         <label for="cfg-photo-enabled" data-i18n="daily_photo">Daily Photo</label>
-                        <label class="switch"><input type="checkbox" id="cfg-photo-enabled"
-                                aria-label="daily photo"><span class="slider"></span></label>
+                        <label class="switch"><input type="checkbox" id="cfg-photo-enabled" aria-label="daily photo"
+                                onchange="toggleDailyPhoto()"><span class="slider"></span></label>
                     </div>
-                    <div class="form-group">
+                    <!-- 每日照片的子设置。关掉开关时一并收起：拍照时刻无从生效，
+                         而重拍出来的照片会落进一个已经隐藏的时间轴里，拍了也看不到。 -->
+                    <div class="form-group" id="cfg-photo-daily-group">
                         <div class="form-row">
                             <label for="cfg-photo-hour" data-i18n="photo_hour">Capture Hour</label>
                             <input type="number" id="cfg-photo-hour" class="form-input form-input--sm" min="0" max="23"
@@ -285,7 +287,7 @@
             </div>
 
             <div class="card full-width form-card--flush">
-                <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfig()"
+                <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfigAndRefresh()"
                     data-i18n="save_cfg">Save Configuration</button>
             </div>
         </div>

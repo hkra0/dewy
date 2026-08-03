@@ -16,6 +16,17 @@ export function toggleLightMode() {
     }
 }
 
+/** 每日照片的子设置（拍照时刻、重新拍摄）跟着开关一起显隐。
+ *
+ *  与 toggleLightMode 同一套做法：本地即时反馈，不等保存。关掉时收起是因为
+ *  这两项此时都没有意义——尤其"重新拍摄"，它拍出来的照片会落进一个同样被
+ *  隐藏的时间轴，等于拍了看不到。
+ */
+export function toggleDailyPhoto() {
+    const on = document.getElementById('cfg-photo-enabled').checked;
+    document.getElementById('cfg-photo-daily-group').classList.toggle('hidden', !on);
+}
+
 export async function fetchConfig() {
     try {
         const res = await apiWater('/api/config');
@@ -50,14 +61,17 @@ export async function fetchConfig() {
         document.getElementById('cfg-photo-hour').value = photo.hour ?? 12;
 
         toggleLightMode();
+        toggleDailyPhoto();
     } catch (e) {
         console.error(e);
         showToast(t('fail_load_cfg'), 'error');
     }
 }
 
+/** 保存设置页的全部配置。返回是否保存成功——调用方据此决定要不要重算
+ *  界面显隐（每日照片开关会改变"照片"子页签的存在与否）。 */
 export async function saveConfig() {
-    if (!getWaterKey()) return;
+    if (!getWaterKey()) return false;
 
     const btn = document.getElementById('save-cfg-btn');
     const originalText = btn.innerText;
@@ -100,6 +114,7 @@ export async function saveConfig() {
 
                 btn.disabled = false;
             }, 2000);
+            return true;
         } else {
             throw new Error('Failed');
         }
@@ -111,6 +126,7 @@ export async function saveConfig() {
 
             btn.disabled = false;
         }, 2000);
+        return false;
     }
 }
 

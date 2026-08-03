@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import core.config as config   # 桩
 import core.state as state     # 桩
-from core.logic import light, photo
+from core.logic import capabilities, light, photo
 
 # merge_defaults 测的正是 core/config.py 本身，桩上没有实现。绕开 sys.modules
 # 单独加载一份真实模块——它只在 load/save 时用到 core.state.CONFIG_FILE，
@@ -144,6 +144,49 @@ class MergeDefaultsTest(unittest.TestCase):
     def test_fill_light_is_not_scoped_to_the_daily_photo(self):
         # 补光对实时预览与高清抓拍同样生效，放回 daily_photo 段就名不副实了
         self.assertNotIn("fill_light", real_config.DEFAULT_CONFIG["daily_photo"])
+
+
+class NodeCapabilitiesTest(unittest.TestCase):
+    """core.logic.node_capabilities —— 前端据此决定显示哪些卡片与页签。"""
+
+    def setUp(self):
+        config.global_config = photo_config()
+        config.global_config["auto_water"] = {"actuator_id": "pump"}
+
+        self.hm = MagicMock()
+        self.hm.actuators = {"main": {"pump": object(), "light": object()}}
+        self.hm.has_camera.return_value = True
+        state.hardware_manager = self.hm
+
+    def tearDown(self):
+        config.global_config = {}
+
+    def caps(self):
+        return capabilities.node_capabilities("main")
+
+    def test_actuator_ids_come_from_the_config(self):
+        self.assertTrue(self.caps()["pump"])
+        config.global_config["auto_water"]["actuator_id"] = "pump_b"
+        self.assertFalse(self.caps()["pump"])
+
+    def test_daily_photo_needs_both_a_camera_and_the_switch(self):
+        self.assertTrue(self.caps()["daily_photo"])
+
+    def test_disabling_the_switch_drops_the_capability(self):
+        # 关掉每日照片，前端的"照片"子页签也一起收起来
+        config.global_config["daily_photo"]["enabled"] = False
+        self.assertFalse(self.caps()["daily_photo"])
+
+    def test_disabling_the_switch_keeps_the_camera(self):
+        # 实时预览与高清抓拍不受每日照片开关影响，两个能力位必须分开
+        config.global_config["daily_photo"]["enabled"] = False
+        self.assertTrue(self.caps()["camera"])
+
+    def test_no_camera_means_no_daily_photo(self):
+        self.hm.has_camera.return_value = False
+        caps = self.caps()
+        self.assertFalse(caps["camera"])
+        self.assertFalse(caps["daily_photo"])
 
 
 class DailyPhotoCaptureTest(unittest.TestCase):

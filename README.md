@@ -63,7 +63,7 @@ python main.py                                          # serves 127.0.0.1:8000
 
 On first start, a shared `PI_SECRET_TOKEN` is generated into `data/secret_token` (mode 600) and printed to the log — you will need it for the Worker.
 
-User-tunable settings (auto water / auto light / photo capture) live in `data/config.json` and are editable from the UI's settings tab. Under photo capture, "fill light while capturing" applies to every capture path — live preview, HD grab, and the daily photo alike; the daily photo is one such capture, with its own toggle, capture hour, and a manual retake for today (overwriting takes a second confirming tap).
+User-tunable settings (auto water / auto light / photo capture) live in `data/config.json` and are editable from the UI's settings tab. Under photo capture, "fill light while capturing" applies to every capture path — live preview, HD grab, and the daily photo alike; the daily photo is one such capture, with its own toggle, capture hour, and a manual retake for today (overwriting takes a second confirming tap). Turning that toggle off stops the capture *and* hides the photo timeline from the history view.
 
 ### 2. Cloudflare Worker (edge proxy + frontend host)
 

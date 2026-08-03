@@ -24,8 +24,12 @@ export const getWaterKey = () => localStorage.getItem(WATER_KEY);
  *  水泵/灯的执行器 id 是可配的（auto_water.actuator_id 等），相机也可能
  *  以别的形式声明——这些规则只应存在于服务端一处。节点信息还没取回来时
  *  返回全 false，调用方据此隐藏对应界面。
+ *
+ *  `camera` 与 `daily_photo` 是两件事：前者是"这个节点有没有相机"，管实时
+ *  预览与高清抓拍；后者还叠加了 `daily_photo.enabled`，管照片时间轴与
+ *  "照片"子页签。关掉每日照片不该连实时画面一起没了。
  */
 export function nodeCaps(dev = state.currentDevice) {
     const info = state.availableNodes[dev];
-    return (info && info.capabilities) || { camera: false, pump: false, light: false };
+    return (info && info.capabilities) || { camera: false, daily_photo: false, pump: false, light: false };
 }
