@@ -226,7 +226,8 @@ export default {
             return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
         }
         if (!url.pathname.startsWith("/api/")) {
-            return staticResponse(request, env, HTML_TEMPLATE, "text/html;charset=UTF-8");
+            const INLINED_HTML = HTML_TEMPLATE.replace('<link rel="stylesheet" href="/style.css">', `<style>\n${CSS_TEMPLATE}\n</style>`);
+            return staticResponse(request, env, INLINED_HTML, "text/html;charset=UTF-8");
         }
 
         return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
