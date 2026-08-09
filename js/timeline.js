@@ -348,16 +348,41 @@ export async function exportTimelineGIF() {
                 const totalPercent = 50 + Math.round(captureProgress * 50);
                 if (btn) btn.innerText = `${totalPercent}%`;
             }
-        }, function (obj) {
+        }, async function (obj) {
             btn.disabled = false;
             btn.innerText = t('export_gif');
             if (!obj.error) {
+                const fileName = `dewy_timeline_${new Date().toISOString().slice(0, 10)}.gif`;
+                // Convert data URL to Blob — iOS Safari ignores <a download> on data URLs
+                // and silently blocks programmatic a.click() from the gifshot callback.
+                const res = await fetch(obj.image);
+                const blob = await res.blob();
+                // Prefer Web Share API (native "Save Image" on iOS, share sheet on Android)
+                if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'image/gif' })] })) {
+                    try {
+                        await navigator.share({
+                            files: [new File([blob], fileName, { type: 'image/gif' })],
+                        });
+                        showToast(t('gif_success'), 'success');
+                        return;
+                    } catch (shareErr) {
+                        // User cancelled or API failed — fall through to anchor download
+                        if (shareErr.name === 'AbortError') {
+                            showToast(t('gif_success'), 'success');
+                            return;
+                        }
+                    }
+                }
+                // Fallback: blob URL + <a download> (works on desktop browsers)
+                const blobUrl = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = obj.image;
-                a.download = `dewy_timeline_${new Date().toISOString().slice(0, 10)}.gif`;
+                a.href = blobUrl;
+                a.download = fileName;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
+                // Revoke after a short delay so the browser has time to start the download
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
                 showToast(t('gif_success'), 'success');
             } else {
                 showToast(t('gif_error'), 'error');
