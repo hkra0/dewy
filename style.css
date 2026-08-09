@@ -18,9 +18,9 @@
     --accent-blue-hover: #174ea6;
     --danger: #d93025;
     --border: #ceead6;
-    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.03);
-    --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.06);
-    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.1);
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.05);
+    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.05);
     /* 圆角只有这三档，别再引入 5px/8px/10px 之类的中间值 */
     --radius-sm: 6px;
     --radius-md: 12px;
@@ -61,9 +61,9 @@
         /* 浅色的 #d93025 压在 --bg-color(#0d1f14) 上偏暗、对比不足，
            所以暗色单独给一支更亮的红。危险色一律走这个 token，别再硬编码。 */
         --danger: #ef4444;
-        --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
-        --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.5);
-        --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6);
+        --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.15);
+        --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.15);
+        --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.15);
 
         --metric-temp: #fbbf24;
         --metric-hum: #60a5fa;
@@ -193,13 +193,7 @@ body {
     transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 
-/* 触屏上 :hover 会一直粘着直到点别处，只对真正有指针悬停的设备启用 */
-@media (hover: hover) {
-    .card:hover {
-        box-shadow: var(--shadow-md);
-        border-color: var(--border-hover);
-    }
-}
+
 
 .card-title {
     font-size: 12px;
@@ -466,13 +460,12 @@ body {
     color: var(--text-muted);
     padding: 4px 28px 4px 14px;
     border-radius: 16px;
-    border: none;
+    border: 1px solid var(--border);
     font-family: inherit;
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     outline: none;
-    box-shadow: var(--shadow-sm);
     text-align: center;
 }
 
