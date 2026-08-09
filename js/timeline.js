@@ -355,8 +355,16 @@ export async function exportTimelineGIF() {
                 const fileName = `dewy_timeline_${new Date().toISOString().slice(0, 10)}.gif`;
                 // Convert data URL to Blob — iOS Safari ignores <a download> on data URLs
                 // and silently blocks programmatic a.click() from the gifshot callback.
-                const res = await fetch(obj.image);
-                const blob = await res.blob();
+                // Parse manually instead of using fetch() because CSP connect-src blocks data: URLs.
+                const parts = obj.image.split(',');
+                const mime = parts[0].match(/:(.*?);/)[1];
+                const bstr = atob(parts[1]);
+                let n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                while (n--) {
+                    u8arr[n] = bstr.charCodeAt(n);
+                }
+                const blob = new Blob([u8arr], { type: mime });
                 // Prefer Web Share API (native "Save Image" on iOS, share sheet on Android)
                 if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'image/gif' })] })) {
                     try {
