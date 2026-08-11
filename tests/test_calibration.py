@@ -180,6 +180,103 @@ class ReversalDetectionTest(unittest.TestCase):
             self.c.push_and_check(float(v))
         self.assertTrue(self.c.has_drained)
 
+    def test_noise_blip_after_spike_no_false_reversal(self):
+        """大尖峰后的噪声尖峰（~8 ADC）不应触发误反转。
+
+        这是 2026-08-11 实测 bug 的回归测试：
+        浇水后 max_delta≈50-1000，噪声 stdev≈9.6 ADC。
+        旧版仅用 noise_floor（≈6 ADC）作门控，噪声轻易越过，
+        导致 drift_sign 频繁翻转、has_drained 被误触发，
+        进而在缓慢下降的曲线上误判稳定。
+        新版用 reversal_ratio=0.2，门控提升到 max_delta×0.2（≥10 ADC），
+        远高于噪声尖峰。
+        """
+        # 大尖峰：8000 -> 7000，max_delta = 1000
+        for v in [8000, 7800, 7600, 7400, 7000]:
+            self.c.push_and_check(float(v))
+        self.assertEqual(self.c.drift_sign, -1)
+        self.assertEqual(self.c.max_delta, 1000.0)
+        self.assertFalse(self.c.has_drained)
+
+        # 噪声级上升：Δ ≈ +8 ADC，远小于 reversal_gate（1000×0.2=200）
+        # drift_sign 不应翻转，has_drained 不应被触发
+        for v in [7004, 7008, 7004, 7008, 7004]:
+            self.c.push_and_check(float(v))
+        self.assertFalse(self.c.has_drained,
+                         "噪声尖峰不应触发误反转")
+
+    def test_real_reversal_after_spike_triggers(self):
+        """大尖峰后的真实回升（|Δ| > reversal_gate）应触发反转。
+
+        与上一个测试对照：同样的大尖峰，但回升幅度足够大（>200 ADC）。
+        """
+        # 大尖峰：8000 -> 7000，max_delta = 1000
+        for v in [8000, 7800, 7600, 7400, 7000]:
+            self.c.push_and_check(float(v))
+        self.assertFalse(self.c.has_drained)
+
+        # 真实回升：7000 -> 7600，Δ = +600 > reversal_gate（200）
+        for v in [7100, 7300, 7500, 7600, 7600]:
+            self.c.push_and_check(float(v))
+        self.assertTrue(self.c.has_drained)
+
+    def test_max_delta_reset_on_first_reversal(self):
+        """首次反转后 max_delta 应归零，基于排水后期动态重新累积。
+
+        不重置时，大尖峰的 max_delta=1000 会让稳定阈值=100，
+        过于宽松，无法检测排水后期的缓慢下降。
+        """
+        # 大尖峰：max_delta = 1000
+        for v in [8000, 7800, 7600, 7400, 7000]:
+            self.c.push_and_check(float(v))
+        self.assertEqual(self.c.max_delta, 1000.0)
+
+        # 真实回升触发反转：Δ = +600
+        for v in [7100, 7300, 7500, 7600, 7600]:
+            self.c.push_and_check(float(v))
+        self.assertTrue(self.c.has_drained)
+        # max_delta 被重置后从当前 |Δ| 重新累积
+        # 最后窗口 [7300, 7500, 7600, 7600, 7600]，Δ = 7600-7300 = 300
+        # 但 max_delta 可能在反转后的后续 push 中继续增长
+        self.assertLess(self.c.max_delta, 1000.0,
+                        "反转后 max_delta 应小于尖峰峰值")
+
+    def test_slow_decline_with_noise_does_not_false_stable(self):
+        """端到端回归：大尖峰后缓慢下降+噪声 -> 不应误判稳定。
+
+        模拟 2026-08-11 的真实场景：
+        浇水后 ADC 从 5863 缓慢下降到 5770（3 分钟窗口 Δ ≈ -20~-50），
+        其间有 ±8 ADC 的噪声波动。旧版噪声引发误反转后，
+        |Δ|≈3-5 落入阈值内，3 次连续命中即误判稳定。
+        新版反转门控阻止误反转，has_drained 保持 False，永不判稳定。
+        """
+        c = cal.SoilCalibrator({
+            "window_size": 5,
+            "stable_confirm": 3,
+        })
+        c.ema = 5800.0  # 噪声地板 = 5800 × 0.002 = 11.6
+
+        # 大尖峰：5900 -> 5750，max_delta = 150
+        for v in [5900, 5870, 5840, 5800, 5750]:
+            c.push_and_check(float(v))
+        self.assertFalse(c.has_drained)
+        self.assertEqual(c.max_delta, 150.0)
+
+        # 缓慢下降 + 噪声：每步下降 ~5 ADC，叠加 ±8 ADC 噪声
+        import random
+        rng = random.Random(42)  # 固定种子，可复现
+        base = 5750.0
+        is_stable = False
+        for i in range(60):
+            noise = rng.gauss(0, 8)  # stdev=8，接近实测噪声
+            val = base - i * 0.5 + noise  # 缓慢下降 0.5/步
+            _, _, is_stable = c.push_and_check(val)
+            self.assertFalse(is_stable,
+                             f"步骤 {i}: 缓慢下降+噪声不应判稳定")
+        self.assertFalse(c.has_drained,
+                         "噪声引起的方向翻转不应触发 has_drained")
+
+
 
 # ==================== 自适应阈值 ====================
 

@@ -51,9 +51,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_ALPHA = 0.2               # EMA 平滑系数
 DEFAULT_WINDOW_SIZE = 18           # 滑动窗口长度（18 × 10s = 3 分钟）
 DEFAULT_STABLE_RATIO = 0.1         # 稳定判定：|Δ| < 峰值 |Δ| × 此比例
-DEFAULT_NOISE_RATIO = 0.001        # 噪声地板：|ema| × 此比例
+DEFAULT_NOISE_RATIO = 0.002        # 噪声地板：|ema| × 此比例（实测噪声 stdev≈9.6，0.2%≈12 安全覆盖）
 DEFAULT_STABLE_CONFIRM = 3         # 连续命中阈值的次数
 DEFAULT_TIMEOUT_MIN = 90           # 校准超时（分钟）
+DEFAULT_REVERSAL_RATIO = 0.2        # 反转显著性门控：|Δ| > max(max_delta × 此比例, noise_floor)
 DEFAULT_SETTLE_DELAY_SEC = 0       # 浇水后等待延迟（反转检测已处理尖峰）
 DEFAULT_SAMPLE_INTERVAL_SEC = 10   # 校准采样间隔（秒）
 SAMPLE_INTERVAL_SEC = 10           # 校准采样间隔（模块级常量，向后兼容）
@@ -73,6 +74,7 @@ class SoilCalibrator:
         self.window_size = cfg.get("window_size", DEFAULT_WINDOW_SIZE)
         self.stable_ratio = cfg.get("stable_ratio", DEFAULT_STABLE_RATIO)
         self.noise_ratio = cfg.get("noise_ratio", DEFAULT_NOISE_RATIO)
+        self.reversal_ratio = cfg.get("reversal_ratio", DEFAULT_REVERSAL_RATIO)
         self.confirm = cfg.get("stable_confirm", DEFAULT_STABLE_CONFIRM)
         self.timeout_sec = cfg.get("timeout_min", DEFAULT_TIMEOUT_MIN) * 60
         self.settle_delay = cfg.get("settle_delay_sec", DEFAULT_SETTLE_DELAY_SEC)
@@ -111,12 +113,13 @@ class SoilCalibrator:
         窗口满后依次执行：
 
         1. **计算 Δ** = S_newest − S_oldest
-        2. **跟踪峰值** max_delta = max(max_delta, |Δ|)
-        3. **反转检测**：仅当 |Δ| 超过噪声地板时更新 drift_sign。
-           若新方向与上一次显著方向相反 → has_drained = True。
-           积水平台期 |Δ| ≈ 0（不更新方向），不会触发误判。
+        2. **反转检测**（先于 max_delta 更新）：仅当 |Δ| 超过
+           ``max(max_delta × reversal_ratio, noise_floor)`` 时更新 drift_sign。
+           若新方向与上一次显著方向相反 -> has_drained = True，并重置 max_delta=0。
+           噪声尖峰（~8 ADC）远低于门控（~10-200 ADC），不会触发误反转。
+        3. **跟踪峰值** max_delta = max(max_delta, |Δ|)（在反转重置之后）
         4. **自适应阈值** = max(max_delta × stable_ratio, |ema| × noise_ratio)
-        5. **稳定判定**：has_drained 且 |Δ| < 阈值 → stable_count++；
+        5. **稳定判定**：has_drained 且 |Δ| < 阈值 -> stable_count++；
            否则清零。连续 confirm 次则判定稳定。
         """
         self.window.append(ema_value)
@@ -129,19 +132,26 @@ class SoilCalibrator:
         # 噪声地板：信号量级的固定比例，过滤量化噪声与微小抖动
         noise_floor = abs(self.ema) * self.noise_ratio
 
-        # 跟踪本轮峰值 |Δ|（自适应阈值的基准）
-        if abs_delta > self.max_delta:
-            self.max_delta = abs_delta
+        # 反转显著性门控：只有 |Δ| 超过 max(max_delta × reversal_ratio, noise_floor)
+        # 才参与方向判断。积水尖峰 max_delta 可达数百 ADC，20% 即数十 ADC，
+        # 远高于噪声尖峰（~8 ADC），避免噪声导致 drift_sign 频繁翻转。
+        reversal_gate = max(self.max_delta * self.reversal_ratio, noise_floor)
 
-        # 反转检测：只有显著 Δ（超过噪声地板）才参与方向判断。
-        # 积水尖峰与排水方向相反，符号反转 = 排水已开始。
-        # 平台期 Δ ≈ 0（低于噪声地板），不更新 drift_sign，
-        # 因此平台期不会产生反转、不会设置 has_drained。
-        if abs_delta > noise_floor:
+        # 反转检测：必须在 max_delta 更新之前判断，以便首次反转时能重置 max_delta。
+        if abs_delta > reversal_gate:
             current_sign = 1 if delta > 0 else -1
             if self.drift_sign != 0 and current_sign != self.drift_sign:
-                self.has_drained = True
+                if not self.has_drained:
+                    self.has_drained = True
+                    # 重置 max_delta：积水尖峰的峰值不再适用于排水后期的阈值计算。
+                    # 后续 max_delta 基于排水后期的实际动态变化重新累积。
+                    self.max_delta = 0.0
             self.drift_sign = current_sign
+
+        # 跟踪本轮峰值 |Δ|（自适应阈值的基准）。
+        # 放在反转检测之后：首次反转时 max_delta 先被归零，再从当前 |Δ| 重新累积。
+        if abs_delta > self.max_delta:
+            self.max_delta = abs_delta
 
         # 自适应阈值：峰值的固定比例，至少不低于噪声地板
         threshold = max(self.max_delta * self.stable_ratio, noise_floor)
