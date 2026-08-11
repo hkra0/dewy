@@ -7,31 +7,57 @@
 纯算法模块，不依赖项目的 core 层（state / config / database / logic），
 仅使用标准库。可被任何 ADC 土壤传感器驱动复用，也可被其他项目直接拿走。
 
-参数选择依据（基于树莓派 + ADS1115 + 赤玉土的实际历史数据分析）：
-- stable_threshold=20: 稳定期 3 分钟窗口 |Δ| 为 0–3 ADC，后期排水为 16+，
-  20 处于间隙正中。3 次连续确认能过滤排水末期的单次反弹。
-- timeout_min=90: 实测从浇水到稳定约 100 分钟（尖峰 8 分钟 + 排水再分布
-  约 90 分钟）。赤玉土大颗粒积水排空快，但毛管水再分布缓慢。
+算法核心——自适应阈值 + 反转检测
+================================
+
+旧版使用写死的绝对阈值 ``stable_threshold=20`` 判断稳定，存在两个缺陷：
+1. 不同传感器量程、分辨率各异，写死 ADC 绝对值无法通用；
+2. 积水尖峰的平台期 |Δ| 也接近 0，算法会误判为"已稳定"，把尖峰值当作基准。
+
+新版用两个机制解决：
+
+**自适应阈值** — 跟踪本轮校准的峰值 |Δ|（``max_delta``），稳定判定阈值
+= ``max(max_delta × stable_ratio, |ema| × noise_ratio)``。
+- ``stable_ratio=0.1``：排水期 |Δ| 可达数百 ADC，稳定期趋近 0；10% 的峰值
+  能可靠区分两者，同时对小幅变化也保持敏感。
+- ``noise_ratio=0.001``：信号量级的 0.1% 作为噪声地板，低于此值的 Δ 视为
+  随机噪声。对 ~6000 ADC 的信号，噪声地板 ≈ 6，足以过滤量化噪声。
+全部参数均为无量纲比例，不依赖任何绝对 ADC 值。
+
+**反转检测（has_drained）** — 积水尖峰与重力排水始终方向相反。当滑动窗口
+首尾差值 Δ 的符号发生反转时，判定排水已开始。只有 ``has_drained=True``
+后才接受稳定判定——积水平台期 |Δ| 虽小但排水尚未开始，不会被误判为稳定。
+
+**无需 settle_delay** — 反转检测天然过滤积水尖峰，采样从浇水瞬间即开始。
+首个窗口捕获"浇水前 → 积水尖峰"的跳变，为反转检测提供初始方向。
+``settle_delay`` 默认为 0，保留参数供特殊场景使用。
+
+实测数据参考（树莓派 + ADS1115 + 赤玉土）：
+- 浇水前 raw ≈ 5950，积水尖峰 raw ≈ 5890（下降 ~60 ADC）；
+- 尖峰持续约 8 分钟，排水再分布约 90 分钟后趋于稳定；
+- ``timeout_min=90`` 覆盖典型排水周期，超时不更新基准（安全退出）。
 """
 
 import collections
 import json
 import logging
 import os
+import tempfile
 import time
 
 logger = logging.getLogger(__name__)
 
 # ---- 默认参数（可被驱动传入的 config 覆盖）----
-DEFAULT_ALPHA = 0.2              # EMA 平滑系数
-DEFAULT_WINDOW_SIZE = 18          # 滑动窗口长度（18 × 10s = 3 分钟）
-DEFAULT_STABLE_THRESHOLD = 20.0   # |Δ| < 此值视为稳定（ADC 单位）
-DEFAULT_STABLE_CONFIRM = 3        # 连续命中阈值的次数
-DEFAULT_TIMEOUT_MIN = 90          # 校准超时（分钟）
-DEFAULT_SETTLE_DELAY_SEC = 30     # 浇水后等水渗到传感器的延迟
-DEFAULT_SAMPLE_INTERVAL_SEC = 10    # 校准采样间隔（秒）
-SAMPLE_INTERVAL_SEC = 10          # 校准采样间隔（模块级常量，向后兼容）
-MAX_READ_FAILURES = 5             # 连续读取失败上限
+DEFAULT_ALPHA = 0.2               # EMA 平滑系数
+DEFAULT_WINDOW_SIZE = 18           # 滑动窗口长度（18 × 10s = 3 分钟）
+DEFAULT_STABLE_RATIO = 0.1         # 稳定判定：|Δ| < 峰值 |Δ| × 此比例
+DEFAULT_NOISE_RATIO = 0.001        # 噪声地板：|ema| × 此比例
+DEFAULT_STABLE_CONFIRM = 3         # 连续命中阈值的次数
+DEFAULT_TIMEOUT_MIN = 90           # 校准超时（分钟）
+DEFAULT_SETTLE_DELAY_SEC = 0       # 浇水后等待延迟（反转检测已处理尖峰）
+DEFAULT_SAMPLE_INTERVAL_SEC = 10   # 校准采样间隔（秒）
+SAMPLE_INTERVAL_SEC = 10           # 校准采样间隔（模块级常量，向后兼容）
+MAX_READ_FAILURES = 5              # 连续读取失败上限
 
 
 class SoilCalibrator:
@@ -45,7 +71,8 @@ class SoilCalibrator:
         cfg = config or {}
         self.alpha = cfg.get("alpha", DEFAULT_ALPHA)
         self.window_size = cfg.get("window_size", DEFAULT_WINDOW_SIZE)
-        self.threshold = cfg.get("stable_threshold", DEFAULT_STABLE_THRESHOLD)
+        self.stable_ratio = cfg.get("stable_ratio", DEFAULT_STABLE_RATIO)
+        self.noise_ratio = cfg.get("noise_ratio", DEFAULT_NOISE_RATIO)
         self.confirm = cfg.get("stable_confirm", DEFAULT_STABLE_CONFIRM)
         self.timeout_sec = cfg.get("timeout_min", DEFAULT_TIMEOUT_MIN) * 60
         self.settle_delay = cfg.get("settle_delay_sec", DEFAULT_SETTLE_DELAY_SEC)
@@ -57,6 +84,9 @@ class SoilCalibrator:
         self.ema = None              # S_{t-1}，首个样本直接赋值（避免用 0 初始化的冷启动偏置）
         self.window = collections.deque(maxlen=self.window_size)
         self.stable_count = 0
+        self.max_delta = 0.0         # 本轮峰值 |Δ|（自适应阈值的基准）
+        self.drift_sign = 0          # 上一次显著 Δ 的方向（+1 / -1 / 0=未确定）
+        self.has_drained = False     # 是否检测到排水（Δ 符号反转）
 
     # ---- 算法核心（纯逻辑，无副作用）----
 
@@ -77,19 +107,51 @@ class SoilCalibrator:
 
         窗口未满时不做稳定判断——18 个样本才覆盖 3 分钟，
         之前的首尾差值没有物理意义。
-        窗口满后计算首尾差值 Δ = S_newest - S_oldest，
-        |Δ| < threshold 计入 stable_count，连续命中 confirm 次则判定稳定。
-        任何一次未命中都清零——排水末期的单次反弹不应触发误判。
+
+        窗口满后依次执行：
+
+        1. **计算 Δ** = S_newest − S_oldest
+        2. **跟踪峰值** max_delta = max(max_delta, |Δ|)
+        3. **反转检测**：仅当 |Δ| 超过噪声地板时更新 drift_sign。
+           若新方向与上一次显著方向相反 → has_drained = True。
+           积水平台期 |Δ| ≈ 0（不更新方向），不会触发误判。
+        4. **自适应阈值** = max(max_delta × stable_ratio, |ema| × noise_ratio)
+        5. **稳定判定**：has_drained 且 |Δ| < 阈值 → stable_count++；
+           否则清零。连续 confirm 次则判定稳定。
         """
         self.window.append(ema_value)
         if len(self.window) < self.window.maxlen:
             return False, None, False
 
         delta = self.window[-1] - self.window[0]
-        if abs(delta) < self.threshold:
+        abs_delta = abs(delta)
+
+        # 噪声地板：信号量级的固定比例，过滤量化噪声与微小抖动
+        noise_floor = abs(self.ema) * self.noise_ratio
+
+        # 跟踪本轮峰值 |Δ|（自适应阈值的基准）
+        if abs_delta > self.max_delta:
+            self.max_delta = abs_delta
+
+        # 反转检测：只有显著 Δ（超过噪声地板）才参与方向判断。
+        # 积水尖峰与排水方向相反，符号反转 = 排水已开始。
+        # 平台期 Δ ≈ 0（低于噪声地板），不更新 drift_sign，
+        # 因此平台期不会产生反转、不会设置 has_drained。
+        if abs_delta > noise_floor:
+            current_sign = 1 if delta > 0 else -1
+            if self.drift_sign != 0 and current_sign != self.drift_sign:
+                self.has_drained = True
+            self.drift_sign = current_sign
+
+        # 自适应阈值：峰值的固定比例，至少不低于噪声地板
+        threshold = max(self.max_delta * self.stable_ratio, noise_floor)
+
+        # 稳定判定：必须在排水确认后才接受
+        if self.has_drained and abs_delta < threshold:
             self.stable_count += 1
         else:
             self.stable_count = 0
+
         return True, delta, self.stable_count >= self.confirm
 
 
@@ -110,7 +172,8 @@ def run_calibration(read_func, config=None, restart_event=None):
     cal = SoilCalibrator(config)
     start_time = time.time()
 
-    # 等待水渗到传感器，避免首个样本落在积水尖峰的上升沿
+    # settle_delay 默认为 0：反转检测已处理积水尖峰，无需人为跳过。
+    # 保留参数供特殊场景（如传感器响应极慢、需等水到达）使用。
     if cal.settle_delay > 0:
         time.sleep(cal.settle_delay)
 
@@ -137,15 +200,15 @@ def run_calibration(read_func, config=None, restart_event=None):
             continue
         consecutive_failures = 0
 
-        # ---- EMA → 窗口 → 稳定判定 ----
+        # ---- EMA -> 窗口 -> 稳定判定 ----
         smoothed = cal.update_ema(raw)
         window_full, delta, is_stable = cal.push_and_check(smoothed)
 
         if window_full:
-            logger.debug("校准采样: raw=%.1f ema=%.1f delta=%s count=%d",
+            logger.debug("校准采样: raw=%.1f ema=%.1f delta=%s count=%d drained=%s",
                          raw, smoothed,
                          f"{delta:.1f}" if delta is not None else "-",
-                         cal.stable_count)
+                         cal.stable_count, cal.has_drained)
 
         if is_stable:
             new_val = round(smoothed, 1)
@@ -183,6 +246,12 @@ def save_calibration(data_dir, node_id, sensor_id, val_water):
     原子读改写：先读已有内容（多节点多传感器共存），更新当前条目，再写回。
     文件不存在时从空字典开始。写入失败只记日志——内存中的 VAL_WATER
     已经更新，只是重启后会丢失。
+
+    写入采用 temp-file + ``os.replace`` 原子模式：先写到同目录下的临时文件，
+    ``fsync`` 落盘后原子替换目标文件。即使写入过程中进程崩溃，
+    calibration.json 要么是完整的旧内容、要么是完整的新内容，
+    不会出现截断/半写的损坏状态——``load_calibration`` 遇到损坏会静默退回
+    配置默认值，但有了原子写就不会走到那一步。
     """
     path = _calibration_file(data_dir)
     try:
@@ -195,8 +264,26 @@ def save_calibration(data_dir, node_id, sensor_id, val_water):
         "val_water": val_water,
         "calibrated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+
+    # 临时文件必须与目标在同一目录（同一文件系统），os.replace 才是原子的；
+    # 跨文件系统时会退化为复制+删除，中间崩溃可能留下半写文件。
+    # mkstemp 保证文件名唯一，避免多线程/多进程并发写时互相覆盖。
     try:
-        with open(path, "w") as f:
+        fd, tmp_path = tempfile.mkstemp(
+            dir=data_dir, suffix=".tmp", prefix=".calibration-")
+    except OSError as e:
+        logger.error("校准临时文件创建失败: %s", e)
+        return
+
+    try:
+        with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
     except OSError as e:
         logger.error("校准文件写入失败: %s", e)
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
