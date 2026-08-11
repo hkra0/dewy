@@ -19,7 +19,7 @@ import {
     parseURLAndNavigate,
     initHistoryNav,
 } from './js/navigation.js';
-import { triggerWatering, toggleLight } from './js/dashboard.js';
+import { triggerWatering, toggleLight, toggleSoilView } from './js/dashboard.js';
 import { fetchHDImage, closeHD, initModalDismiss } from './js/camera.js';
 import { initKeyboardActivation } from './js/ui.js';
 import { toggleLightMode, toggleDailyPhoto, retakeTodayPhoto } from './js/settings.js';
@@ -43,6 +43,7 @@ Object.assign(window, {
     retakeTodayPhoto,
     triggerWatering,
     toggleLight,          // 由 dashboard.js 生成的卡片 HTML 内联调用
+    toggleSoilView,       // 点击土壤湿度卡片翻转百分比/原始 ADC
     fetchAllData,
     fetchHDImage,
     closeHD,

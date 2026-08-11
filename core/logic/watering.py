@@ -63,6 +63,8 @@ def trigger_watering(node_id, soil_before, duration=None):
 
     if success:
         db.insert_watering(node_id, duration, soil_before)
+        # 通知传感器浇水事件已发生，触发自动校准（如 ADS1115 土壤传感器）
+        state.hardware_manager.notify_watering(node_id)
         return True
     else:
         logger.error("❌ 浇水失败：节点 %s 未配置 %s 继电器或硬件异常", node_id, pump_id)

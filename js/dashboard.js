@@ -9,6 +9,14 @@ import { fetchAllData } from './refresh.js';
 
 let lightToggleInProgress = false;
 
+// 最近一帧的节点读数，供 toggleSoilView 就地翻转卡片而无需重新拉取。
+let _lastNodeData = null;
+
+/** 数值格式化：null/undefined -> "--"，否则拼上单位。 */
+function formatVal(v, unit) {
+    return (v !== undefined && v !== null) ? `${v}${unit ? ' ' + unit : ''}` : '--';
+}
+
 // 手动切灯后的乐观状态。存在的理由只有一个：切灯指令走 MQTT，
 // 服务端的 light_status 要等下一次轮询才会反映出来，中间这段空窗期
 // 不能让卡片弹回旧值。
@@ -57,8 +65,9 @@ export function renderDynamicCards(nodeData, globalData) {
         return;
     }
 
+    _lastNodeData = nodeData;
+
     const caps = nodeCaps();
-    const formatVal = (v, unit) => (v !== undefined && v !== null) ? `${v}${unit ? ' ' + unit : ''}` : '--';
     let html = '';
 
     if (nodeData.temperature !== undefined) {
@@ -68,9 +77,29 @@ export function renderDynamicCards(nodeData, globalData) {
         html += `<div class="card"><div class="card-title">` + t('humidity') + `</div><div class="card-value" style="color: var(--metric-hum);">${formatVal(nodeData.humidity, '%')}</div></div>`;
     }
     if (nodeData.soil_moisture !== undefined) {
+        // 点击翻转：百分比 <-> 原始 ADC 读数。soil_adc_raw 已在 BUILT_IN_FIELDS
+        // 里，不会作为独立卡片出现。翻转状态存在 state.soilShowRaw，跨 30s
+        // 轮询重绘自然保留。
         // --metric-soil，不是 --accent：历史曲线的土壤线用的就是 --metric-soil，
         // 同一个指标在两个视图里必须是同一个颜色。
-        html += `<div class="card"><div class="card-title">` + t('soil_moisture') + `</div><div class="card-value" style="color: var(--metric-soil);">${formatVal(nodeData.soil_moisture, '%')}</div></div>`;
+        const showRaw = state.soilShowRaw;
+        const flippedClass = showRaw ? ' flipped' : '';
+        const moistureLabel = t('soil_moisture');
+        const moistureValue = formatVal(nodeData.soil_moisture, '%');
+        const rawLabel = t('soil_adc_raw');
+        const rawValue = formatVal(nodeData.soil_adc_raw, '');
+        html += `<div class="flip-card${flippedClass}" id="soil-card" role="button" tabindex="0" onclick="toggleSoilView()">
+            <div class="flip-card-inner">
+                <div class="flip-card-front card">
+                    <div class="card-title">${moistureLabel}</div>
+                    <div class="card-value" style="color: var(--metric-soil);">${moistureValue}</div>
+                </div>
+                <div class="flip-card-back card">
+                    <div class="card-title">${rawLabel}</div>
+                    <div class="card-value" style="color: var(--metric-soil);">${rawValue}</div>
+                </div>
+            </div>
+        </div>`;
     }
     if (nodeData.pressure !== undefined) {
         html += `<div class="card"><div class="card-title">` + t('pressure') + `</div><div class="card-value" style="color: var(--metric-pres);">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
@@ -126,6 +155,19 @@ export function renderDynamicCards(nodeData, globalData) {
         document.getElementById('water-block').classList.remove('hidden');
     } else {
         document.getElementById('water-block').classList.add('hidden');
+    }
+}
+
+/** 点击土壤湿度卡片：翻转百分比 / 原始 ADC 读数显示。
+ *  不重新拉取数据，直接用 _lastNodeData 就地更新这一张卡片。 */
+export function toggleSoilView() {
+    state.soilShowRaw = !state.soilShowRaw;
+    const card = document.getElementById('soil-card');
+    if (!card) return;
+    if (state.soilShowRaw) {
+        card.classList.add('flipped');
+    } else {
+        card.classList.remove('flipped');
     }
 }
 

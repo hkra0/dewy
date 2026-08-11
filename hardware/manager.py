@@ -113,6 +113,10 @@ class HardwareManager:
         驱动的 __init__ 里缺依赖、地址不通、参数写错都会抛异常，
         而 HardwareManager 是在 core.state 导入期构造的——
         任何一个驱动抛出去都会连带整个服务起不来，故在此逐个兜住。
+
+        向驱动注入三个以 ``_`` 开头的元信息参数（``_data_dir`` /
+        ``_node_id`` / ``_sensor_id``），供需要校准或持久化的驱动使用。
+        它们用下划线前缀以区别于硬件配置项，驱动可选择忽略。
         """
         driver_name = conf.get("driver")
         if not driver_name:
@@ -125,8 +129,15 @@ class HardwareManager:
                          kind, dev_id, node_id, driver_name)
             return None
 
+        # 复制一份配置，注入元信息（不污染原始 conf）
+        # _data_dir / _node_id / _sensor_id 供需要校准或持久化的驱动使用
+        params = dict(conf)
+        params.setdefault("_data_dir", getattr(self, "data_dir", None))
+        params.setdefault("_node_id", node_id)
+        params.setdefault("_sensor_id", dev_id)
+
         try:
-            return self._instantiate(driver_class, conf)
+            return self._instantiate(driver_class, params)
         except Exception as e:
             logger.error("%s %s (节点 %s) 初始化失败，已跳过: %s",
                          kind, dev_id, node_id, e)
@@ -274,6 +285,21 @@ class HardwareManager:
                     except Exception as e:
                         log_failure(logger, key, "传感器 %s (节点 %s) 读取失败: %s", s_id, node_id, e)
         return data
+
+    def notify_watering(self, node_id):
+        """通知节点的传感器浇水事件已发生。
+
+        遍历该节点的所有本地传感器，对实现了 ``on_watering()`` 方法的
+        （如 ADS1115_Soil）逐个调用。鸭子类型：不检查类型、不 import 驱动，
+        驱动自己决定是否响应以及如何校准。
+        """
+        sensors = self.local_sensors.get(node_id, {})
+        for s_id, sensor in sensors.items():
+            try:
+                if hasattr(sensor, "on_watering"):
+                    sensor.on_watering()
+            except Exception as e:
+                logger.warning("传感器 %s (节点 %s) on_watering 失败: %s", s_id, node_id, e)
 
     def sensors_for_field(self, node_id, field):
         """最近一次成功读取中提供了 field 的传感器 id 列表。

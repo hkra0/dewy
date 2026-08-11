@@ -14,6 +14,8 @@ export const state = {
     // 相机拍摄期间禁止切灯，避免与补光冲突
     isCameraSyncing: false,
     isHDSyncing: false,
+    // 点击土壤湿度卡片时翻转显示原始 ADC 读数（跨轮询保留）
+    soilShowRaw: false,
 };
 
 export const getViewerKey = () => localStorage.getItem(STORAGE_KEY) || '';

@@ -33,7 +33,7 @@ PRUNE_BATCH_SIZE = 500  # 每批删除的行数，避免长时间独占 db_lock
 
 # node_data 的固定列。驱动 read() 返回的其它字段落到 node_metrics 长表，
 # 这样新增一个测量量（照度、EC、CO₂…）不必改 schema。
-NODE_DATA_FIELDS = ("temperature", "humidity", "soil_moisture", "pressure", "voltage", "current")
+NODE_DATA_FIELDS = ("temperature", "humidity", "soil_moisture", "soil_adc_raw", "pressure", "voltage", "current")
 
 # 采样字典里不属于测量值、不该被当作指标存起来的键
 _NON_METRIC_KEYS = frozenset({"node_id", "timestamp", "is_anomaly"})
@@ -84,6 +84,7 @@ def init_db():
                 temperature REAL,
                 humidity REAL,
                 soil_moisture REAL,
+                soil_adc_raw REAL,
                 pressure REAL,
                 voltage REAL,
                 current REAL,
@@ -125,6 +126,15 @@ def init_db():
         ''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_node_metrics_query ON node_metrics (node_id, key, timestamp)')
 
+        # ---- 轻量级 schema 迁移 ----
+        # CREATE TABLE IF NOT EXISTS 不会给已存在的表加新列。
+        # soil_adc_raw 是新增列（校准功能），老库需要 ALTER TABLE 补上。
+        # 幂等：PRAGMA table_info 检查列是否已存在，存在则跳过。
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(node_data)")]
+        if "soil_adc_raw" not in cols:
+            conn.execute("ALTER TABLE node_data ADD COLUMN soil_adc_raw REAL")
+            logger.info("已为 node_data 添加 soil_adc_raw 列（校准功能）")
+
 
 # ==================== node_data（传感器归档） ====================
 
@@ -160,11 +170,12 @@ def insert_node_data(records):
 
     with get_conn() as conn:
         conn.executemany('''
-            INSERT INTO node_data (node_id, temperature, humidity, soil_moisture, pressure, voltage, current)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO node_data (node_id, temperature, humidity, soil_moisture, soil_adc_raw, pressure, voltage, current)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', [
             (d.get("node_id"),
              d.get("temperature"), d.get("humidity"), d.get("soil_moisture"),
+             d.get("soil_adc_raw"),
              d.get("pressure"), d.get("voltage"), d.get("current"))
             for d in records
         ])
