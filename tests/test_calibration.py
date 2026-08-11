@@ -1,7 +1,7 @@
 """土壤校准算法的单元测试。
 
-测试 hardware/soil_calibration.py 的纯算法逻辑（EMA、滑动窗口、反转检测、
-自适应阈值、稳定判定）与持久化读写。该模块仅用标准库，无需 core 桩。
+测试 hardware/soil_calibration.py 的纯算法逻辑（EMA、滑动窗口极差、
+盲区延迟、稳定判定、毛刺过滤）与持久化读写。该模块仅用标准库，无需 core 桩。
 
 另测 hardware/manager.py 的 _build_device 注入元信息与 notify_watering。
 """
@@ -60,360 +60,197 @@ class EMATest(unittest.TestCase):
         self.assertIsNone(self.c.ema)
         self.assertEqual(len(self.c.window), 0)
         self.assertEqual(self.c.stable_count, 0)
-        self.assertEqual(self.c.max_delta, 0.0)
-        self.assertEqual(self.c.drift_sign, 0)
-        self.assertFalse(self.c.has_drained)
+        self.assertEqual(self.c.samples_seen, 0)
 
+
+# ==================== 滑动窗口极差 ====================
 
 class SlidingWindowTest(unittest.TestCase):
-    """滑动窗口：固定长度、首尾差值。"""
+    """滑动窗口：固定长度、极差计算。"""
 
     def setUp(self):
-        self.c = cal.SoilCalibrator({"window_size": 5})
-        self.c.ema = 7500.0  # 设定 ema 供噪声地板计算
+        # window=5, settle_delay=0 (无盲区), threshold=18, confirm=2
+        self.c = cal.SoilCalibrator({
+            "window_size": 5, "settle_delay_sec": 0,
+            "stable_threshold": 18, "stable_confirm": 2,
+        })
+        self.c.ema = 7500.0
 
     def test_window_not_full_returns_false(self):
         for v in range(3):
-            full, delta, stable = self.c.push_and_check(float(v))
+            full, rng, stable = self.c.push_and_check(float(v))
             self.assertFalse(full)
-            self.assertIsNone(delta)
+            self.assertIsNone(rng)
             self.assertFalse(stable)
 
-    def test_window_full_returns_delta(self):
-        for v in range(5):
-            full, delta, _ = self.c.push_and_check(float(v))
+    def test_window_full_returns_range(self):
+        for v in [7500, 7505, 7498, 7502, 7500]:
+            full, rng, _ = self.c.push_and_check(float(v))
         self.assertTrue(full)
-        # delta = newest(4.0) - oldest(0.0) = 4.0
-        self.assertAlmostEqual(delta, 4.0)
+        # range = max(7505) - min(7498) = 7.0
+        self.assertAlmostEqual(rng, 7.0)
 
     def test_window_evicts_oldest(self):
-        for v in range(5):
+        for v in [7500, 7505, 7498, 7502, 7500]:
             self.c.push_and_check(float(v))
-        # push 10.0, window becomes [1,2,3,4,10], delta = 10-1 = 9
-        full, delta, _ = self.c.push_and_check(10.0)
+        # push 7520, window becomes [7505, 7498, 7502, 7500, 7520]
+        # range = 7520 - 7498 = 22.0
+        full, rng, _ = self.c.push_and_check(7520.0)
         self.assertTrue(full)
-        self.assertAlmostEqual(delta, 9.0)
+        self.assertAlmostEqual(rng, 22.0)
 
-    def test_delta_zero_when_all_equal(self):
+    def test_range_zero_when_all_equal(self):
         for _ in range(5):
-            full, delta, _ = self.c.push_and_check(7000.0)
+            full, rng, _ = self.c.push_and_check(7000.0)
         self.assertTrue(full)
-        self.assertAlmostEqual(delta, 0.0)
+        self.assertAlmostEqual(rng, 0.0)
 
 
-# ==================== 反转检测 ====================
+# ==================== 盲区延迟 ====================
 
-class ReversalDetectionTest(unittest.TestCase):
-    """反转检测：积水尖峰与排水方向相反，符号反转 = 排水已开始。"""
+class SettleDelayTest(unittest.TestCase):
+    """盲区期：只采集数据，不做稳定判定。"""
 
-    def setUp(self):
-        # window=5, confirm=3, 默认 stable_ratio=0.1, noise_ratio=0.001
-        self.c = cal.SoilCalibrator({"window_size": 5, "stable_confirm": 3})
-        self.c.ema = 7500.0  # 噪声地板 = 7500 * 0.001 = 7.5
-
-    def test_declining_then_rising_sets_has_drained(self):
-        """先下降（尖峰）后上升（排水）-> has_drained=True。"""
-        # 下降序列：8000 -> 7200，Δ < 0
-        for v in [8000, 7800, 7600, 7400, 7200]:
-            self.c.push_and_check(float(v))
-        self.assertEqual(self.c.drift_sign, -1)
-        self.assertFalse(self.c.has_drained)
-
-        # 上升序列：7400 -> 8200，Δ > 0（反转！）
-        for v in [7400, 7600, 7800, 8000, 8200]:
-            self.c.push_and_check(float(v))
-        self.assertEqual(self.c.drift_sign, 1)
-        self.assertTrue(self.c.has_drained)
-
-    def test_rising_then_falling_sets_has_drained(self):
-        """先上升（尖峰）后下降（排水）-> has_drained=True。方向无关。"""
-        for v in [7000, 7200, 7400, 7600, 7800]:
-            self.c.push_and_check(float(v))
-        self.assertEqual(self.c.drift_sign, 1)
-        self.assertFalse(self.c.has_drained)
-
-        for v in [7600, 7400, 7200, 7000, 6800]:
-            self.c.push_and_check(float(v))
-        self.assertEqual(self.c.drift_sign, -1)
-        self.assertTrue(self.c.has_drained)
-
-    def test_monotonic_no_reversal_has_drained_stays_false(self):
-        """持续单方向变化 -> 无反转 -> has_drained=False。"""
-        for v in range(8000, 7000, -50):
-            self.c.push_and_check(float(v))
-        self.assertFalse(self.c.has_drained)
-
-    def test_plateau_does_not_set_has_drained(self):
-        """积水平台期 |Δ|≈0：不更新方向，不触发反转。"""
-        # 先有一个方向的显著变化
-        for v in [8000, 7600, 7200, 7000, 7000]:
-            self.c.push_and_check(float(v))
-        self.assertEqual(self.c.drift_sign, -1)
-        self.assertFalse(self.c.has_drained)
-
-        # 平台期：全部相同值，Δ=0 < 噪声地板，drift_sign 不变
-        for _ in range(10):
-            self.c.push_and_check(7000.0)
-        self.assertEqual(self.c.drift_sign, -1)
-        self.assertFalse(self.c.has_drained)
-
-    def test_noise_does_not_trigger_reversal(self):
-        """噪声级波动（|Δ| < 噪声地板）不触发反转。"""
-        base = 7500.0
-        # 填窗口，微小波动
-        for i in range(5):
-            self.c.push_and_check(base + (i % 3 - 1) * 0.5)  # ±0.5, 远小于噪声地板
-        self.assertEqual(self.c.drift_sign, 0)
-        self.assertFalse(self.c.has_drained)
-
-    def test_second_reversal_keeps_has_drained_true(self):
-        """has_drained 一旦为 True 就不会回到 False。"""
-        # 下降
-        for v in [8000, 7800, 7600, 7400, 7200]:
-            self.c.push_and_check(float(v))
-        # 上升（反转 1）
-        for v in [7400, 7600, 7800, 8000, 8200]:
-            self.c.push_and_check(float(v))
-        self.assertTrue(self.c.has_drained)
-        # 再次下降（反转 2）
-        for v in [8000, 7800, 7600, 7400, 7200]:
-            self.c.push_and_check(float(v))
-        self.assertTrue(self.c.has_drained)
-
-    def test_noise_blip_after_spike_no_false_reversal(self):
-        """大尖峰后的噪声尖峰（~8 ADC）不应触发误反转。
-
-        这是 2026-08-11 实测 bug 的回归测试：
-        浇水后 max_delta≈50-1000，噪声 stdev≈9.6 ADC。
-        旧版仅用 noise_floor（≈6 ADC）作门控，噪声轻易越过，
-        导致 drift_sign 频繁翻转、has_drained 被误触发，
-        进而在缓慢下降的曲线上误判稳定。
-        新版用 reversal_ratio=0.2，门控提升到 max_delta×0.2（≥10 ADC），
-        远高于噪声尖峰。
-        """
-        # 大尖峰：8000 -> 7000，max_delta = 1000
-        for v in [8000, 7800, 7600, 7400, 7000]:
-            self.c.push_and_check(float(v))
-        self.assertEqual(self.c.drift_sign, -1)
-        self.assertEqual(self.c.max_delta, 1000.0)
-        self.assertFalse(self.c.has_drained)
-
-        # 噪声级上升：Δ ≈ +8 ADC，远小于 reversal_gate（1000×0.2=200）
-        # drift_sign 不应翻转，has_drained 不应被触发
-        for v in [7004, 7008, 7004, 7008, 7004]:
-            self.c.push_and_check(float(v))
-        self.assertFalse(self.c.has_drained,
-                         "噪声尖峰不应触发误反转")
-
-    def test_real_reversal_after_spike_triggers(self):
-        """大尖峰后的真实回升（|Δ| > reversal_gate）应触发反转。
-
-        与上一个测试对照：同样的大尖峰，但回升幅度足够大（>200 ADC）。
-        """
-        # 大尖峰：8000 -> 7000，max_delta = 1000
-        for v in [8000, 7800, 7600, 7400, 7000]:
-            self.c.push_and_check(float(v))
-        self.assertFalse(self.c.has_drained)
-
-        # 真实回升：7000 -> 7600，Δ = +600 > reversal_gate（200）
-        for v in [7100, 7300, 7500, 7600, 7600]:
-            self.c.push_and_check(float(v))
-        self.assertTrue(self.c.has_drained)
-
-    def test_max_delta_reset_on_first_reversal(self):
-        """首次反转后 max_delta 应归零，基于排水后期动态重新累积。
-
-        不重置时，大尖峰的 max_delta=1000 会让稳定阈值=100，
-        过于宽松，无法检测排水后期的缓慢下降。
-        """
-        # 大尖峰：max_delta = 1000
-        for v in [8000, 7800, 7600, 7400, 7000]:
-            self.c.push_and_check(float(v))
-        self.assertEqual(self.c.max_delta, 1000.0)
-
-        # 真实回升触发反转：Δ = +600
-        for v in [7100, 7300, 7500, 7600, 7600]:
-            self.c.push_and_check(float(v))
-        self.assertTrue(self.c.has_drained)
-        # max_delta 被重置后从当前 |Δ| 重新累积
-        # 最后窗口 [7300, 7500, 7600, 7600, 7600]，Δ = 7600-7300 = 300
-        # 但 max_delta 可能在反转后的后续 push 中继续增长
-        self.assertLess(self.c.max_delta, 1000.0,
-                        "反转后 max_delta 应小于尖峰峰值")
-
-    def test_slow_decline_with_noise_does_not_false_stable(self):
-        """端到端回归：大尖峰后缓慢下降+噪声 -> 不应误判稳定。
-
-        模拟 2026-08-11 的真实场景：
-        浇水后 ADC 从 5863 缓慢下降到 5770（3 分钟窗口 Δ ≈ -20~-50），
-        其间有 ±8 ADC 的噪声波动。旧版噪声引发误反转后，
-        |Δ|≈3-5 落入阈值内，3 次连续命中即误判稳定。
-        新版反转门控阻止误反转，has_drained 保持 False，永不判稳定。
-        """
+    def test_no_stability_during_settle(self):
+        """盲区内即使数据完全平稳也不判定稳定。"""
         c = cal.SoilCalibrator({
-            "window_size": 5,
-            "stable_confirm": 3,
+            "window_size": 3, "settle_delay_sec": 30,
+            "sample_interval_sec": 10, "stable_threshold": 18,
+            "stable_confirm": 1,
         })
-        c.ema = 5800.0  # 噪声地板 = 5800 × 0.002 = 11.6
+        c.ema = 7000.0
+        # settle_samples = 30/10 = 3，前 3 个样本在盲区内
+        for i in range(3):
+            full, rng, stable = c.push_and_check(7000.0)
+            self.assertFalse(stable, f"盲区内不应判定稳定 (step {i})")
+        # 第 4 个样本开始判定
+        full, rng, stable = c.push_and_check(7000.0)
+        self.assertTrue(stable, "盲区后应立即判定稳定（range=0 < 18）")
 
-        # 大尖峰：5900 -> 5750，max_delta = 150
-        for v in [5900, 5870, 5840, 5800, 5750]:
-            c.push_and_check(float(v))
-        self.assertFalse(c.has_drained)
-        self.assertEqual(c.max_delta, 150.0)
-
-        # 缓慢下降 + 噪声：每步下降 ~5 ADC，叠加 ±8 ADC 噪声
-        import random
-        rng = random.Random(42)  # 固定种子，可复现
-        base = 5750.0
-        is_stable = False
-        for i in range(60):
-            noise = rng.gauss(0, 8)  # stdev=8，接近实测噪声
-            val = base - i * 0.5 + noise  # 缓慢下降 0.5/步
-            _, _, is_stable = c.push_and_check(val)
-            self.assertFalse(is_stable,
-                             f"步骤 {i}: 缓慢下降+噪声不应判稳定")
-        self.assertFalse(c.has_drained,
-                         "噪声引起的方向翻转不应触发 has_drained")
-
-
-
-# ==================== 自适应阈值 ====================
-
-class AdaptiveThresholdTest(unittest.TestCase):
-    """自适应阈值：threshold = max(max_delta × stable_ratio, |ema| × noise_ratio)。"""
-
-    def setUp(self):
-        self.c = cal.SoilCalibrator({
-            "window_size": 5,
-            "stable_ratio": 0.1,
-            "noise_ratio": 0.001,
+    def test_settle_zero_allows_immediate_check(self):
+        """settle_delay=0 时从第一个满窗口即可判定。"""
+        c = cal.SoilCalibrator({
+            "window_size": 3, "settle_delay_sec": 0,
+            "stable_threshold": 18, "stable_confirm": 1,
         })
-        self.c.ema = 7500.0  # 噪声地板 = 7.5
+        c.ema = 7000.0
+        full, rng, stable = c.push_and_check(7000.0)
+        full, rng, stable = c.push_and_check(7000.0)
+        full, rng, stable = c.push_and_check(7000.0)
+        self.assertTrue(stable)
 
-    def test_threshold_scales_with_peak_delta(self):
-        """大尖峰产生大阈值，小变化产生小阈值。"""
-        # 大尖峰：Δ = -1000
-        for v in [8000, 7800, 7600, 7400, 7000]:
-            self.c.push_and_check(float(v))
-        large_max = self.c.max_delta
-        self.assertGreater(large_max, 500)
+    def test_settle_samples_calculation(self):
+        """settle_samples = round(settle_delay / sample_interval)。"""
+        c = cal.SoilCalibrator({
+            "settle_delay_sec": 600, "sample_interval_sec": 10,
+        })
+        self.assertEqual(c.settle_samples, 60)
 
-        # 重置，小尖峰：Δ = -50
-        self.c._reset()
-        self.c.ema = 7500.0
-        for v in [7550, 7540, 7530, 7520, 7500]:
-            self.c.push_and_check(float(v))
-        small_max = self.c.max_delta
-        self.assertLess(small_max, 100)
-
-        # 阈值应按比例缩放
-        large_threshold = max(large_max * 0.1, 7.5)
-        small_threshold = max(small_max * 0.1, 7.5)
-        self.assertGreater(large_threshold, small_threshold)
-
-    def test_noise_floor_is_minimum_threshold(self):
-        """当 max_delta 很小时，阈值不低于噪声地板。"""
-        for v in [7501, 7500, 7499, 7500, 7501]:
-            self.c.push_and_check(float(v))
-        # max_delta 很小，阈值 = max(small * 0.1, 7.5) = 7.5
-        expected = max(self.c.max_delta * 0.1, 7.5)
-        self.assertAlmostEqual(expected, 7.5, places=1)
+        c2 = cal.SoilCalibrator({
+            "settle_delay_sec": 25, "sample_interval_sec": 10,
+        })
+        self.assertEqual(c2.settle_samples, 3)  # round(2.5) = 2, but int(2.5+0.5)=3
 
 
-# ==================== 稳定判定 ====================
+# ==================== 极差稳定判定 ====================
 
 class StabilityDetectionTest(unittest.TestCase):
-    """稳定判定：has_drained 后连续 N 次 |Δ| < 自适应阈值。"""
+    """稳定判定：窗口极差 < threshold 连续 confirm 次。"""
 
     def setUp(self):
         self.c = cal.SoilCalibrator({
-            "window_size": 5,
-            "stable_confirm": 3,
+            "window_size": 5, "settle_delay_sec": 0,
+            "stable_threshold": 15, "stable_confirm": 2,
         })
         self.c.ema = 7500.0
 
-    def test_spike_drainage_stable_triggers(self):
-        """完整序列：尖峰 -> 排水（反转）-> 稳定 -> 检测到稳定。
+    def test_flat_data_triggers_stable(self):
+        """完全平稳的数据应快速判定稳定。"""
+        for _ in range(5):
+            _, _, stable = self.c.push_and_check(7500.0)
+        # range=0 < 15, count=1 (need 2)
+        self.assertFalse(stable)
+        _, _, stable = self.c.push_and_check(7500.0)
+        self.assertTrue(stable)
 
-        排水阶段结束后，窗口仍残留排水期的旧值，需要几次 push 让旧值
-        退出窗口、Δ 归零，然后连续 confirm 次才判定稳定。
-        """
-        # 尖峰：值下降（Δ < 0）
-        for v in [8000, 7800, 7600, 7400, 7200]:
-            self.c.push_and_check(float(v))
-        self.assertFalse(self.c.has_drained)
+    def test_large_range_rejected(self):
+        """极差超过阈值时不判定稳定。"""
+        for v in [7500, 7530, 7470, 7520, 7480]:
+            _, _, stable = self.c.push_and_check(float(v))
+        # range = 7530 - 7470 = 60 > 15
+        self.assertFalse(stable)
+        self.assertEqual(self.c.stable_count, 0)
 
-        # 排水：值上升（Δ > 0，反转！）
-        for v in [7400, 7600, 7800, 8000, 8200]:
-            self.c.push_and_check(float(v))
-        self.assertTrue(self.c.has_drained)
-
-        # 稳定：需足够次数让旧值退出窗口 + 连续 confirm 次命中
-        is_stable = False
-        for _ in range(10):
-            _, _, is_stable = self.c.push_and_check(8200.0)
-            if is_stable:
-                break
-        self.assertTrue(is_stable)
-
-    def test_plateau_without_drainage_rejected(self):
-        """积水平台期 |Δ|≈0 但 has_drained=False -> 不判定稳定。"""
-        # 尖峰：值下降
-        for v in [8000, 7800, 7600, 7400, 7200]:
-            self.c.push_and_check(float(v))
-        self.assertFalse(self.c.has_drained)
-
-        # 平台期：值不变（积水未排空）
-        for _ in range(20):
-            _, _, is_stable = self.c.push_and_check(7200.0)
-            self.assertFalse(is_stable, "平台期不应判定稳定")
-        self.assertFalse(self.c.has_drained)
-
-    def test_no_drainage_no_stability(self):
-        """只有单调变化（无反转）-> has_drained=False -> 永不判定稳定。"""
-        for i in range(50):
-            v = 8000.0 - i * 10  # 持续下降
-            _, _, is_stable = self.c.push_and_check(v)
-            self.assertFalse(is_stable)
-        self.assertFalse(self.c.has_drained)
-
-    def test_large_delta_after_stable_resets_count(self):
-        """稳定计数中遇到大 Δ -> 清零。"""
-        # 完成尖峰+排水
-        for v in [8000, 7800, 7600, 7400, 7200]:
-            self.c.push_and_check(float(v))
-        for v in [7400, 7600, 7800, 8000, 8200]:
-            self.c.push_and_check(float(v))
-        self.assertTrue(self.c.has_drained)
-
-        # 稳定几步
-        for _ in range(3):
-            self.c.push_and_check(8200.0)
-        # 此时 count 应该在增长
-
+    def test_range_resets_count_on_violation(self):
+        """稳定计数中遇到大极差 -> 清零。"""
+        # 先积累 1 次稳定
+        for _ in range(5):
+            self.c.push_and_check(7500.0)
+        self.assertEqual(self.c.stable_count, 1)
         # 大跳变
-        self.c.push_and_check(9000.0)
+        self.c.push_and_check(7600.0)
         self.assertEqual(self.c.stable_count, 0)
 
     def test_confirm_count_required(self):
-        """需要连续 confirm 次才判定稳定，少于 confirm 次不算。"""
-        c = cal.SoilCalibrator({"window_size": 3, "stable_confirm": 5})
-        c.ema = 7500.0
-        # 尖峰
-        for v in [8000, 7000, 7000]:
-            c.push_and_check(float(v))
-        # 排水（反转）
-        for v in [7500, 8000, 8000]:
-            c.push_and_check(float(v))
-        self.assertTrue(c.has_drained)
-        # 稳定 4 次（不够 5 次）
-        for _ in range(4):
-            _, _, is_stable = c.push_and_check(8000.0)
-            self.assertFalse(is_stable)
-        # 第 5 次
-        _, _, is_stable = c.push_and_check(8000.0)
-        self.assertTrue(is_stable)
+        """需要连续 confirm 次才判定稳定。"""
+        c = cal.SoilCalibrator({
+            "window_size": 3, "settle_delay_sec": 0,
+            "stable_threshold": 20, "stable_confirm": 4,
+        })
+        c.ema = 7000.0
+        for _ in range(3):
+            c.push_and_check(7000.0)  # 填满窗口, range=0, count=1
+        for i in range(2):
+            _, _, stable = c.push_and_check(7000.0)
+            self.assertFalse(stable, f"第 {i+2} 次不应稳定 (需 4 次)")
+        _, _, stable = c.push_and_check(7000.0)
+        self.assertTrue(stable, "第 4 次应稳定")
+
+    def test_gradual_decline_then_stable(self):
+        """缓慢下降后趋于平稳 -> 最终判定稳定。
+
+        模拟真实场景：浇水后 raw 缓慢下降，最终趋于平稳。
+        """
+        c = cal.SoilCalibrator({
+            "window_size": 10, "settle_delay_sec": 0,
+            "stable_threshold": 15, "stable_confirm": 2,
+            "alpha": 0.3,
+        })
+        # 先让 EMA 收敛到一个基线
+        for _ in range(20):
+            c.update_ema(6000.0)
+
+        # 缓慢下降 30 步（每步 -2 ADC），然后平稳
+        for i in range(30):
+            v = 6000.0 - i * 2
+            smoothed = c.update_ema(v)
+            c.push_and_check(smoothed)
+
+        # 平稳期
+        is_stable = False
+        for _ in range(15):
+            smoothed = c.update_ema(5940.0)
+            _, _, is_stable = c.push_and_check(smoothed)
+            if is_stable:
+                break
+        self.assertTrue(is_stable, "下降趋平后应判定稳定")
+
+    def test_constant_decline_never_stable(self):
+        """持续匀速下降 -> 窗口极差始终超阈值 -> 不判稳定。"""
+        c = cal.SoilCalibrator({
+            "window_size": 10, "settle_delay_sec": 0,
+            "stable_threshold": 15, "stable_confirm": 2,
+            "alpha": 0.3,
+        })
+        for _ in range(20):
+            c.update_ema(6000.0)
+
+        is_stable = False
+        for i in range(100):
+            v = 6000.0 - i * 5  # 每步 -5 ADC，10 步窗口 range ≈ 50
+            smoothed = c.update_ema(v)
+            _, _, is_stable = c.push_and_check(smoothed)
+            self.assertFalse(is_stable, f"步骤 {i}: 匀速下降不应判稳定")
 
 
 # ==================== run_calibration 集成 ====================
@@ -421,17 +258,11 @@ class StabilityDetectionTest(unittest.TestCase):
 class RunCalibrationTest(unittest.TestCase):
     """run_calibration 的端到端测试（用假 read_func）。"""
 
-    def test_spike_drainage_stable_detects(self):
-        """完整序列：浇水前 -> 积水尖峰 -> 排水 -> 田间持水量稳定。"""
-        # 模拟真实浇水曲线（EMA 平滑后的效果）：
-        # Phase 1: 浇水前基线
-        readings = [8000.0] * 20
-        # Phase 2: 积水尖峰（值骤降）
-        readings += [7000.0] * 20
-        # Phase 3: 排水（值回升，触发反转）
-        readings += [7500.0] * 20
-        # Phase 4: 稳定在田间持水量
-        readings += [7500.0] * 40
+    def test_stable_after_settle_detects(self):
+        """完整序列：浇水 -> 盲区 -> 稳定 -> 检测到稳定。"""
+        readings = [6000.0] * 10       # 盲区期（settle=5 样本）
+        readings += [5800.0] * 5       # 下降过渡
+        readings += [5750.0] * 30      # 稳定在田间持水量
 
         idx = [0]
 
@@ -443,21 +274,20 @@ class RunCalibrationTest(unittest.TestCase):
             return v
 
         config = {
-            "window_size": 10,
-            "stable_confirm": 3,
-            "settle_delay_sec": 0,
+            "window_size": 5,
+            "settle_delay_sec": 0.15,     # 15 个样本的盲区（覆盖平直+过渡）
             "sample_interval_sec": 0.01,
+            "stable_threshold": 15,
+            "stable_confirm": 2,
             "timeout_min": 5,
         }
         result = cal.run_calibration(read_func, config=config)
         self.assertIsNotNone(result)
-        # EMA 未完全收敛到 7500，但在合理范围内
-        self.assertAlmostEqual(result, 7500.0, delta=100.0)
+        self.assertAlmostEqual(result, 5750.0, delta=50.0)
 
-    def test_plateau_only_times_out(self):
-        """只有积水尖峰+平台期（无排水）-> 超时不更新基准。"""
-        readings = [8000.0] * 10
-        readings += [7000.0] * 200  # 尖峰后一直平台，不排水
+    def test_already_saturated_detects_quickly(self):
+        """土壤已饱和（浇水后几乎不变）-> 盲区后立即稳定。"""
+        readings = [5750.0] * 60  # 全程不变
 
         idx = [0]
 
@@ -469,29 +299,61 @@ class RunCalibrationTest(unittest.TestCase):
             return v
 
         config = {
-            "window_size": 10,
-            "stable_confirm": 3,
-            "settle_delay_sec": 0,
+            "window_size": 5,
+            "settle_delay_sec": 0.03,     # 3 个样本
             "sample_interval_sec": 0.01,
-            "timeout_min": 0.02,  # ~1.2 秒超时
+            "stable_threshold": 18,
+            "stable_confirm": 2,
+            "timeout_min": 5,
         }
         result = cal.run_calibration(read_func, config=config)
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 5750.0, delta=5.0)
 
-    def test_monotonic_change_times_out(self):
-        """持续单方向变化（无反转）-> 超时返回 None。"""
+    def test_glitch_filtered(self):
+        """单个毛刺读数不应阻止校准成功。"""
+        # 3 盲区 + 2 填满窗口(count=1) + 毛刺 + 5 稳定(count=2 -> STABLE)
+        readings = [5750.0] * 3        # 盲区
+        readings += [5750.0] * 2        # 填满窗口，count=1（未稳定）
+        readings += [22612.0]           # 毛刺！应被过滤跳过
+        readings += [5750.0] * 5        # 继续：count 达 2 -> 稳定
+
+        idx = [0]
+
+        def read_func():
+            if idx[0] >= len(readings):
+                return None
+            v = readings[idx[0]]
+            idx[0] += 1
+            return v
+
+        config = {
+            "window_size": 5,
+            "settle_delay_sec": 0.03,   # 3 个样本
+            "sample_interval_sec": 0.01,
+            "stable_threshold": 18,
+            "stable_confirm": 2,
+            "timeout_min": 5,
+        }
+        result = cal.run_calibration(read_func, config=config)
+        self.assertIsNotNone(result, "毛刺应被过滤，校准应成功")
+        self.assertAlmostEqual(result, 5750.0, delta=50.0)
+
+    def test_constant_decline_times_out(self):
+        """持续匀速下降（永不平稳）-> 超时返回 None。"""
         counter = [0]
 
         def read_func():
             counter[0] += 1
-            return 7000.0 + counter[0] * 100  # 持续上升，无反转
+            return 6000.0 - counter[0] * 10  # 每步 -10 ADC
 
         config = {
             "window_size": 5,
-            "stable_confirm": 3,
             "settle_delay_sec": 0,
             "sample_interval_sec": 0.01,
-            "timeout_min": 0.005,  # ~0.3 秒超时
+            "stable_threshold": 15,
+            "stable_confirm": 2,
+            "timeout_min": 0.01,  # ~0.6 秒超时
         }
         result = cal.run_calibration(read_func, config=config)
         self.assertIsNone(result)
@@ -506,7 +368,6 @@ class RunCalibrationTest(unittest.TestCase):
 
         config = {
             "window_size": 100,  # 永远填不满
-            "stable_confirm": 10,
             "settle_delay_sec": 0,
             "sample_interval_sec": 0.01,
             "timeout_min": 5,
@@ -535,7 +396,6 @@ class RunCalibrationTest(unittest.TestCase):
 
         config = {
             "window_size": 5,
-            "stable_confirm": 3,
             "settle_delay_sec": 0,
             "sample_interval_sec": 0.01,
             "timeout_min": 5,
@@ -544,13 +404,14 @@ class RunCalibrationTest(unittest.TestCase):
         self.assertIsNone(result)
         self.assertGreaterEqual(calls[0], cal.MAX_READ_FAILURES)
 
-    def test_adaptive_threshold_handles_small_spike(self):
-        """小幅尖峰也能正确检测稳定（自适应阈值缩放）。"""
-        # 小幅变化：7600 -> 7500 -> 7550（尖峰仅 100 ADC）
-        readings = [7600.0] * 15
-        readings += [7500.0] * 15
-        readings += [7550.0] * 30
-        readings += [7550.0] * 30
+    def test_slow_decline_then_stable_detects(self):
+        """模拟真实浇水曲线：缓慢下降 -> 趋平 -> 稳定。"""
+        readings = []
+        # 缓慢下降 40 步（从浇水瞬间开始即下降，无平直段）
+        for i in range(40):
+            readings.append(5900.0 - i * 3)
+        # 趋平
+        readings += [5780.0] * 40
 
         idx = [0]
 
@@ -563,14 +424,15 @@ class RunCalibrationTest(unittest.TestCase):
 
         config = {
             "window_size": 10,
-            "stable_confirm": 3,
-            "settle_delay_sec": 0,
+            "settle_delay_sec": 0.10,    # 10 个样本
             "sample_interval_sec": 0.01,
+            "stable_threshold": 18,
+            "stable_confirm": 2,
             "timeout_min": 5,
         }
         result = cal.run_calibration(read_func, config=config)
-        self.assertIsNotNone(result)
-        self.assertAlmostEqual(result, 7550.0, delta=50.0)
+        self.assertIsNotNone(result, "缓慢下降趋平后应检测到稳定")
+        self.assertAlmostEqual(result, 5780.0, delta=30.0)
 
 
 # ==================== 持久化 ====================
