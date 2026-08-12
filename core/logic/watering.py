@@ -10,7 +10,6 @@ import core.database as db
 logger = logging.getLogger(__name__)
 
 MIN_WATER_INTERVAL_HOURS = 12   # 两次自动浇水的最小间隔
-AUTO_WATER_HOUR = 6             # 每天检查自动浇水的时刻
 DEFAULT_PUMP_ACTUATOR_ID = "pump"
 
 
@@ -75,7 +74,7 @@ def check_auto_watering(node_id, data, now):
     if state.power_save_mode or not cfg["enabled"] or cfg["node_id"] != node_id:
         return
 
-    if now.hour == AUTO_WATER_HOUR and can_water_now(node_id):
+    if now.hour == cfg.get("hour", 6) and can_water_now(node_id):
         soil_pct = data.get("soil_moisture")
         if soil_pct is not None and soil_pct < cfg["threshold"]:
             trigger_watering(node_id, soil_pct, cfg["duration"])

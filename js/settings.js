@@ -62,6 +62,7 @@ export async function fetchConfig() {
         document.getElementById('cfg-water-enabled').checked = data.auto_water.enabled;
         document.getElementById('cfg-water-threshold').value = data.auto_water.threshold;
         document.getElementById('cfg-water-duration').value = data.auto_water.duration;
+        document.getElementById('cfg-water-hour').value = data.auto_water.hour ?? 6;
         document.getElementById('cfg-light-enabled').checked = data.auto_light.enabled;
         document.getElementById('cfg-light-mode').value = data.auto_light.mode;
         document.getElementById('cfg-light-on').value = data.auto_light.on_time;
@@ -116,7 +117,8 @@ export async function saveConfig() {
         auto_water: {
             enabled: document.getElementById('cfg-water-enabled').checked,
             threshold: parseFloat(document.getElementById('cfg-water-threshold').value) || 50.0,
-            duration: parseFloat(document.getElementById('cfg-water-duration').value) || 0.5
+            duration: parseFloat(document.getElementById('cfg-water-duration').value) || 0.5,
+            hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-water-hour').value) || 0))
         },
         auto_light: {
             enabled: document.getElementById('cfg-light-enabled').checked,
