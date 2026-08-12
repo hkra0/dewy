@@ -1,204 +1,165 @@
-"""ADC 土壤湿度传感器的自动校准算法。
-
-浇水后，水分在土壤中缓慢渗透、分布，最终达到田间持水量。本模块通过
-EMA 平滑 + 滑动窗口极差检测，等待读数趋于平稳后，将平稳值记录为
-新的 100% 湿度基准（VAL_WATER）。
+"""ADC 土壤湿度传感器的自动基准校准算法（ABC, Automatic Baseline Calibration）。
 
 纯算法模块，不依赖项目的 core 层（state / config / database / logic），
 仅使用标准库。可被任何 ADC 土壤传感器驱动复用，也可被其他项目直接拿走。
 
-算法核心--延迟盲区 + 极差稳态检测
+算法核心--离线滑动窗口统计 + 防错门控
 ====================================
 
 物理现实：传感器与水管存在物理距离，大颗粒赤玉土的水分依靠极缓慢的
-横向毛细作用渗透。浇水后读数表现为一条长达数十分钟的缓慢下行渐近线，
-**不会出现** "瞬间积水 -> 排空回升" 的理想波形。若土壤已饱和，甚至连
-下降都不会出现。
+横向毛细作用渗透，浇水后读数是一条长达数十分钟到数小时的缓慢下行渐近线。
+实时监测"何时到达田间持水量"没有可靠判据——任意窗口内数据平稳，
+既可能是渗透已完成，也可能只是渗透速度暂时很慢；耐旱植物长期不浇水时
+更是完全没有事件可以触发实时监测。
 
-因此算法不做任何方向性假设（不看反转、不看斜率），只做两件事：
+因此本模块不再追踪单次浇水事件，而是每天离线扫描过去 N 天的历史读数，
+统计意义上找出"最湿的那些时刻"作为 100% 湿度基准：
 
-1. **强制物理盲区 (settle_delay)**：浇水后前 N 分钟只采集数据更新 EMA，
-   不做稳定判定。让水在土壤中完成横向移动和重力分布。
+1. **日内 P5**：按天分组，每天取当日读数的第 5 百分位数。
+   ADC 值越低代表越湿，取最小值会被瞬时局部积水污染，
+   取第 5 百分位数可以切掉这类短暂的物理伪影。
 
-2. **大窗口极差检测**：盲区结束后，观察一个 10 分钟滑动窗口内 EMA 值的
-   极差（max - min）。极差低于 ``stable_threshold`` 说明数据已彻底平稳，
-   水分分布结束。
+2. **跨日 P10**：把每天的日内 P5 值再取一次第 10 百分位数（即取
+   "最湿的那几天"的代表值，而非只取单一最湿的那一天——避免单日异常
+   把估计值锚死在一个孤立的伪影上）。这一步是关键：如果直接对全部
+   原始样本取一次全局百分位，估计量会随浇水频率系统性漂移——
+   浇水越少，"最湿的 5% 样本"这个固定预算就越可能被并非真正饱和的、
+   稍干一些的时刻填满。按天而非按样本取百分位，把预算从"时长"换成
+   "天数"，同一水平的分位数在窗口内命中的始终是浇水后最接近田间持水量
+   的那几天，不因窗口期内总共浇了几次水而系统性偏移，同样适用于长期
+   不浇水的耐旱植物场景。（实测：分位数越高，越依赖窗口内"足够多的
+   湿润天数"才能保持无偏——过高会在浇水稀疏时引入可观漂移，故取偏低
+   的 P10 而非更高的分位数。）
 
-**毛刺过滤**：实际硬件（ADS1115 + I2C）偶尔会产生数量级异常的读数
-（如实测中出现 22612 而正常值约 5744）。单个毛刺会让窗口极差暴涨至
-数千，永远无法低于阈值。因此在入队前过滤：偏离当前 EMA 超过
-``GLITCH_THRESHOLD`` 的读数直接跳过。
+3. **防错门控**：
+   - 单次漂移率 = |候选值 - 旧基准| / 旧基准，超过 ``max_drift_ratio``
+     判定为异常漂移（长时间未浇透导致窗口期数据整体偏干等），拒绝更新。
+   - 候选值必须落在出厂值 ±30% 范围内——门控 1 只挡单次跳变，
+     不挡多次同方向的小步漂移累积成的长期偏移，这里再加一道绝对夹紧。
+   - 候选值必须低于 VAL_AIR 的 80%，防止 VAL_WATER 逼近甚至超过 VAL_AIR
+     导致 ``(VAL_AIR - raw) / (VAL_AIR - VAL_WATER)`` 分母趋零甚至变号。
 
-实测数据参考（树莓派 + ADS1115 + 赤玉土）：
-- 正常读数 raw ≈ 5700-6000，噪声 stdev ≈ 4-10 ADC；
-- EMA 平滑后 60 样本窗口的极差约 5-10 ADC；
-- ``stable_threshold=18`` 留有充足余量（~2x 噪声极差）；
-- ``settle_delay=600``（10 分钟）覆盖典型渗透时间；
-- ``timeout_min=120``（2 小时）覆盖极慢渗透场景，超时不更新基准。
+4. **EMA 平滑更新**：通过门控后，新基准 = 0.8 × 旧基准 + 0.2 × 候选值，
+   防止单日统计的偶然偏差造成基准剧烈跳变。
 """
 
-import collections
 import json
 import logging
+import math
 import os
 import tempfile
 import time
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
 # ---- 默认参数（可被驱动传入的 config 覆盖）----
-DEFAULT_ALPHA = 0.2               # EMA 平滑系数
-DEFAULT_WINDOW_SIZE = 60           # 滑动窗口长度（60 × 10s = 10 分钟）
-DEFAULT_STABLE_THRESHOLD = 18      # 窗口极差阈值（max - min < 此值则稳定）
-DEFAULT_STABLE_CONFIRM = 2         # 连续命中阈值的次数
-DEFAULT_TIMEOUT_MIN = 120          # 校准超时（分钟）
-DEFAULT_SETTLE_DELAY_SEC = 600     # 浇水后物理盲区（10 分钟）
-DEFAULT_SAMPLE_INTERVAL_SEC = 10   # 校准采样间隔（秒）
-SAMPLE_INTERVAL_SEC = 10           # 校准采样间隔（模块级常量，向后兼容）
-MAX_READ_FAILURES = 5              # 连续读取失败上限
-GLITCH_THRESHOLD = 500             # 毛刺过滤：偏离 EMA 超过此值则跳过
+DEFAULT_WINDOW_DAYS = 30            # 统计窗口（天）
+DEFAULT_MAX_DRIFT_RATIO = 0.15      # 单次基准最大允许偏移率
+DEFAULT_INTRA_DAY_PCT = 0.05        # 日内百分位（P5）
+DEFAULT_CROSS_DAY_PCT = 0.10        # 跨日百分位（P10）
+DEFAULT_EMA_ALPHA = 0.2             # EMA 权重：新值 = alpha*候选 + (1-alpha)*旧值
+MIN_VALID_DAYS = 7                  # 参与统计的最少天数
+MIN_TOTAL_SAMPLES = 500             # 参与统计的最少样本总数
+ABSOLUTE_BOUND_RATIO = 0.3          # 候选值相对出厂值的最大允许偏移率
+VAL_AIR_MARGIN_RATIO = 0.2          # 候选值必须低于 VAL_AIR 的 (1 - 此值)
 
 
-class SoilCalibrator:
-    """封装 EMA、滑动窗口与极差稳定判定的纯算法状态机。
+def percentile(sorted_values, q):
+    """线性插值百分位数（与 numpy 默认 method='linear' 一致）。
 
-    不含 I/O 与线程逻辑--调用方喂数值进来，它告诉你什么时候稳定。
-    可直接用于单元测试。
+    ``sorted_values`` 必须已升序排列且非空。
     """
-
-    def __init__(self, config=None):
-        cfg = config or {}
-        self.alpha = cfg.get("alpha", DEFAULT_ALPHA)
-        self.window_size = cfg.get("window_size", DEFAULT_WINDOW_SIZE)
-        self.stable_threshold = cfg.get("stable_threshold", DEFAULT_STABLE_THRESHOLD)
-        self.confirm = cfg.get("stable_confirm", DEFAULT_STABLE_CONFIRM)
-        self.timeout_sec = cfg.get("timeout_min", DEFAULT_TIMEOUT_MIN) * 60
-        self.settle_delay = cfg.get("settle_delay_sec", DEFAULT_SETTLE_DELAY_SEC)
-        self.sample_interval = cfg.get("sample_interval_sec", DEFAULT_SAMPLE_INTERVAL_SEC)
-        self._reset()
-
-    def _reset(self):
-        """重置 EMA、窗口与计数器（每次进入校准前调用）。"""
-        self.ema = None              # S_{t-1}，首个样本直接赋值（避免用 0 初始化的冷启动偏置）
-        self.window = collections.deque(maxlen=self.window_size)
-        self.stable_count = 0
-        self.samples_seen = 0        # 已处理的样本数（含盲区期）
-        # 盲区样本数：settle_delay 期间采集但不判定。
-        # 向上取整避免因整除丢失最后一个间隔。
-        self.settle_samples = int(self.settle_delay / self.sample_interval + 0.5)
-
-    # ---- 算法核心（纯逻辑，无副作用）----
-
-    def update_ema(self, raw_value):
-        """EMA 一步更新：S_t = α·Y_t + (1-α)·S_{t-1}。
-
-        首个样本直接赋值而非从 0 起步--后者会让前 5 个样本
-        系统性偏低，白白浪费滑动窗口的前几个位置。
-        """
-        if self.ema is None:
-            self.ema = raw_value
-        else:
-            self.ema = self.alpha * raw_value + (1 - self.alpha) * self.ema
-        return self.ema
-
-    def push_and_check(self, ema_value):
-        """将平滑值入队，返回 (window_full, window_range, is_stable)。
-
-        窗口未满或仍在盲区时不做稳定判断。
-
-        盲区结束后，计算窗口内 EMA 值的极差（max - min）。
-        极差低于 ``stable_threshold`` 说明 10 分钟内数据波动极小，
-        水分分布已结束。连续 ``confirm`` 次命中则判定稳定。
-        """
-        self.window.append(ema_value)
-        self.samples_seen += 1
-
-        # 盲区期：只采集，不判定
-        if self.samples_seen <= self.settle_samples:
-            return len(self.window) >= self.window.maxlen, None, False
-
-        # 窗口未满：无法计算有意义的极差
-        if len(self.window) < self.window.maxlen:
-            return False, None, False
-
-        window_range = max(self.window) - min(self.window)
-
-        if window_range < self.stable_threshold:
-            self.stable_count += 1
-        else:
-            self.stable_count = 0
-
-        return True, window_range, self.stable_count >= self.confirm
+    n = len(sorted_values)
+    if n == 1:
+        return sorted_values[0]
+    k = q * (n - 1)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return sorted_values[int(k)]
+    return sorted_values[f] * (c - k) + sorted_values[c] * (k - f)
 
 
-def run_calibration(read_func, config=None, restart_event=None):
-    """执行一轮完整校准。
+def field_capacity_estimate(day_values, intra_day_pct=DEFAULT_INTRA_DAY_PCT,
+                             cross_day_pct=DEFAULT_CROSS_DAY_PCT,
+                             min_valid_days=MIN_VALID_DAYS,
+                             min_total_samples=MIN_TOTAL_SAMPLES):
+    """两级百分位数统计，估计田间持水量对应的 ADC 值。
 
     Args:
-        read_func: 无参回调，返回 compensated_raw (float) 或 None（读取失败）。
-                   由驱动提供，通常是 driver._read_compensated_raw。
-        config: 校准参数字典，缺省用模块默认值。
-        restart_event: threading.Event；校准期间被 set 则立即返回 None。
-                       调用方据此区分"重启"（再次浇水）与"超时/失败"。
+        day_values: [(本地日期字符串, ADC 原始值), ...]，来自
+            ``core.database.query_soil_adc_series``。
+        intra_day_pct: 日内百分位（默认 P5，切掉瞬时积水伪影）。
+        cross_day_pct: 跨日百分位（默认 P10，只看最湿的那几天，
+            按天而非按样本数分配预算，减轻浇水频率对估计量的影响）。
+        min_valid_days / min_total_samples: 样本量下限，不足时拒绝估计
+            （新装机、长期掉线、窗口期数据不足等场景）。
 
     Returns:
-        float - 新的 VAL_WATER（校准成功）
-        None  - 超时、传感器故障、或收到重启信号
+        (estimate, valid_days, total_samples)
+        estimate 在样本不足时为 None。
     """
-    cal = SoilCalibrator(config)
-    start_time = time.time()
+    by_day = defaultdict(list)
+    for day, value in day_values:
+        if value is not None:
+            by_day[day].append(value)
 
-    consecutive_failures = 0
-    while True:
-        # ---- 退出条件检查 ----
-        if restart_event and restart_event.is_set():
-            return None          # 调用方检查 event 区分"重启"与"超时"
+    valid_days = len(by_day)
+    total_samples = sum(len(v) for v in by_day.values())
 
-        if time.time() - start_time > cal.timeout_sec:
-            logger.warning("⏱️ 校准超时（%d 分钟），未更新基准",
-                           int(cal.timeout_sec // 60))
-            return None
+    if valid_days < min_valid_days or total_samples < min_total_samples:
+        return None, valid_days, total_samples
 
-        # ---- 读取传感器 ----
-        raw = read_func()
-        if raw is None:
-            consecutive_failures += 1
-            if consecutive_failures >= MAX_READ_FAILURES:
-                logger.error("❌ 连续 %d 次读取失败，中止校准",
-                             consecutive_failures)
-                return None
-            time.sleep(cal.sample_interval)
-            continue
-        consecutive_failures = 0
+    daily_wettest = sorted(
+        percentile(sorted(values), intra_day_pct)
+        for values in by_day.values()
+    )
+    estimate = percentile(daily_wettest, cross_day_pct)
+    return estimate, valid_days, total_samples
 
-        # ---- 毛刺过滤 ----
-        # ADS1115 + I2C 偶尔产生数量级异常的读数（实测 22612 vs 正常 5744）。
-        # 单个毛刺会让窗口极差暴涨，永远无法低于阈值。
-        # 500 ADC 远超真实变化率（~50-100/10s），远低于毛刺幅度（~16000+）。
-        if cal.ema is not None and abs(raw - cal.ema) > GLITCH_THRESHOLD:
-            logger.warning("⚠️ 校准采样异常值跳过: raw=%.1f ema=%.1f (偏差=%.1f)",
-                           raw, cal.ema, abs(raw - cal.ema))
-            time.sleep(cal.sample_interval)
-            continue
 
-        # ---- EMA -> 窗口 -> 稳定判定 ----
-        smoothed = cal.update_ema(raw)
-        window_full, window_range, is_stable = cal.push_and_check(smoothed)
+def evaluate_update(old_val_water, factory_val_water, val_air, candidate,
+                     max_drift_ratio=DEFAULT_MAX_DRIFT_RATIO,
+                     absolute_bound_ratio=ABSOLUTE_BOUND_RATIO,
+                     val_air_margin_ratio=VAL_AIR_MARGIN_RATIO,
+                     ema_alpha=DEFAULT_EMA_ALPHA):
+    """防错门控 + EMA 融合，决定是否接受候选基准以及融合后的新值。
 
-        if window_full:
-            in_settle = cal.samples_seen <= cal.settle_samples
-            logger.debug("校准采样: raw=%.1f ema=%.1f range=%s count=%d %s",
-                         raw, smoothed,
-                         f"{window_range:.1f}" if window_range is not None else "-",
-                         cal.stable_count,
-                         "盲区" if in_settle else "观测")
+    三道门槛依次检查，任意一道未过直接拒绝：
+      1. 单次漂移率 <= max_drift_ratio（挡单次跳变/异常周期）
+      2. 候选值落在出厂值 ±absolute_bound_ratio 范围内（挡多次同向漂移累积）
+      3. 候选值 < VAL_AIR * (1 - val_air_margin_ratio)（挡分母趋零/变号）
 
-        if is_stable:
-            new_val = round(smoothed, 1)
-            logger.info("✅ 土壤校准稳定检测命中，新 VAL_WATER=%.1f", new_val)
-            return new_val
+    Returns:
+        (new_val_water, reason)
+        通过门控时 new_val_water 为融合后的浮点数、reason 为 None；
+        被拒绝时 new_val_water 为 None、reason 是人类可读的拒绝原因。
+    """
+    if candidate is None:
+        return None, "样本不足，跳过本轮"
 
-        time.sleep(cal.sample_interval)
+    if old_val_water:
+        drift_ratio = abs(candidate - old_val_water) / abs(old_val_water)
+    else:
+        drift_ratio = float("inf")
+    if drift_ratio > max_drift_ratio:
+        return None, (f"单次漂移率 {drift_ratio:.1%} 超过阈值 {max_drift_ratio:.1%}"
+                       f"（候选={candidate:.1f} 旧值={old_val_water:.1f}）")
+
+    lower = factory_val_water * (1 - absolute_bound_ratio)
+    upper = factory_val_water * (1 + absolute_bound_ratio)
+    if not (lower <= candidate <= upper):
+        return None, (f"候选值 {candidate:.1f} 超出出厂值 ±{absolute_bound_ratio:.0%} "
+                       f"范围 [{lower:.1f}, {upper:.1f}]")
+
+    max_val_water = val_air * (1 - val_air_margin_ratio)
+    if candidate >= max_val_water:
+        return None, (f"候选值 {candidate:.1f} 逼近 VAL_AIR({val_air:.1f})，"
+                       f"超过安全上限 {max_val_water:.1f}")
+
+    new_val = ema_alpha * candidate + (1 - ema_alpha) * old_val_water
+    return round(new_val, 1), None
 
 
 # ---- 持久化读写 ----

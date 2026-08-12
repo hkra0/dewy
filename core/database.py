@@ -194,6 +194,21 @@ def query_recent_soil(node_id, limit=5):
     )
 
 
+def query_soil_adc_series(node_id, days=30):
+    """过去 days 天内的 (本地日期, soil_adc_raw) 序列，供离线 ABC 校准使用。
+
+    排除离群值行与 NULL 读数；按 timestamp 收窄，走 idx_node_data_query 索引。
+    """
+    return query('''
+        SELECT date(timestamp, 'localtime'), soil_adc_raw
+        FROM node_data
+        WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL)
+          AND soil_adc_raw IS NOT NULL
+          AND timestamp >= datetime('now', ?)
+        ORDER BY timestamp ASC
+    ''', (node_id, f"-{int(days)} days"))
+
+
 def prune_node_data(retention_days=None):
     """删除超出保留窗口的采样行，返回删除条数。
 

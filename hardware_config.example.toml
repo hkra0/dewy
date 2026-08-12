@@ -39,6 +39,14 @@ address = "0x44"
 driver = "ADS1115_Soil"
 bus = 1
 address = "0x48"
+# ABC (Automatic Baseline Calibration): once a day, offline, the app scans
+# recent soil_adc_raw history and re-estimates the 100% moisture baseline
+# (field capacity), replacing the val_water above. See
+# hardware/soil_calibration.py for the algorithm. The enable switch and the
+# statistics window / drift threshold are runtime-adjustable in the web UI's
+# Settings tab, not here — they're stored in data/config.json's
+# soil_calibration section (see core/config.py) since they're user-tunable,
+# not per-deployment hardware wiring.
 
 [nodes.main.sensors.ups]
 driver = "INA219_UPS"

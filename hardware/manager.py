@@ -286,20 +286,18 @@ class HardwareManager:
                         log_failure(logger, key, "传感器 %s (节点 %s) 读取失败: %s", s_id, node_id, e)
         return data
 
-    def notify_watering(self, node_id):
-        """通知节点的传感器浇水事件已发生。
+    def calibratable_sensors(self, node_id):
+        """该节点上支持离线 ABC 校准的传感器。
 
-        遍历该节点的所有本地传感器，对实现了 ``on_watering()`` 方法的
-        （如 ADS1115_Soil）逐个调用。鸭子类型：不检查类型、不 import 驱动，
-        驱动自己决定是否响应以及如何校准。
+        鸭子类型：同时实现了 ``calibration_state()`` 与 ``apply_calibration()``
+        的（如 ADS1115_Soil）即视为可校准，不检查类型、不 import 驱动。
+        供 ``core/logic/soil_abc.py`` 的每日校准任务遍历。
         """
         sensors = self.local_sensors.get(node_id, {})
-        for s_id, sensor in sensors.items():
-            try:
-                if hasattr(sensor, "on_watering"):
-                    sensor.on_watering()
-            except Exception as e:
-                logger.warning("传感器 %s (节点 %s) on_watering 失败: %s", s_id, node_id, e)
+        return {
+            s_id: sensor for s_id, sensor in sensors.items()
+            if hasattr(sensor, "calibration_state") and hasattr(sensor, "apply_calibration")
+        }
 
     def sensors_for_field(self, node_id, field):
         """最近一次成功读取中提供了 field 的传感器 id 列表。

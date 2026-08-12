@@ -20,9 +20,11 @@ class ADS1115_Soil:
     采用中值平均滤波 + A3 通道 VCC 比例补偿算法，输出 0–100% 的湿度百分比
     与补偿后的原始 ADC 值（``soil_adc_raw``）。
 
-    浇水后可自动触发校准：``on_watering()`` 启动后台线程，通过 EMA + 滑动窗口
-    检测排水曲线的拐点，将稳定期的平滑值更新为新的 ``VAL_WATER``（100% 基准）。
-    校准代码在 ``hardware/soil_calibration.py``，本驱动只负责线程生命周期与持久化。
+    100% 湿度基准（``VAL_WATER``）由离线 ABC（Automatic Baseline Calibration）
+    任务每日校准：扫描历史 ``soil_adc_raw`` 统计出田间持水量，经门控后通过
+    ``apply_calibration()`` 推送到本驱动。算法与门控逻辑在
+    ``hardware/soil_calibration.py``，编排在 ``core/logic/soil_abc.py``，
+    本驱动只负责暴露状态（``calibration_state()``）与接受更新（``apply_calibration()``）。
     """
 
     def __init__(self, **kwargs):
@@ -35,19 +37,17 @@ class ADS1115_Soil:
 
         self.VAL_AIR = int(kwargs.get("val_air", 17545))
         self.VAL_WATER = int(kwargs.get("val_water", 6883))
+        # 出厂/配置值：ABC 门控用它做绝对夹紧，防止多次小步漂移累积成大偏移
+        self._factory_val_water = self.VAL_WATER
 
         # ---- 由 HardwareManager 注入的元信息（驱动本身无依赖 core） ----
         self._data_dir = kwargs.get("_data_dir")
         self._node_id = kwargs.get("_node_id", "main")
         self._sensor_id = kwargs.get("_sensor_id", "soil")
-        # 校准参数（来自 hardware_config 的 [sensors.soil.calibration] 段）
-        self._calib_config = kwargs.get("calibration", {})
 
-        # I2C 读取锁：校准线程与正常采样共用同一个 SMBus，必须互斥
+        # I2C 读取锁：与并发读取互斥（当前仅正常采样使用，保留以防未来的
+        # 并发读取路径，例如手动重校准脚本）
         self._lock = threading.Lock()
-        # 校准线程控制
-        self._calib_thread = None
-        self._calib_restart = threading.Event()
 
         if smbus2 is None:
             logger.error("未安装 smbus2，ADS1115 不可用（pip install smbus2）")
@@ -68,7 +68,7 @@ class ADS1115_Soil:
     def _read_compensated_raw(self):
         """中值平均滤波 + A3 通道 VCC 比例补偿，返回 compensated_raw (float)。
 
-        读取失败返回 None。加锁以与校准线程互斥。
+        读取失败返回 None。
         """
         if not self.bus:
             return None
@@ -152,61 +152,35 @@ class ADS1115_Soil:
         except Exception as e:
             logger.warning("加载校准基准失败，使用配置默认值: %s", e)
 
-    def on_watering(self):
-        """浇水事件通知。启动或重启校准线程。
+    def calibration_state(self):
+        """暴露给离线 ABC 校准任务的当前状态。
 
-        若校准线程已在运行（上次浇水后尚未检测到稳定），设置 restart 事件
-        让当前循环退出并重新开始--新浇的水会重置排水曲线。
+        只包含传感器实例自身的状态（当前基准、出厂值），不包含 enabled /
+        window_days / max_drift_ratio——那些是用户经设置页调整的全局开关
+        （``data/config.json`` 的 ``soil_calibration`` 段），对所有可校准
+        传感器统一生效，由 ``core/logic/soil_abc.py`` 从
+        ``core.config.global_config`` 读取，不属于单个传感器实例。
         """
-        if not self._calib_config.get("enabled", True):
-            logger.debug("校准已禁用，跳过浇水事件")
-            return
+        return {
+            "val_water": self.VAL_WATER,
+            "val_air": self.VAL_AIR,
+            "factory_val_water": self._factory_val_water,
+        }
 
-        self._calib_restart.set()
+    def apply_calibration(self, val_water):
+        """接受 ABC 任务算出的新基准：更新内存值并持久化。
 
-        if self._calib_thread is not None and self._calib_thread.is_alive():
-            logger.info("🔄 校准已在进行中，收到浇水事件，重启校准")
-            return  # 当前循环检测到 restart 事件后会退出，新循环由下方启动
-
-        self._calib_thread = threading.Thread(
-            target=self._calibration_loop,
-            name=f"soil-calib-{self._node_id}-{self._sensor_id}",
-            daemon=True,
-        )
-        self._calib_thread.start()
-        logger.info("🌱 启动土壤校准线程 (节点 %s 传感器 %s)", self._node_id, self._sensor_id)
-
-    def _calibration_loop(self):
-        """校准线程主循环：运行校准 -> 更新基准 -> 持久化。
-
-        若 ``run_calibration`` 返回 None 且 restart 事件已设置，说明收到了
-        新的浇水事件，重新开始一轮；否则正常退出。
+        返回 True 表示已接受（内存已更新；落盘失败只记日志，不影响本次生效，
+        与 ``save_calibration`` 一贯的"内存优先"语义一致）。
         """
         from hardware import soil_calibration
 
-        while True:
-            self._calib_restart.clear()
-            new_val = soil_calibration.run_calibration(
-                read_func=self._read_compensated_raw,
-                config=self._calib_config,
-                restart_event=self._calib_restart,
+        old_val = self.VAL_WATER
+        self.VAL_WATER = val_water
+        if self._data_dir:
+            soil_calibration.save_calibration(
+                self._data_dir, self._node_id, self._sensor_id, val_water,
             )
-
-            if new_val is not None:
-                # 校准成功：更新内存基准并持久化
-                old_val = self.VAL_WATER
-                self.VAL_WATER = new_val
-                if self._data_dir:
-                    soil_calibration.save_calibration(
-                        self._data_dir, self._node_id, self._sensor_id, new_val,
-                    )
-                logger.info("✅ 土壤校准完成: VAL_WATER %s -> %.1f (节点 %s 传感器 %s)",
-                            old_val, new_val, self._node_id, self._sensor_id)
-                return
-            elif self._calib_restart.is_set():
-                logger.info("🔄 校准重启（收到新浇水事件）")
-                continue
-            else:
-                # 超时或传感器故障
-                logger.warning("⚠️ 校准未完成（超时或故障），基准未更新")
-                return
+        logger.info("✅ ABC 校准更新内存基准: VAL_WATER %s -> %.1f (节点 %s 传感器 %s)",
+                    old_val, val_water, self._node_id, self._sensor_id)
+        return True

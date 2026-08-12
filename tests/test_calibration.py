@@ -1,20 +1,21 @@
-"""土壤校准算法的单元测试。
+"""土壤 ABC（自动基准校准）的单元测试。
 
-测试 hardware/soil_calibration.py 的纯算法逻辑（EMA、滑动窗口极差、
-盲区延迟、稳定判定、毛刺过滤）与持久化读写。该模块仅用标准库，无需 core 桩。
+测试 hardware/soil_calibration.py 的纯算法逻辑（百分位数、两级统计、
+防错门控、EMA 融合）与持久化读写。该模块仅用标准库，无需 core 桩。
 
-另测 hardware/manager.py 的 _build_device 注入元信息与 notify_watering。
+另测 hardware/manager.py 的 _build_device 注入元信息与 calibratable_sensors，
+以及 core/logic/soil_abc.py 的编排逻辑（取数 -> 估计 -> 门控 -> 推送、
+单个传感器失败隔离）。
 """
 
 import importlib.util
 import json
-import logging
 import os
 import pathlib
+import random
 import tempfile
-import threading
-import time
 import unittest
+from unittest.mock import MagicMock, patch
 
 # ---- 加载 soil_calibration（纯标准库模块，不需要 core 桩）----
 _spec = importlib.util.spec_from_file_location(
@@ -27,412 +28,165 @@ _spec.loader.exec_module(cal)
 import core.state as state  # 本包 __init__ 装好的桩
 
 from hardware.manager import HardwareManager
-
-
-# ==================== SoilCalibrator 纯算法 ====================
-
-class EMATest(unittest.TestCase):
-    """EMA 平滑：S_t = α·Y_t + (1-α)·S_{t-1}"""
-
-    def setUp(self):
-        self.c = cal.SoilCalibrator({"alpha": 0.2})
-
-    def test_first_sample_uses_raw_value(self):
-        """首个样本直接赋值，避免从 0 起步的冷启动偏置。"""
-        self.assertEqual(self.c.update_ema(7000.0), 7000.0)
-
-    def test_subsequent_samples_blend(self):
-        """S_1 = 0.2*7200 + 0.8*7000 = 7040"""
-        self.c.update_ema(7000.0)
-        result = self.c.update_ema(7200.0)
-        self.assertAlmostEqual(result, 7040.0)
-
-    def test_converges_to_constant_input(self):
-        """持续输入同一值时 EMA 收敛到该值。"""
-        for _ in range(100):
-            val = self.c.update_ema(7500.0)
-        self.assertAlmostEqual(val, 7500.0, places=1)
-
-    def test_resets_cleanly(self):
-        self.c.update_ema(7000.0)
-        self.c.update_ema(7200.0)
-        self.c._reset()
-        self.assertIsNone(self.c.ema)
-        self.assertEqual(len(self.c.window), 0)
-        self.assertEqual(self.c.stable_count, 0)
-        self.assertEqual(self.c.samples_seen, 0)
-
-
-# ==================== 滑动窗口极差 ====================
-
-class SlidingWindowTest(unittest.TestCase):
-    """滑动窗口：固定长度、极差计算。"""
-
-    def setUp(self):
-        # window=5, settle_delay=0 (无盲区), threshold=18, confirm=2
-        self.c = cal.SoilCalibrator({
-            "window_size": 5, "settle_delay_sec": 0,
-            "stable_threshold": 18, "stable_confirm": 2,
-        })
-        self.c.ema = 7500.0
-
-    def test_window_not_full_returns_false(self):
-        for v in range(3):
-            full, rng, stable = self.c.push_and_check(float(v))
-            self.assertFalse(full)
-            self.assertIsNone(rng)
-            self.assertFalse(stable)
-
-    def test_window_full_returns_range(self):
-        for v in [7500, 7505, 7498, 7502, 7500]:
-            full, rng, _ = self.c.push_and_check(float(v))
-        self.assertTrue(full)
-        # range = max(7505) - min(7498) = 7.0
-        self.assertAlmostEqual(rng, 7.0)
-
-    def test_window_evicts_oldest(self):
-        for v in [7500, 7505, 7498, 7502, 7500]:
-            self.c.push_and_check(float(v))
-        # push 7520, window becomes [7505, 7498, 7502, 7500, 7520]
-        # range = 7520 - 7498 = 22.0
-        full, rng, _ = self.c.push_and_check(7520.0)
-        self.assertTrue(full)
-        self.assertAlmostEqual(rng, 22.0)
-
-    def test_range_zero_when_all_equal(self):
-        for _ in range(5):
-            full, rng, _ = self.c.push_and_check(7000.0)
-        self.assertTrue(full)
-        self.assertAlmostEqual(rng, 0.0)
-
-
-# ==================== 盲区延迟 ====================
-
-class SettleDelayTest(unittest.TestCase):
-    """盲区期：只采集数据，不做稳定判定。"""
-
-    def test_no_stability_during_settle(self):
-        """盲区内即使数据完全平稳也不判定稳定。"""
-        c = cal.SoilCalibrator({
-            "window_size": 3, "settle_delay_sec": 30,
-            "sample_interval_sec": 10, "stable_threshold": 18,
-            "stable_confirm": 1,
-        })
-        c.ema = 7000.0
-        # settle_samples = 30/10 = 3，前 3 个样本在盲区内
-        for i in range(3):
-            full, rng, stable = c.push_and_check(7000.0)
-            self.assertFalse(stable, f"盲区内不应判定稳定 (step {i})")
-        # 第 4 个样本开始判定
-        full, rng, stable = c.push_and_check(7000.0)
-        self.assertTrue(stable, "盲区后应立即判定稳定（range=0 < 18）")
-
-    def test_settle_zero_allows_immediate_check(self):
-        """settle_delay=0 时从第一个满窗口即可判定。"""
-        c = cal.SoilCalibrator({
-            "window_size": 3, "settle_delay_sec": 0,
-            "stable_threshold": 18, "stable_confirm": 1,
-        })
-        c.ema = 7000.0
-        full, rng, stable = c.push_and_check(7000.0)
-        full, rng, stable = c.push_and_check(7000.0)
-        full, rng, stable = c.push_and_check(7000.0)
-        self.assertTrue(stable)
-
-    def test_settle_samples_calculation(self):
-        """settle_samples = round(settle_delay / sample_interval)。"""
-        c = cal.SoilCalibrator({
-            "settle_delay_sec": 600, "sample_interval_sec": 10,
-        })
-        self.assertEqual(c.settle_samples, 60)
-
-        c2 = cal.SoilCalibrator({
-            "settle_delay_sec": 25, "sample_interval_sec": 10,
-        })
-        self.assertEqual(c2.settle_samples, 3)  # round(2.5) = 2, but int(2.5+0.5)=3
-
-
-# ==================== 极差稳定判定 ====================
-
-class StabilityDetectionTest(unittest.TestCase):
-    """稳定判定：窗口极差 < threshold 连续 confirm 次。"""
-
-    def setUp(self):
-        self.c = cal.SoilCalibrator({
-            "window_size": 5, "settle_delay_sec": 0,
-            "stable_threshold": 15, "stable_confirm": 2,
-        })
-        self.c.ema = 7500.0
-
-    def test_flat_data_triggers_stable(self):
-        """完全平稳的数据应快速判定稳定。"""
-        for _ in range(5):
-            _, _, stable = self.c.push_and_check(7500.0)
-        # range=0 < 15, count=1 (need 2)
-        self.assertFalse(stable)
-        _, _, stable = self.c.push_and_check(7500.0)
-        self.assertTrue(stable)
-
-    def test_large_range_rejected(self):
-        """极差超过阈值时不判定稳定。"""
-        for v in [7500, 7530, 7470, 7520, 7480]:
-            _, _, stable = self.c.push_and_check(float(v))
-        # range = 7530 - 7470 = 60 > 15
-        self.assertFalse(stable)
-        self.assertEqual(self.c.stable_count, 0)
-
-    def test_range_resets_count_on_violation(self):
-        """稳定计数中遇到大极差 -> 清零。"""
-        # 先积累 1 次稳定
-        for _ in range(5):
-            self.c.push_and_check(7500.0)
-        self.assertEqual(self.c.stable_count, 1)
-        # 大跳变
-        self.c.push_and_check(7600.0)
-        self.assertEqual(self.c.stable_count, 0)
-
-    def test_confirm_count_required(self):
-        """需要连续 confirm 次才判定稳定。"""
-        c = cal.SoilCalibrator({
-            "window_size": 3, "settle_delay_sec": 0,
-            "stable_threshold": 20, "stable_confirm": 4,
-        })
-        c.ema = 7000.0
-        for _ in range(3):
-            c.push_and_check(7000.0)  # 填满窗口, range=0, count=1
-        for i in range(2):
-            _, _, stable = c.push_and_check(7000.0)
-            self.assertFalse(stable, f"第 {i+2} 次不应稳定 (需 4 次)")
-        _, _, stable = c.push_and_check(7000.0)
-        self.assertTrue(stable, "第 4 次应稳定")
-
-    def test_gradual_decline_then_stable(self):
-        """缓慢下降后趋于平稳 -> 最终判定稳定。
-
-        模拟真实场景：浇水后 raw 缓慢下降，最终趋于平稳。
-        """
-        c = cal.SoilCalibrator({
-            "window_size": 10, "settle_delay_sec": 0,
-            "stable_threshold": 15, "stable_confirm": 2,
-            "alpha": 0.3,
-        })
-        # 先让 EMA 收敛到一个基线
-        for _ in range(20):
-            c.update_ema(6000.0)
-
-        # 缓慢下降 30 步（每步 -2 ADC），然后平稳
-        for i in range(30):
-            v = 6000.0 - i * 2
-            smoothed = c.update_ema(v)
-            c.push_and_check(smoothed)
-
-        # 平稳期
-        is_stable = False
-        for _ in range(15):
-            smoothed = c.update_ema(5940.0)
-            _, _, is_stable = c.push_and_check(smoothed)
-            if is_stable:
-                break
-        self.assertTrue(is_stable, "下降趋平后应判定稳定")
-
-    def test_constant_decline_never_stable(self):
-        """持续匀速下降 -> 窗口极差始终超阈值 -> 不判稳定。"""
-        c = cal.SoilCalibrator({
-            "window_size": 10, "settle_delay_sec": 0,
-            "stable_threshold": 15, "stable_confirm": 2,
-            "alpha": 0.3,
-        })
-        for _ in range(20):
-            c.update_ema(6000.0)
-
-        is_stable = False
-        for i in range(100):
-            v = 6000.0 - i * 5  # 每步 -5 ADC，10 步窗口 range ≈ 50
-            smoothed = c.update_ema(v)
-            _, _, is_stable = c.push_and_check(smoothed)
-            self.assertFalse(is_stable, f"步骤 {i}: 匀速下降不应判稳定")
-
-
-# ==================== run_calibration 集成 ====================
-
-class RunCalibrationTest(unittest.TestCase):
-    """run_calibration 的端到端测试（用假 read_func）。"""
-
-    def test_stable_after_settle_detects(self):
-        """完整序列：浇水 -> 盲区 -> 稳定 -> 检测到稳定。"""
-        readings = [6000.0] * 10       # 盲区期（settle=5 样本）
-        readings += [5800.0] * 5       # 下降过渡
-        readings += [5750.0] * 30      # 稳定在田间持水量
-
-        idx = [0]
-
-        def read_func():
-            if idx[0] >= len(readings):
-                return None
-            v = readings[idx[0]]
-            idx[0] += 1
-            return v
-
-        config = {
-            "window_size": 5,
-            "settle_delay_sec": 0.15,     # 15 个样本的盲区（覆盖平直+过渡）
-            "sample_interval_sec": 0.01,
-            "stable_threshold": 15,
-            "stable_confirm": 2,
-            "timeout_min": 5,
-        }
-        result = cal.run_calibration(read_func, config=config)
-        self.assertIsNotNone(result)
-        self.assertAlmostEqual(result, 5750.0, delta=50.0)
-
-    def test_already_saturated_detects_quickly(self):
-        """土壤已饱和（浇水后几乎不变）-> 盲区后立即稳定。"""
-        readings = [5750.0] * 60  # 全程不变
-
-        idx = [0]
-
-        def read_func():
-            if idx[0] >= len(readings):
-                return None
-            v = readings[idx[0]]
-            idx[0] += 1
-            return v
-
-        config = {
-            "window_size": 5,
-            "settle_delay_sec": 0.03,     # 3 个样本
-            "sample_interval_sec": 0.01,
-            "stable_threshold": 18,
-            "stable_confirm": 2,
-            "timeout_min": 5,
-        }
-        result = cal.run_calibration(read_func, config=config)
-        self.assertIsNotNone(result)
-        self.assertAlmostEqual(result, 5750.0, delta=5.0)
-
-    def test_glitch_filtered(self):
-        """单个毛刺读数不应阻止校准成功。"""
-        # 3 盲区 + 2 填满窗口(count=1) + 毛刺 + 5 稳定(count=2 -> STABLE)
-        readings = [5750.0] * 3        # 盲区
-        readings += [5750.0] * 2        # 填满窗口，count=1（未稳定）
-        readings += [22612.0]           # 毛刺！应被过滤跳过
-        readings += [5750.0] * 5        # 继续：count 达 2 -> 稳定
-
-        idx = [0]
-
-        def read_func():
-            if idx[0] >= len(readings):
-                return None
-            v = readings[idx[0]]
-            idx[0] += 1
-            return v
-
-        config = {
-            "window_size": 5,
-            "settle_delay_sec": 0.03,   # 3 个样本
-            "sample_interval_sec": 0.01,
-            "stable_threshold": 18,
-            "stable_confirm": 2,
-            "timeout_min": 5,
-        }
-        result = cal.run_calibration(read_func, config=config)
-        self.assertIsNotNone(result, "毛刺应被过滤，校准应成功")
-        self.assertAlmostEqual(result, 5750.0, delta=50.0)
-
-    def test_constant_decline_times_out(self):
-        """持续匀速下降（永不平稳）-> 超时返回 None。"""
-        counter = [0]
-
-        def read_func():
-            counter[0] += 1
-            return 6000.0 - counter[0] * 10  # 每步 -10 ADC
-
-        config = {
-            "window_size": 5,
-            "settle_delay_sec": 0,
-            "sample_interval_sec": 0.01,
-            "stable_threshold": 15,
-            "stable_confirm": 2,
-            "timeout_min": 0.01,  # ~0.6 秒超时
-        }
-        result = cal.run_calibration(read_func, config=config)
-        self.assertIsNone(result)
-
-    def test_restart_event_returns_none(self):
-        """收到 restart 信号时立即退出返回 None。"""
-        restart = threading.Event()
-
-        def read_func():
-            time.sleep(0.1)
-            return 7000.0
-
-        config = {
-            "window_size": 100,  # 永远填不满
-            "settle_delay_sec": 0,
-            "sample_interval_sec": 0.01,
-            "timeout_min": 5,
-        }
-
-        result_holder = [None]
-
-        def runner():
-            result_holder[0] = cal.run_calibration(read_func, config=config,
-                                                    restart_event=restart)
-
-        t = threading.Thread(target=runner, daemon=True)
-        t.start()
-        time.sleep(0.2)
-        restart.set()
-        t.join(timeout=2)
-        self.assertIsNone(result_holder[0])
-
-    def test_consecutive_read_failures_abort(self):
-        """连续读取失败超过上限应中止返回 None。"""
-        calls = [0]
-
-        def read_func():
-            calls[0] += 1
-            return None
-
-        config = {
-            "window_size": 5,
-            "settle_delay_sec": 0,
-            "sample_interval_sec": 0.01,
-            "timeout_min": 5,
-        }
-        result = cal.run_calibration(read_func, config=config)
-        self.assertIsNone(result)
-        self.assertGreaterEqual(calls[0], cal.MAX_READ_FAILURES)
-
-    def test_slow_decline_then_stable_detects(self):
-        """模拟真实浇水曲线：缓慢下降 -> 趋平 -> 稳定。"""
-        readings = []
-        # 缓慢下降 40 步（从浇水瞬间开始即下降，无平直段）
-        for i in range(40):
-            readings.append(5900.0 - i * 3)
-        # 趋平
-        readings += [5780.0] * 40
-
-        idx = [0]
-
-        def read_func():
-            if idx[0] >= len(readings):
-                return None
-            v = readings[idx[0]]
-            idx[0] += 1
-            return v
-
-        config = {
-            "window_size": 10,
-            "settle_delay_sec": 0.10,    # 10 个样本
-            "sample_interval_sec": 0.01,
-            "stable_threshold": 18,
-            "stable_confirm": 2,
-            "timeout_min": 5,
-        }
-        result = cal.run_calibration(read_func, config=config)
-        self.assertIsNotNone(result, "缓慢下降趋平后应检测到稳定")
-        self.assertAlmostEqual(result, 5780.0, delta=30.0)
+from core.logic import soil_abc
+
+
+# ==================== percentile ====================
+
+class PercentileTest(unittest.TestCase):
+
+    def test_single_value_returns_itself(self):
+        self.assertEqual(cal.percentile([42.0], 0.05), 42.0)
+
+    def test_q_zero_is_min(self):
+        self.assertEqual(cal.percentile([1.0, 2.0, 3.0, 4.0], 0.0), 1.0)
+
+    def test_q_one_is_max(self):
+        self.assertEqual(cal.percentile([1.0, 2.0, 3.0, 4.0], 1.0), 4.0)
+
+    def test_two_values_median(self):
+        self.assertAlmostEqual(cal.percentile([10.0, 20.0], 0.5), 15.0)
+
+    def test_linear_interpolation(self):
+        # k = 0.05 * (5-1) = 0.2 -> 10*(1-0.2) + 20*0.2 = 12.0
+        self.assertAlmostEqual(
+            cal.percentile([10.0, 20.0, 30.0, 40.0, 50.0], 0.05), 12.0)
+
+
+# ==================== field_capacity_estimate（两级统计） ====================
+
+def _synthetic_series(watering_interval_days, total_days=30, samples_per_day=144,
+                       wet_base=6000.0, dry_rate=80.0, noise=5.0, seed=42):
+    """模拟固定间隔浇水下的 ADC 读数：浇水当天最湿，此后按天线性变干直到下次浇水。"""
+    rng = random.Random(seed)
+    day_values = []
+    for day in range(total_days):
+        days_since_water = day % watering_interval_days
+        center = wet_base + days_since_water * dry_rate
+        date_str = f"d{day:02d}"
+        for _ in range(samples_per_day):
+            day_values.append((date_str, center + rng.uniform(-noise, noise)))
+    return day_values
+
+
+class FieldCapacityEstimateTest(unittest.TestCase):
+
+    def test_insufficient_days_returns_none(self):
+        day_values = [(f"d{d}", 6000.0) for d in range(5) for _ in range(200)]
+        estimate, valid_days, total = cal.field_capacity_estimate(day_values)
+        self.assertIsNone(estimate)
+        self.assertEqual(valid_days, 5)
+        self.assertEqual(total, 1000)
+
+    def test_insufficient_samples_returns_none(self):
+        day_values = [(f"d{d}", 6000.0) for d in range(10) for _ in range(10)]
+        estimate, valid_days, total = cal.field_capacity_estimate(day_values)
+        self.assertIsNone(estimate)
+        self.assertEqual(valid_days, 10)
+        self.assertEqual(total, 100)
+
+    def test_none_values_are_ignored(self):
+        day_values = [(f"d{d}", None) for d in range(10) for _ in range(60)]
+        estimate, valid_days, total = cal.field_capacity_estimate(day_values)
+        self.assertIsNone(estimate)
+        self.assertEqual(valid_days, 0)
+        self.assertEqual(total, 0)
+
+    def test_sufficient_data_returns_estimate(self):
+        day_values = [(f"d{d}", 6000.0 + (d % 5)) for d in range(10) for _ in range(60)]
+        estimate, valid_days, total = cal.field_capacity_estimate(day_values)
+        self.assertIsNotNone(estimate)
+        self.assertEqual(valid_days, 10)
+        self.assertEqual(total, 600)
+
+    def test_intra_day_glitch_filtered(self):
+        """单日内一次性瞬时积水异常低值不应拉低该日的代表值。"""
+        day_values = []
+        for d in range(10):
+            date = f"d{d}"
+            day_values += [(date, 6000.0)] * 143
+            day_values.append((date, 1000.0))  # 单个毛刺
+        estimate, _, _ = cal.field_capacity_estimate(day_values)
+        self.assertAlmostEqual(estimate, 6000.0, delta=5.0)
+
+    def test_cross_day_p10_bounds_single_anomalous_day_influence(self):
+        """跨日 P10 不等同于直接取每日代表值的最小值——
+        单个异常日（如传感器故障当天）不应单独定义估计结果。"""
+        rng = random.Random(1)
+        day_values = []
+        for d in range(29):
+            for _ in range(144):
+                day_values.append((f"d{d:02d}", 6200.0 + rng.uniform(-5, 5)))
+        # 第 30 天传感器故障，整天读数异常偏低（远超真实生理变化范围）
+        day_values += [("d29", 3000.0)] * 144
+
+        estimate, _, _ = cal.field_capacity_estimate(day_values)
+        self.assertIsNotNone(estimate)
+        self.assertGreater(estimate, 5000.0, "不应被单日故障拖到 3000 附近")
+        self.assertAlmostEqual(estimate, 6200.0, delta=50.0)
+
+    def test_estimate_stable_across_watering_intervals(self):
+        """浇水间隔从 4 天到 15 天变化时，两级统计给出的候选值应保持接近，
+        不因窗口期内浇水次数不同而系统性偏移。"""
+        frequent = _synthetic_series(watering_interval_days=4)
+        sparse = _synthetic_series(watering_interval_days=15)
+
+        est_frequent, _, _ = cal.field_capacity_estimate(frequent)
+        est_sparse, _, _ = cal.field_capacity_estimate(sparse)
+
+        self.assertIsNotNone(est_frequent)
+        self.assertIsNotNone(est_sparse)
+        self.assertAlmostEqual(est_frequent, 6000.0, delta=100.0)
+        self.assertLess(abs(est_frequent - est_sparse), 150.0)
+
+
+# ==================== evaluate_update（防错门控 + EMA） ====================
+
+class EvaluateUpdateTest(unittest.TestCase):
+
+    def test_accepts_within_bounds_and_blends_ema(self):
+        new_val, reason = cal.evaluate_update(6883.0, 6883.0, 17545.0, 7000.0)
+        self.assertIsNone(reason)
+        self.assertAlmostEqual(new_val, round(0.2 * 7000.0 + 0.8 * 6883.0, 1))
+
+    def test_rejects_when_candidate_is_none(self):
+        new_val, reason = cal.evaluate_update(6883.0, 6883.0, 17545.0, None)
+        self.assertIsNone(new_val)
+        self.assertIn("样本不足", reason)
+
+    def test_rejects_excessive_single_step_drift(self):
+        candidate = 6883.0 * 1.30  # 30% 漂移，超过默认 15% 阈值
+        new_val, reason = cal.evaluate_update(6883.0, 6883.0, 17545.0, candidate)
+        self.assertIsNone(new_val)
+        self.assertIn("漂移", reason)
+
+    def test_rejects_outside_absolute_factory_bound(self):
+        """单步漂移不大，但候选值相对出厂值的累积偏移超出绝对夹紧范围。"""
+        factory = 6883.0
+        old = 8500.0     # 假设已经历过几次同方向的小步漂移
+        candidate = 9000.0  # 相对 old 仅漂移 5.9%，但相对 factory 已超 30%
+        new_val, reason = cal.evaluate_update(old, factory, 17545.0, candidate)
+        self.assertIsNone(new_val)
+        self.assertIn("出厂值", reason)
+
+    def test_rejects_candidate_too_close_to_val_air(self):
+        val_air = 17545.0
+        factory = 15000.0
+        old = 15750.0
+        candidate = 15000.0  # 仅比 VAL_AIR 低 14.5%，低于 20% 安全余量
+        new_val, reason = cal.evaluate_update(old, factory, val_air, candidate)
+        self.assertIsNone(new_val)
+        self.assertIn("VAL_AIR", reason)
+
+    def test_custom_max_drift_ratio_is_respected(self):
+        candidate = 6883.0 * 1.10  # 10% 漂移
+        rejected, _ = cal.evaluate_update(6883.0, 6883.0, 17545.0, candidate,
+                                           max_drift_ratio=0.05)
+        accepted, reason = cal.evaluate_update(6883.0, 6883.0, 17545.0, candidate,
+                                                max_drift_ratio=0.15)
+        self.assertIsNone(rejected)
+        self.assertIsNotNone(accepted)
+        self.assertIsNone(reason)
 
 
 # ==================== 持久化 ====================
@@ -490,8 +244,6 @@ class PersistenceTest(unittest.TestCase):
 
     def test_old_file_intact_when_replace_fails(self):
         """os.replace 失败（模拟崩溃在替换瞬间）时旧文件应完好，临时文件应清理。"""
-        from unittest.mock import patch
-
         cal.save_calibration(self.data_dir, "main", "soil", 6883.0)
         calib_path = os.path.join(self.data_dir, "calibration.json")
         with open(calib_path) as f:
@@ -521,7 +273,7 @@ class PersistenceTest(unittest.TestCase):
 # ==================== HardwareManager 集成 ====================
 
 class ManagerInjectionTest(unittest.TestCase):
-    """_build_device 注入元信息、notify_watering 鸭子类型调用。"""
+    """_build_device 注入元信息、calibratable_sensors 鸭子类型筛选。"""
 
     def _manager(self):
         hm = HardwareManager.__new__(HardwareManager)
@@ -556,50 +308,129 @@ class ManagerInjectionTest(unittest.TestCase):
         obj = hm._build_device("main", "传感器", "soil", {"driver": "Spy", "bus": 1})
         self.assertNotIn("driver", obj.kwargs)
 
-    def test_notify_watering_calls_on_watering(self):
-        """notify_watering 对实现了 on_watering() 的传感器调用它。"""
+    def test_calibratable_sensors_returns_matching_sensors(self):
+        """只返回同时实现了 calibration_state 与 apply_calibration 的传感器。"""
         class SoilSensor:
-            def __init__(self):
-                self.watered = False
-            def on_watering(self):
-                self.watered = True
+            def calibration_state(self):
+                return {}
+
+            def apply_calibration(self, val):
+                return True
 
         class OtherSensor:
-            pass  # No on_watering, should be skipped silently
+            pass  # 无校准接口，应被排除
 
         hm = self._manager()
         soil = SoilSensor()
         other = OtherSensor()
         hm.local_sensors = {"main": {"soil": soil, "sht30": other}}
 
-        hm.notify_watering("main")
-        self.assertTrue(soil.watered)
+        self.assertEqual(hm.calibratable_sensors("main"), {"soil": soil})
 
-    def test_notify_watering_unknown_node_is_noop(self):
-        """通知不存在的节点不应抛异常。"""
+    def test_calibratable_sensors_unknown_node_returns_empty(self):
         hm = self._manager()
         hm.local_sensors = {}
-        hm.notify_watering("nonexistent")  # Should not raise
+        self.assertEqual(hm.calibratable_sensors("nonexistent"), {})
 
-    def test_notify_watering_isolates_failures(self):
-        """一个传感器的 on_watering 抛异常不应影响其他传感器。"""
-        class Good:
-            def __init__(self):
-                self.watered = False
-            def on_watering(self):
-                self.watered = True
-
-        class Bad:
-            def on_watering(self):
-                raise RuntimeError("I2C error")
+    def test_calibratable_sensors_requires_both_methods(self):
+        """只实现其中一个方法的传感器不算可校准。"""
+        class PartialSensor:
+            def calibration_state(self):
+                return {}
+            # 缺少 apply_calibration
 
         hm = self._manager()
-        good = Good()
-        hm.local_sensors = {"main": {"bad": Bad(), "good": good}}
+        hm.local_sensors = {"main": {"partial": PartialSensor()}}
+        self.assertEqual(hm.calibratable_sensors("main"), {})
 
-        with self.assertLogs("hardware.manager", level=logging.WARNING):
-            hm.notify_watering("main")
-        self.assertTrue(good.watered)
+
+# ==================== core/logic/soil_abc.py 编排 ====================
+
+class ABCOrchestrationTest(unittest.TestCase):
+    """run_abc_calibration：取数 -> 估计 -> 门控 -> 推送，单个传感器失败隔离。
+
+    enabled / window_days / max_drift_ratio 是全局用户配置
+    （`core.config.global_config["soil_calibration"]`），不再是传感器实例的
+    属性——`calibration_state()` 现在只报告 val_water / val_air /
+    factory_val_water（见 hardware/drivers/ads1115.py 的同名方法）。
+    """
+
+    DEFAULT_CFG = {"enabled": True, "window_days": 30, "max_drift_ratio": 0.15}
+
+    @staticmethod
+    def _sensor(val_water=6883.0, val_air=17545.0, factory=None):
+        sensor = MagicMock()
+        sensor.calibration_state.return_value = {
+            "val_water": val_water,
+            "val_air": val_air,
+            "factory_val_water": factory if factory is not None else val_water,
+        }
+        sensor.apply_calibration.return_value = True
+        return sensor
+
+    @staticmethod
+    def _day_values(center, days=10, samples_per_day=60):
+        return [(f"d{d}", center) for d in range(days) for _ in range(samples_per_day)]
+
+    def _run_with(self, sensors, day_values, calib_cfg=None):
+        hm = MagicMock(local_sensors={"main": {}},
+                        calibratable_sensors=lambda node_id: sensors)
+        cfg = {"soil_calibration": calib_cfg or self.DEFAULT_CFG}
+        with patch.object(soil_abc.state, "hardware_manager", hm), \
+             patch.object(soil_abc.db, "query_soil_adc_series", return_value=day_values), \
+             patch.dict(soil_abc.config.global_config, cfg, clear=False):
+            soil_abc.run_abc_calibration()
+
+    def test_globally_disabled_skips_before_touching_any_sensor(self):
+        """enabled=False 时整轮直接跳过，连 calibration_state() 都不该调用。"""
+        sensor = self._sensor()
+        self._run_with({"soil": sensor}, self._day_values(7000.0),
+                        calib_cfg={"enabled": False, "window_days": 30, "max_drift_ratio": 0.15})
+        sensor.calibration_state.assert_not_called()
+        sensor.apply_calibration.assert_not_called()
+
+    def test_enabled_missing_from_config_defaults_to_on(self):
+        """soil_calibration 段缺失（老配置升级前）时默认按启用处理。"""
+        sensor = self._sensor(val_water=6883.0, factory=6883.0)
+        self._run_with({"soil": sensor}, self._day_values(7000.0), calib_cfg={})
+        sensor.apply_calibration.assert_called_once()
+
+    def test_insufficient_data_skips_update(self):
+        sensor = self._sensor()
+        self._run_with({"soil": sensor}, [])
+        sensor.apply_calibration.assert_not_called()
+
+    def test_accepted_candidate_applies_calibration(self):
+        sensor = self._sensor(val_water=6883.0, factory=6883.0)
+        self._run_with({"soil": sensor}, self._day_values(7000.0))
+        sensor.apply_calibration.assert_called_once()
+        new_val = sensor.apply_calibration.call_args[0][0]
+        self.assertAlmostEqual(new_val, round(0.2 * 7000.0 + 0.8 * 6883.0, 1))
+
+    def test_excessive_drift_rejects_update(self):
+        sensor = self._sensor(val_water=6883.0, factory=6883.0)
+        self._run_with({"soil": sensor}, self._day_values(9000.0))  # >15% 漂移
+        sensor.apply_calibration.assert_not_called()
+
+    def test_custom_window_days_is_forwarded_to_the_query(self):
+        sensor = self._sensor(val_water=6883.0, factory=6883.0)
+        with patch.object(soil_abc.state, "hardware_manager", MagicMock(
+                local_sensors={"main": {}}, calibratable_sensors=lambda n: {"soil": sensor})), \
+             patch.object(soil_abc.db, "query_soil_adc_series",
+                           return_value=self._day_values(7000.0)) as query, \
+             patch.dict(soil_abc.config.global_config,
+                        {"soil_calibration": {"enabled": True, "window_days": 45, "max_drift_ratio": 0.15}},
+                        clear=False):
+            soil_abc.run_abc_calibration()
+        query.assert_called_once_with("main", days=45)
+
+    def test_one_sensor_failure_does_not_block_others(self):
+        good = self._sensor(val_water=6883.0, factory=6883.0)
+        bad = MagicMock()
+        bad.calibration_state.side_effect = RuntimeError("I2C error")
+
+        self._run_with({"bad": bad, "good": good}, self._day_values(7000.0))
+        good.apply_calibration.assert_called_once()
 
 
 # ==================== 数据库 schema 迁移 ====================
@@ -608,7 +439,7 @@ class DatabaseMigrationTest(unittest.TestCase):
     """soil_adc_raw 列的自动迁移：老库 ALTER TABLE、新库直接建、幂等。"""
 
     def setUp(self):
-        import sqlite3
+        import threading
         self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self._tmp.close()
         state.DB_FILE = self._tmp.name
@@ -682,6 +513,22 @@ class DatabaseMigrationTest(unittest.TestCase):
         db.insert_node_data([{"node_id": "main", "soil_moisture": 55.0}])
         row = db.query("SELECT soil_adc_raw FROM node_data WHERE node_id='main'")[0]
         self.assertEqual(row, (None,))
+
+    def test_query_soil_adc_series_excludes_anomalies_and_nulls(self):
+        """query_soil_adc_series 排除 is_anomaly=1 与 soil_adc_raw IS NULL 的行。"""
+        db = self._load_real_db()
+        db.init_db()
+        db.insert_node_data([
+            {"node_id": "main", "soil_adc_raw": 6000.0},
+            {"node_id": "main", "soil_adc_raw": 6100.0},
+            {"node_id": "main"},  # soil_adc_raw NULL，应被排除
+        ])
+        with db.get_conn() as conn:
+            conn.execute("UPDATE node_data SET is_anomaly = 1 WHERE soil_adc_raw = 6100.0")
+
+        rows = db.query_soil_adc_series("main", days=30)
+        values = [v for _, v in rows]
+        self.assertEqual(values, [6000.0])
 
 
 if __name__ == "__main__":
