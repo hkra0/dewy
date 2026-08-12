@@ -14,12 +14,18 @@ import core.state as state
 
 
 def node_capabilities(node_id):
-    """返回 {camera, daily_photo, pump, light}，值都是 bool。
+    """返回 {camera, daily_photo, pump, light, soil_calibration}，值都是 bool。
 
     `camera` 与 `daily_photo` 是两件事，**不要合并**：
     前者是"这个节点有没有相机"，管实时预览与高清抓拍；后者还叠加了
     `daily_photo.enabled`，管照片时间轴与"照片"子页签——同一个开关既管拍、
     也管看。关掉每日照片不该把实时画面一起关掉。
+
+    `soil_calibration` 看的是"这个节点上有没有支持 ABC 校准的传感器"
+    （`HardwareManager.calibratable_sensors`，鸭子类型判定），不看
+    `soil_calibration.enabled`——那是校准要不要跑的开关，不是设置项该不该
+    露出的开关。用户即使关掉了自动校准，也应该还能在设置页看到并重新打开它，
+    否则关掉之后这张卡片自己消失，无法再打开。
     """
     hm = state.hardware_manager
     actuators = hm.actuators.get(node_id, {})
@@ -30,4 +36,5 @@ def node_capabilities(node_id):
         "daily_photo": has_camera and config.global_config["daily_photo"].get("enabled", True),
         "pump": config.global_config["auto_water"].get("actuator_id", "pump") in actuators,
         "light": config.global_config["auto_light"].get("actuator_id", "light") in actuators,
+        "soil_calibration": bool(hm.calibratable_sensors(node_id)),
     }

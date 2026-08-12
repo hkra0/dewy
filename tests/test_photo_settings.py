@@ -156,6 +156,7 @@ class NodeCapabilitiesTest(unittest.TestCase):
         self.hm = MagicMock()
         self.hm.actuators = {"main": {"pump": object(), "light": object()}}
         self.hm.has_camera.return_value = True
+        self.hm.calibratable_sensors.return_value = {}
         state.hardware_manager = self.hm
 
     def tearDown(self):
@@ -187,6 +188,18 @@ class NodeCapabilitiesTest(unittest.TestCase):
         caps = self.caps()
         self.assertFalse(caps["camera"])
         self.assertFalse(caps["daily_photo"])
+
+    def test_soil_calibration_needs_a_calibratable_sensor(self):
+        self.assertFalse(self.caps()["soil_calibration"])
+        self.hm.calibratable_sensors.return_value = {"soil": object()}
+        self.assertTrue(self.caps()["soil_calibration"])
+
+    def test_soil_calibration_ignores_the_enabled_switch(self):
+        # 关掉自动校准不该让这张设置卡自己消失——否则关掉之后无法再打开它。
+        # 能力位只看硬件是否支持校准，不看用户是否启用了它。
+        self.hm.calibratable_sensors.return_value = {"soil": object()}
+        config.global_config["soil_calibration"] = {"enabled": False}
+        self.assertTrue(self.caps()["soil_calibration"])
 
 
 class DailyPhotoCaptureTest(unittest.TestCase):

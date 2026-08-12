@@ -16,18 +16,38 @@ export function toggleLightMode() {
     }
 }
 
-/** 每日照片的子设置（拍照时刻、重新拍摄）跟着开关一起显隐。
+/** 通用："开关关闭时收起对应的子设置区"，设置页四张卡（自动浇水、补光灯、
+ *  每日照片、土壤自动校准）共用这一个函数，不再各写一份。
  *
- *  与 toggleLightMode 同一套做法：本地即时反馈，不等保存。关掉时收起是因为
- *  这两项此时都没有意义——尤其"重新拍摄"，它拍出来的照片会落进一个同样被
- *  隐藏的时间轴，等于拍了看不到。
+ *  switchId 是开关 checkbox 的 id，groupId 是随开关状态一起显隐的容器 id。
+ *  本地即时反馈，不等保存。关掉时收起是因为这些设置此时都不会被对应的
+ *  后台逻辑用到——展开徒增噪音，也容易让人以为改了就立刻生效（尤其"重新
+ *  拍摄"：拍出来的照片会落进一个同样被隐藏的时间轴，等于拍了看不到）。
+ *  隐藏不影响保存：saveConfig 读的是 DOM 里的当前值，隐藏元素的 value/checked
+ *  照样存在，提交时原样回传。
+ *
+ *  HTML 里直接以 onchange="toggleSettingsGroup('cfg-xxx-enabled','cfg-xxx-group')"
+ *  调用；新增一张带开关的设置卡时，照此接一行即可，不需要再写专用函数。
  */
-export function toggleDailyPhoto() {
-    const on = document.getElementById('cfg-photo-enabled').checked;
-    document.getElementById('cfg-photo-daily-group').classList.toggle('hidden', !on);
+export function toggleSettingsGroup(switchId, groupId) {
+    const on = document.getElementById(switchId).checked;
+    document.getElementById(groupId).classList.toggle('hidden', !on);
+}
+
+/** 设置页数据未就绪前的占位卡与实际内容之间切换。
+ *
+ *  两者是兄弟节点而不是"内容上盖一层遮罩"：盖遮罩的话，字段在遮罩后面已经
+ *  被上一次的值（或空值）填好，用户在加载的一瞬间会看到一闪而过的旧内容。
+ *  直接不渲染内容区，就没有这个问题——参见 index.html 里 #settings-content
+ *  用 display:contents，只为整体显隐、不参与网格布局。
+ */
+function showSettingsLoading(loading) {
+    document.getElementById('settings-loading').classList.toggle('hidden', !loading);
+    document.getElementById('settings-content').classList.toggle('hidden', loading);
 }
 
 export async function fetchConfig() {
+    showSettingsLoading(true);
     try {
         const res = await apiWater('/api/config');
 
@@ -60,11 +80,25 @@ export async function fetchConfig() {
         document.getElementById('cfg-photo-enabled').checked = photo.enabled !== false;
         document.getElementById('cfg-photo-hour').value = photo.hour ?? 12;
 
+        // 同样可能来自旧版本配置文件（这段设置是后加的），取不到时用后端默认值兜底。
+        // max_drift_ratio 后端存的是 0-1 的比率，界面按百分比展示更直观。
+        const calib = data.soil_calibration || {};
+        document.getElementById('cfg-calib-enabled').checked = calib.enabled !== false;
+        document.getElementById('cfg-calib-window-days').value = calib.window_days ?? 30;
+        document.getElementById('cfg-calib-max-drift').value = Math.round((calib.max_drift_ratio ?? 0.15) * 100);
+
         toggleLightMode();
-        toggleDailyPhoto();
+        toggleSettingsGroup('cfg-water-enabled', 'cfg-water-group');
+        toggleSettingsGroup('cfg-light-enabled', 'cfg-light-group');
+        toggleSettingsGroup('cfg-photo-enabled', 'cfg-photo-daily-group');
+        toggleSettingsGroup('cfg-calib-enabled', 'cfg-calib-group');
     } catch (e) {
         console.error(e);
         showToast(t('fail_load_cfg'), 'error');
+    } finally {
+        // 无论成功、失败还是抛异常都要收起占位卡——错误已经用 toast 说明了，
+        // 不该让用户永远停在转圈上。
+        showSettingsLoading(false);
     }
 }
 
@@ -101,6 +135,13 @@ export async function saveConfig() {
             enabled: document.getElementById('cfg-photo-enabled').checked,
             // 后端按整点判断（背景循环 10 分钟一轮），越界值会让每日照片永远拍不成
             hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-photo-hour').value) || 0))
+        },
+        soil_calibration: {
+            enabled: document.getElementById('cfg-calib-enabled').checked,
+            // 窗口太短统计不稳，太长又会超过 DEWY_DATA_RETENTION_DAYS（默认 365）
+            window_days: Math.min(365, Math.max(7, parseInt(document.getElementById('cfg-calib-window-days').value) || 30)),
+            // 界面按百分比展示，后端存 0-1 的比率
+            max_drift_ratio: Math.min(1, Math.max(0.01, (parseFloat(document.getElementById('cfg-calib-max-drift').value) || 15) / 100))
         }
     };
 

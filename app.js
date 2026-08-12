@@ -22,7 +22,7 @@ import {
 import { triggerWatering, toggleLight, toggleSoilView } from './js/dashboard.js';
 import { fetchHDImage, closeHD, initModalDismiss } from './js/camera.js';
 import { initKeyboardActivation } from './js/ui.js';
-import { toggleLightMode, toggleDailyPhoto, retakeTodayPhoto } from './js/settings.js';
+import { toggleLightMode, toggleSettingsGroup, retakeTodayPhoto } from './js/settings.js';
 import {
     toggleTimelinePlay,
     seekTimeline,
@@ -38,7 +38,7 @@ Object.assign(window, {
     switchDevice,
     switchHistType,
     toggleLightMode,
-    toggleDailyPhoto,
+    toggleSettingsGroup,
     saveConfigAndRefresh,   // 保存 + 重算显隐（见 navigation.js），不是裸的 saveConfig
     retakeTodayPhoto,
     triggerWatering,

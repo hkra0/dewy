@@ -93,7 +93,7 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     const caps = nodeCaps(dev);
     const hasSystem = nodeInfo.type === 'local';
     const hasPump = caps.pump;
-    const hasSettings = (caps.pump || caps.light || caps.camera) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration) && !!localStorage.getItem(WATER_KEY);
 
     const hasKey = !!localStorage.getItem(STORAGE_KEY);
     const hasCamera = caps.camera;
@@ -123,6 +123,11 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     // fetchConfig 填进来的原值，看不见的字段原样回传，不会被清成 false。
     if (hasCamera && caps.light) document.getElementById('cfg-photo-fill-light-row').classList.remove('hidden');
     else document.getElementById('cfg-photo-fill-light-row').classList.add('hidden');
+
+    // 土壤自动校准卡：只看硬件有没有支持校准的传感器，不看 enabled 开关
+    // 本身——这条规则已经在服务端 node_capabilities() 里定好了，这里只读。
+    if (caps.soil_calibration) document.getElementById('cfg-calib-card').classList.remove('hidden');
+    else document.getElementById('cfg-calib-card').classList.add('hidden');
 
     if ((state.currentTab === 'system' && !hasSystem) || (state.currentTab === 'settings' && !hasSettings)) {
         switchTab('environment', false, true);
@@ -161,7 +166,7 @@ export function switchTab(tabName, pushState = true, skipFetch = false) {
     const nodeInfo = state.availableNodes[state.currentDevice] || {};
     const caps = nodeCaps();
     const hasSystem = nodeInfo.type === 'local';
-    const hasSettings = (caps.pump || caps.light || caps.camera) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration) && !!localStorage.getItem(WATER_KEY);
 
     if (tabName === 'system' && !hasSystem) tabName = 'environment';
     if (tabName === 'settings' && !hasSettings) tabName = 'environment';

@@ -14,7 +14,11 @@ DEFAULT_CONFIG = {
     # 每日照片走的是同一个 fill_light_for_capture()，它对三条路径一起生效，
     # 挂在 daily_photo 下会让人以为只管定时那一张。
     "camera": {"fill_light": True},
-    "daily_photo": {"enabled": True, "hour": 12, "disk_limit_free_gb": 20}
+    "daily_photo": {"enabled": True, "hour": 12, "disk_limit_free_gb": 20},
+    # 土壤湿度 ABC（自动基准校准）的用户可调项，全局生效于所有可校准传感器
+    # （见 core/logic/soil_abc.py）——没有多株植物需要各自不同窗口期的真实
+    # 场景，一个全局开关比每传感器一份配置更简单。
+    "soil_calibration": {"enabled": True, "window_days": 30, "max_drift_ratio": 0.15},
 }
 # deepcopy 而非 copy：浅拷贝下 global_config["auto_light"] 就是 DEFAULT_CONFIG
 # 里那个 dict，IP 定位回写 lat/lng 会连默认值一起改掉。

@@ -313,6 +313,24 @@ body {
     line-height: 1.6;
 }
 
+/* 设置页配置加载中的占位卡：复用 .boot-spinner / .boot-text
+   （与首屏加载态同一视觉语言），只补一个居中的 flex 布局。 */
+.settings-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 50px 20px;
+}
+
+/* 包一层是为了整卡片组一起显隐（fetchConfig 加载中 / 完成），
+   display:contents 让它不参与布局——里面的 .full-width 卡片
+   仍然是 #view-settings 那个 grid 的直接子项，网格排布不受影响。 */
+.settings-content {
+    display: contents;
+}
+
 /* 报错时文案是要读的正文，不再是一句转场提示 */
 .app-boot.is-error .boot-text {
     color: var(--text-main);
@@ -430,6 +448,14 @@ body {
     color: var(--accent);
     text-align: center;
     margin-top: 5px;
+}
+
+/* 卡片内的说明文字：与 .form-hint（居中、强调色的"当前生效状态"提示）不同，
+   这是左对齐、弱化的静态说明，用在没有对应控件的整段描述上。 */
+.form-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
 }
 
 /* 保存按钮所在的卡片不需要内边距，按钮自己铺满 */
