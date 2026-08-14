@@ -21,6 +21,13 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 unsigned long lastSendTime = 0;
+unsigned long lastSuccessTime = 0; // 最近一次成功发布数据的时间，供看门狗判断是否卡死
+
+// 看门狗超时：这几个值都要能被单次重试成本覆盖，否则会在正常重试中途被误判为卡死
+#define WIFI_CONNECT_TIMEOUT_MS 30000UL       // 开机连 WiFi 的上限，超时说明路由器/信号有问题，重启重试
+#define MDNS_LOOKUP_TIMEOUT_MS 30000UL        // 单次 mDNS 查找上限
+#define MQTT_RECONNECT_TIMEOUT_MS 120000UL    // reconnect() 整体重试的上限，超时直接重启
+#define WATCHDOG_TIMEOUT_MS (5UL * 60UL * 1000UL) // 5 分钟没有成功发布过数据，判定为卡死
 
 // MQTT 消息接收回调函数
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -53,7 +60,12 @@ void setup_wifi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
+  unsigned long startTime = millis();
   while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - startTime > WIFI_CONNECT_TIMEOUT_MS) {
+      Serial.println("\nWiFi 连接超时，重启设备重试...");
+      ESP.restart();
+    }
     delay(500);
     Serial.print(".");
   }
@@ -70,18 +82,24 @@ void setup_wifi() {
   }
 }
 
-// 动态获取树莓派 IP 的函数
+// 动态获取树莓派 IP 的函数。超过 MDNS_LOOKUP_TIMEOUT_MS 找不到就放弃，
+// 返回 0.0.0.0 交给调用方处理。
 IPAddress getMqttServerIp() {
   Serial.printf("正在局域网内寻找 %s.local 的 IP...\n", MQTT_HOST);
   IPAddress serverIp;
-  
+  unsigned long startTime = millis();
+
   while (serverIp.toString() == "0.0.0.0" || serverIp.toString() == "(IP unset)") {
     serverIp = MDNS.queryHost(MQTT_HOST); // 发送 mDNS 广播查询
-    
+
     if(serverIp.toString() != "0.0.0.0" && serverIp.toString() != "(IP unset)") {
       Serial.print("✅ 找到树莓派! IP地址是: ");
       Serial.println(serverIp);
       return serverIp;
+    }
+    if (millis() - startTime > MDNS_LOOKUP_TIMEOUT_MS) {
+      Serial.println("mDNS 查找超时，放弃本轮");
+      return IPAddress(0, 0, 0, 0);
     }
     Serial.println("未找到，1秒后重试...");
     delay(1000);
@@ -90,16 +108,25 @@ IPAddress getMqttServerIp() {
 }
 
 void reconnect() {
-  // 循环直到连接上 MQTT 服务器
+  unsigned long startTime = millis();
   while (!client.connected()) {
+    if (millis() - startTime > MQTT_RECONNECT_TIMEOUT_MS) {
+      Serial.println("MQTT 重连超时，重启设备重试...");
+      ESP.restart();
+    }
+
     // 每次断开重连时，重新通过 mDNS 获取最新 IP
     IPAddress currentServerIp = getMqttServerIp();
+    if (currentServerIp == IPAddress(0, 0, 0, 0)) {
+      continue; // mDNS 本轮没找到，交回外层继续计时重试
+    }
     client.setServer(currentServerIp, 1883);
 
     Serial.print("尝试连接 MQTT 服务器...");
     // 建立连接
     if (client.connect(MQTT_CLIENT_ID)) {
       Serial.println("✅ 已连接到 MQTT!");
+      lastSuccessTime = millis();
       // 连接成功后订阅雾化器控制主题
       client.subscribe("device/esp32/atomizer/set");
     } else {
@@ -148,6 +175,8 @@ void setup() {
                   Adafruit_BMP280::FILTER_X16,
                   Adafruit_BMP280::STANDBY_MS_500);
   Serial.println("BMP280 初始化成功!");
+
+  lastSuccessTime = millis(); // 看门狗计时从开机这一刻算起，避免刚启动就误判超时
 }
 
 void loop() {
@@ -155,6 +184,13 @@ void loop() {
     reconnect();
   }
   client.loop(); // 维持 MQTT 心跳并处理接收到的订阅消息
+
+  // 顶层看门狗：即便 client.connected() 一直是 true，只要发布持续静默失败
+  // （比如网络出现黑洞式故障），也会在这里累计超时后强制重启自救。
+  if (millis() - lastSuccessTime > WATCHDOG_TIMEOUT_MS) {
+    Serial.println("⚠️ 超过 5 分钟没有成功发布数据，判定为卡死，重启设备...");
+    ESP.restart();
+  }
 
   unsigned long now = millis();
   // 每 5秒采集并发送一次数据（非阻塞方式）
@@ -185,6 +221,10 @@ void loop() {
     Serial.println(jsonBuffer);
     
     // 发布到 sensor/esp32/env_data 主题
-    client.publish("sensor/esp32/env_data", jsonBuffer);
+    if (client.publish("sensor/esp32/env_data", jsonBuffer)) {
+      lastSuccessTime = millis();
+    } else {
+      Serial.println("⚠️ 发布失败");
+    }
   }
 }
