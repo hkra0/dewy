@@ -61,7 +61,11 @@ export async function fetchConfig() {
 
         document.getElementById('cfg-water-enabled').checked = data.auto_water.enabled;
         document.getElementById('cfg-water-threshold').value = data.auto_water.threshold;
+        document.getElementById('cfg-water-target').value = data.auto_water.target_moisture ?? 85;
         document.getElementById('cfg-water-duration').value = data.auto_water.duration;
+        document.getElementById('cfg-water-pulse-interval').value = data.auto_water.pulse_interval ?? 60;
+        document.getElementById('cfg-water-max-pulses').value = data.auto_water.max_pulses ?? 10;
+        document.getElementById('cfg-water-min-interval').value = data.auto_water.min_interval_hours ?? 12;
         document.getElementById('cfg-water-hour').value = data.auto_water.hour ?? 6;
         document.getElementById('cfg-light-enabled').checked = data.auto_light.enabled;
         document.getElementById('cfg-light-mode').value = data.auto_light.mode;
@@ -116,8 +120,12 @@ export async function saveConfig() {
     const cfg = {
         auto_water: {
             enabled: document.getElementById('cfg-water-enabled').checked,
-            threshold: parseFloat(document.getElementById('cfg-water-threshold').value) || 50.0,
-            duration: parseFloat(document.getElementById('cfg-water-duration').value) || 0.5,
+            threshold: Math.min(100, Math.max(0, parseFloat(document.getElementById('cfg-water-threshold').value) || 65.0)),
+            target_moisture: Math.min(100, Math.max(0, parseFloat(document.getElementById('cfg-water-target').value) || 85.0)),
+            duration: Math.min(5.0, Math.max(0.1, parseFloat(document.getElementById('cfg-water-duration').value) || 0.5)),
+            pulse_interval: Math.min(300, Math.max(10, parseInt(document.getElementById('cfg-water-pulse-interval').value) || 60)),
+            max_pulses: Math.min(30, Math.max(1, parseInt(document.getElementById('cfg-water-max-pulses').value) || 10)),
+            min_interval_hours: Math.min(72, Math.max(1, parseInt(document.getElementById('cfg-water-min-interval').value) || 12)),
             hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-water-hour').value) || 0))
         },
         auto_light: {

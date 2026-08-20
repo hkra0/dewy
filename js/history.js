@@ -37,9 +37,11 @@ export async function renderHistoryUI(data, type, animate = false) {
         const wrapper = document.getElementById('watering-log-wrapper');
         if (!data || data.length === 0) { wrapper.innerHTML = `<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">${t('no_water_records')}</div>`; return; }
         let html = '<div class="watering-table-wrapper"><table class="watering-table">';
-        html += `<thead><tr><th>${t('table_duration')}</th><th>${t('table_soil')}</th><th>${t('table_time')}</th></tr></thead><tbody>`;
+        html += `<thead><tr><th>${t('table_duration')}</th><th>${t('table_soil')}</th><th>${t('table_pulses')}</th><th>${t('table_soil_after')}</th><th>${t('table_time')}</th></tr></thead><tbody>`;
         data.forEach(item => {
-            html += `<tr><td>${item.duration}</td><td>${item.soil}</td><td class="log-time" style="color: var(--text-muted); font-size: 12px;">${item.time}</td></tr>`;
+            const pulses = item.pulses != null ? item.pulses : 1;
+            const soilAfter = item.soil_after != null ? item.soil_after : '--';
+            html += `<tr><td>${item.duration}</td><td>${item.soil}</td><td>${pulses}</td><td>${soilAfter}</td><td class="log-time" style="color: var(--text-muted); font-size: 12px;">${item.time}</td></tr>`;
         });
         wrapper.innerHTML = html + '</tbody></table></div>';
         return;

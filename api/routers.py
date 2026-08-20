@@ -153,7 +153,10 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main"):
     try:
         if hist_type == "watering":
             rows = db.query_watering_history(node_id)
-            return [{"time": r[0], "duration": r[1], "soil": round(r[2], 1) if r[2] is not None else None} for r in rows]
+            return [{"time": r[0], "duration": r[1],
+                     "soil": round(r[2], 1) if r[2] is not None else None,
+                     "pulses": r[3] if r[3] is not None else 1,
+                     "soil_after": round(r[4], 1) if r[4] is not None else None} for r in rows]
 
         elif hist_type == "daily":
             rows, water_rows = db.query_daily_history(node_id)

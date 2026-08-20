@@ -128,12 +128,20 @@ def init_db():
 
         # ---- 轻量级 schema 迁移 ----
         # CREATE TABLE IF NOT EXISTS 不会给已存在的表加新列。
-        # soil_adc_raw 是新增列（校准功能），老库需要 ALTER TABLE 补上。
         # 幂等：PRAGMA table_info 检查列是否已存在，存在则跳过。
         cols = [row[1] for row in conn.execute("PRAGMA table_info(node_data)")]
         if "soil_adc_raw" not in cols:
             conn.execute("ALTER TABLE node_data ADD COLUMN soil_adc_raw REAL")
             logger.info("已为 node_data 添加 soil_adc_raw 列（校准功能）")
+
+        # 脉冲式浇水新增列：pulse_count（脉冲数）和 soil_after（浇后湿度）
+        water_cols = [row[1] for row in conn.execute("PRAGMA table_info(watering_log)")]
+        if "pulse_count" not in water_cols:
+            conn.execute("ALTER TABLE watering_log ADD COLUMN pulse_count INTEGER DEFAULT 1")
+            logger.info("已为 watering_log 添加 pulse_count 列（脉冲浇水）")
+        if "soil_after" not in water_cols:
+            conn.execute("ALTER TABLE watering_log ADD COLUMN soil_after REAL")
+            logger.info("已为 watering_log 添加 soil_after 列（脉冲浇水）")
 
 
 # ==================== node_data（传感器归档） ====================
@@ -327,10 +335,10 @@ def query_last_watering_time(node_id):
     return rows[0][0] if rows else None
 
 
-def insert_watering(node_id, duration, soil_before):
+def insert_watering(node_id, duration, soil_before, pulse_count=1, soil_after=None):
     execute(
-        "INSERT INTO watering_log (node_id, duration, soil_before) VALUES (?, ?, ?)",
-        (node_id, duration, soil_before),
+        "INSERT INTO watering_log (node_id, duration, soil_before, pulse_count, soil_after) VALUES (?, ?, ?, ?, ?)",
+        (node_id, duration, soil_before, pulse_count, soil_after),
     )
 
 
@@ -393,7 +401,7 @@ def delete_photos(date_strs):
 
 def query_watering_history(node_id, limit=30):
     return query('''
-        SELECT datetime(timestamp, 'localtime'), duration, soil_before
+        SELECT datetime(timestamp, 'localtime'), duration, soil_before, pulse_count, soil_after
         FROM watering_log
         WHERE node_id=?
         ORDER BY timestamp DESC LIMIT ?

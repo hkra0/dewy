@@ -8,7 +8,7 @@ import core.state as state
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
-    "auto_water": {"enabled": True, "duration": 0.5, "threshold": 50.0, "hour": 6, "node_id": "main", "actuator_id": "pump"},
+    "auto_water": {"enabled": True, "duration": 0.5, "threshold": 65.0, "target_moisture": 85.0, "pulse_interval": 60, "max_pulses": 10, "min_interval_hours": 12, "hour": 6, "node_id": "main", "actuator_id": "pump"},
     "auto_light": {"enabled": True, "mode": "fixed", "on_time": "07:30", "off_time": "21:30", "sun_on_offset": 0, "sun_off_offset": 0, "lat": "", "lng": "", "node_id": "main", "actuator_id": "light"},
     # 拍照的通用设置。补光放这里而不是 daily_photo 里：实时预览、高清抓拍、
     # 每日照片走的是同一个 fill_light_for_capture()，它对三条路径一起生效，
