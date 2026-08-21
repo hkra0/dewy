@@ -167,7 +167,7 @@ def check_auto_watering(node_id, data, now):
 
     判断逻辑：
     1. 未处于省电模式、自动浇水已启用、是配置指定的节点
-    2. 当前时刻 >= water_hour（每天最早允许浇水的时刻）
+    2. 当前时刻在 start_hour 和 end_hour 组成的时间窗口内
     3. 距上次浇水已超过 min_interval_hours
     4. 当前土壤湿度 < threshold（触发下限）
     满足以上全部条件后执行脉冲浇水。
@@ -176,9 +176,17 @@ def check_auto_watering(node_id, data, now):
     if state.power_save_mode or not cfg["enabled"] or cfg["node_id"] != node_id:
         return
 
-    # water_hour：每天最早允许浇水的时刻（整点），避免半夜泵噪音
-    water_hour = cfg.get("hour", 6)
-    if now.hour < water_hour:
+    # 2. 当前时刻在允许浇水的时间窗口内（支持跨天）
+    start = cfg.get("start_hour", 6)
+    end = cfg.get("end_hour", 20)
+    
+    if start <= end:
+        in_window = start <= now.hour < end
+    else:
+        # 跨天区间，如 22:00 ~ 06:00
+        in_window = now.hour >= start or now.hour < end
+        
+    if not in_window:
         return
 
     min_interval = cfg.get("min_interval_hours", 12)

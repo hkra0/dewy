@@ -1129,3 +1129,105 @@ input:checked+.slider:before {
     border-color: var(--border);
     color: var(--text-muted);
 }
+
+/* ========== Dual Range Slider ========== */
+.dual-slider-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    margin-bottom: 12px;
+}
+.dual-slider-values {
+    color: var(--accent);
+    font-weight: 600;
+}
+.dual-slider-container {
+    position: relative;
+    height: 24px;
+    display: flex;
+    align-items: center;
+}
+.dual-slider-track {
+    position: absolute;
+    width: 100%;
+    height: 6px;
+    background: var(--border);
+    border-radius: 4px;
+    z-index: 1;
+}
+.dual-slider-container {
+    --track-fill-start: 65%;
+    --track-fill-end: 85%;
+}
+.dual-slider-track::before {
+    content: '';
+    position: absolute;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    left: var(--track-fill-start);
+    right: calc(100% - var(--track-fill-end));
+}
+.dual-slider-container input[type="range"] {
+    position: absolute;
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    pointer-events: none;
+    z-index: 2;
+    margin: 0;
+}
+.dual-slider-container input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    pointer-events: all;
+    width: 20px;
+    height: 20px;
+    background: var(--surface-color);
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    position: relative;
+    z-index: 3;
+}
+.dual-slider-container input[type="range"]:active::-webkit-slider-thumb {
+    z-index: 4;
+}
+/* Multi Input Row */
+.form-row-stacked {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border);
+}
+.form-row-stacked:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+.multi-input {
+    flex-direction: row !important;
+    align-items: center;
+}
+.input-group-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.input-group-row .form-input {
+    width: 50px;
+    text-align: center;
+    padding: 6px 2px;
+}
+.input-group-row span {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.input-group-row .separator {
+    margin: 0 2px;
+    color: var(--border);
+}

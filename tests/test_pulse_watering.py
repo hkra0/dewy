@@ -33,7 +33,8 @@ class TestPulseWatering(unittest.TestCase):
                 "pulse_interval": 0,   # 测试时不实际等待
                 "max_pulses": 10,
                 "min_interval_hours": 12,
-                "hour": 6,
+                "start_hour": 6,
+                "end_hour": 20,
                 "node_id": "main",
                 "actuator_id": "pump",
             },
@@ -131,7 +132,8 @@ class TestCheckAutoWatering(unittest.TestCase):
                 "pulse_interval": 0,
                 "max_pulses": 3,
                 "min_interval_hours": 12,
-                "hour": 6,
+                "start_hour": 6,
+                "end_hour": 20,
                 "node_id": "main",
                 "actuator_id": "pump",
             },
@@ -150,11 +152,39 @@ class TestCheckAutoWatering(unittest.TestCase):
         check_auto_watering("main", {"soil_moisture": 30.0}, datetime(2026, 8, 20, 8, 0))
         state.hardware_manager.trigger_actuator.assert_not_called()
 
-    def test_before_water_hour_skips(self):
-        """当前时刻 < water_hour → 不浇。"""
+    def test_out_of_window_skips(self):
+        """当前时刻不在 start_hour ~ end_hour 之间 → 不浇。"""
         from datetime import datetime
         from core.logic.watering import check_auto_watering
+        # 5:00 < 6:00
         check_auto_watering("main", {"soil_moisture": 30.0}, datetime(2026, 8, 20, 5, 0))
+        state.hardware_manager.trigger_actuator.assert_not_called()
+        
+        # 21:00 > 20:00
+        check_auto_watering("main", {"soil_moisture": 30.0}, datetime(2026, 8, 20, 21, 0))
+        state.hardware_manager.trigger_actuator.assert_not_called()
+
+    def test_cross_day_window(self):
+        """跨天窗口：start=22, end=6。"""
+        config.global_config["auto_water"]["start_hour"] = 22
+        config.global_config["auto_water"]["end_hour"] = 6
+        from datetime import datetime
+        from core.logic.watering import check_auto_watering
+        
+        # 23:00 在区间内，满足触发条件 (阈值 65)
+        state.hardware_manager.trigger_actuator.return_value = True
+        state.hardware_manager.read_local_node.return_value = {"soil_moisture": 90.0}
+        check_auto_watering("main", {"soil_moisture": 30.0}, datetime(2026, 8, 20, 23, 0))
+        state.hardware_manager.trigger_actuator.assert_called()
+        
+        state.hardware_manager.trigger_actuator.reset_mock()
+        # 5:00 在区间内
+        check_auto_watering("main", {"soil_moisture": 30.0}, datetime(2026, 8, 20, 5, 0))
+        state.hardware_manager.trigger_actuator.assert_called()
+        
+        state.hardware_manager.trigger_actuator.reset_mock()
+        # 12:00 不在区间内
+        check_auto_watering("main", {"soil_moisture": 30.0}, datetime(2026, 8, 20, 12, 0))
         state.hardware_manager.trigger_actuator.assert_not_called()
 
     def test_above_threshold_skips(self):
@@ -209,7 +239,8 @@ class TestTriggerWatering(unittest.TestCase):
                 "pulse_interval": 60,
                 "max_pulses": 10,
                 "min_interval_hours": 12,
-                "hour": 6,
+                "start_hour": 6,
+                "end_hour": 20,
                 "node_id": "main",
                 "actuator_id": "pump",
             },
@@ -261,6 +292,9 @@ class TestMergeDefaults(unittest.TestCase):
         self.assertEqual(aw["pulse_interval"], 60)
         self.assertEqual(aw["max_pulses"], 10)
         self.assertEqual(aw["min_interval_hours"], 12)
+        self.assertEqual(aw["start_hour"], 6)
+        self.assertEqual(aw["end_hour"], 20)
+        self.assertNotIn("hour", aw)
         # 老的 threshold 值保留，不被覆盖
         self.assertEqual(aw["threshold"], 50.0)
 
@@ -275,7 +309,8 @@ class TestMergeDefaults(unittest.TestCase):
                 "pulse_interval": 120,
                 "max_pulses": 5,
                 "min_interval_hours": 6,
-                "hour": 8,
+                "start_hour": 8,
+                "end_hour": 18,
                 "node_id": "main",
                 "actuator_id": "pump",
             },

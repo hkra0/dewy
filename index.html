@@ -206,33 +206,46 @@
                 <div class="form-body">
                     <!-- 关掉开关时收起：阈值/时长此时都不会被自动浇水用到 -->
                     <div class="form-group" id="cfg-water-group">
-                        <div class="form-row">
-                            <label for="cfg-water-threshold" data-i18n="threshold">Trigger Threshold (%)</label>
-                            <input type="number" id="cfg-water-threshold" class="form-input form-input--sm" min="0" max="100" step="1">
+                        <div class="form-row-stacked">
+                            <div class="dual-slider-header">
+                                <span data-i18n="water_thresholds">Moisture Thresholds</span>
+                                <span class="dual-slider-values"><span id="water-thresh-val">65</span>% ~ <span id="water-target-val">85</span>%</span>
+                            </div>
+                            <div class="dual-slider-container">
+                                <div class="dual-slider-track" id="water-slider-track"></div>
+                                <input type="range" id="cfg-water-threshold" min="0" max="100" step="1" value="65">
+                                <input type="range" id="cfg-water-target" min="0" max="100" step="1" value="85">
+                            </div>
                         </div>
-                        <div class="form-row">
-                            <label for="cfg-water-target" data-i18n="water_target">Target Moisture (%)</label>
-                            <input type="number" id="cfg-water-target" class="form-input form-input--sm" min="0" max="100" step="1">
+                        <div class="form-row-stacked">
+                            <label data-i18n="water_pulse_config" style="margin-bottom: 6px;">Pulse Config</label>
+                            <div class="input-group-row" style="flex-wrap: wrap;">
+                                <span data-i18n="sentence_pump">Pump</span>
+                                <input type="number" id="cfg-water-duration" class="form-input form-input--sm" min="0.1" max="5.0" step="0.1">
+                                <span data-i18n="sentence_sec_wait">s, wait</span>
+                                <input type="number" id="cfg-water-pulse-interval" class="form-input form-input--sm" min="10" max="300" step="1">
+                                <span data-i18n="sentence_sec">s</span>
+                            </div>
                         </div>
-                        <div class="form-row">
-                            <label for="cfg-water-duration" data-i18n="duration">Pulse Duration (s)</label>
-                            <input type="number" id="cfg-water-duration" class="form-input form-input--sm" min="0.1" max="5.0" step="0.1">
+                        <div class="form-row-stacked">
+                            <label data-i18n="water_limits" style="margin-bottom: 6px;">Limits</label>
+                            <div class="input-group-row" style="flex-wrap: wrap;">
+                                <span data-i18n="sentence_max">Max</span>
+                                <input type="number" id="cfg-water-max-pulses" class="form-input form-input--sm" min="1" max="30" step="1">
+                                <span data-i18n="sentence_pulses_wait">pulses. Min wait</span>
+                                <input type="number" id="cfg-water-min-interval" class="form-input form-input--sm" min="1" max="72" step="1">
+                                <span data-i18n="sentence_hours">h</span>
+                            </div>
                         </div>
-                        <div class="form-row">
-                            <label for="cfg-water-pulse-interval" data-i18n="water_pulse_interval">Pulse Interval (s)</label>
-                            <input type="number" id="cfg-water-pulse-interval" class="form-input form-input--sm" min="10" max="300" step="1">
-                        </div>
-                        <div class="form-row">
-                            <label for="cfg-water-max-pulses" data-i18n="water_max_pulses">Max Pulses</label>
-                            <input type="number" id="cfg-water-max-pulses" class="form-input form-input--sm" min="1" max="30" step="1">
-                        </div>
-                        <div class="form-row">
-                            <label for="cfg-water-min-interval" data-i18n="water_min_interval">Min Interval (hours)</label>
-                            <input type="number" id="cfg-water-min-interval" class="form-input form-input--sm" min="1" max="72" step="1">
-                        </div>
-                        <div class="form-row">
-                            <label for="cfg-water-hour" data-i18n="water_hour">Earliest Hour</label>
-                            <input type="number" id="cfg-water-hour" class="form-input form-input--sm" min="0" max="23" step="1">
+                        <div class="form-row multi-input">
+                            <label data-i18n="water_time_window">Operating Window</label>
+                            <div class="input-group-row">
+                                <input type="number" id="cfg-water-start-hour" class="form-input form-input--sm" min="0" max="23" step="1" title="Start Hour">
+                                <span>:00</span>
+                                <span class="separator">-</span>
+                                <input type="number" id="cfg-water-end-hour" class="form-input form-input--sm" min="0" max="23" step="1" title="End Hour">
+                                <span>:00</span>
+                            </div>
                         </div>
                     </div>
                 </div>

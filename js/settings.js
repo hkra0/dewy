@@ -5,6 +5,43 @@ import { getWaterKey } from './state.js';
 import { apiWater, apiWaterPost } from './api.js';
 import { loadPhotoTimeline } from './timeline.js';
 
+let dualSliderInitialized = false;
+
+function initDualSlider() {
+    const threshInput = document.getElementById('cfg-water-threshold');
+    const targetInput = document.getElementById('cfg-water-target');
+    const threshVal = document.getElementById('water-thresh-val');
+    const targetVal = document.getElementById('water-target-val');
+    const container = document.getElementById('cfg-water-group').querySelector('.dual-slider-container');
+    
+    function updateSlider() {
+        let minVal = parseInt(threshInput.value);
+        let maxVal = parseInt(targetInput.value);
+        
+        if (maxVal - minVal < 5) {
+            if (this === threshInput) {
+                threshInput.value = maxVal - 5;
+                minVal = parseInt(threshInput.value);
+            } else {
+                targetInput.value = minVal + 5;
+                maxVal = parseInt(targetInput.value);
+            }
+        }
+        
+        threshVal.innerText = minVal;
+        targetVal.innerText = maxVal;
+        container.style.setProperty('--track-fill-start', minVal + '%');
+        container.style.setProperty('--track-fill-end', maxVal + '%');
+    }
+    
+    if (!dualSliderInitialized && container) {
+        threshInput.addEventListener('input', updateSlider);
+        targetInput.addEventListener('input', updateSlider);
+        dualSliderInitialized = true;
+    }
+    if (container) updateSlider.call(threshInput);
+}
+
 export function toggleLightMode() {
     const mode = document.getElementById('cfg-light-mode').value;
     if (mode === 'fixed') {
@@ -66,7 +103,10 @@ export async function fetchConfig() {
         document.getElementById('cfg-water-pulse-interval').value = data.auto_water.pulse_interval ?? 60;
         document.getElementById('cfg-water-max-pulses').value = data.auto_water.max_pulses ?? 10;
         document.getElementById('cfg-water-min-interval').value = data.auto_water.min_interval_hours ?? 12;
-        document.getElementById('cfg-water-hour').value = data.auto_water.hour ?? 6;
+        document.getElementById('cfg-water-start-hour').value = data.auto_water.start_hour ?? 6;
+        document.getElementById('cfg-water-end-hour').value = data.auto_water.end_hour ?? 20;
+        
+        initDualSlider();
         document.getElementById('cfg-light-enabled').checked = data.auto_light.enabled;
         document.getElementById('cfg-light-mode').value = data.auto_light.mode;
         document.getElementById('cfg-light-on').value = data.auto_light.on_time;
@@ -126,7 +166,8 @@ export async function saveConfig() {
             pulse_interval: Math.min(300, Math.max(10, parseInt(document.getElementById('cfg-water-pulse-interval').value) || 60)),
             max_pulses: Math.min(30, Math.max(1, parseInt(document.getElementById('cfg-water-max-pulses').value) || 10)),
             min_interval_hours: Math.min(72, Math.max(1, parseInt(document.getElementById('cfg-water-min-interval').value) || 12)),
-            hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-water-hour').value) || 0))
+            start_hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-water-start-hour').value) || 6)),
+            end_hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-water-end-hour').value) || 20))
         },
         auto_light: {
             enabled: document.getElementById('cfg-light-enabled').checked,
