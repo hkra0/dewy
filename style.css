@@ -1040,6 +1040,7 @@ input:checked+.slider:before {
 .timeline-controls {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 10px 0 0 0;
 }
@@ -1060,13 +1061,21 @@ input:checked+.slider:before {
     transition: all 0.2s;
 }
 
-.tl-btn:hover {
+.tl-btn:hover:not(:disabled) {
     border-color: var(--accent);
     color: var(--accent);
 }
 
+.tl-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    color: var(--text-muted);
+    border-color: var(--border);
+}
+
 .tl-slider {
     flex: 1;
+    min-width: 0;
     height: 4px;
     -webkit-appearance: none;
     appearance: none;
