@@ -6,7 +6,7 @@ import { apiGet } from './api.js';
 import { ensureGifshot } from './cdn.js';
 
 let tlPhotos = [];
-let tlCurrentIdx = 0;
+let tlCurrentIdx = -1;
 let tlPlaying = false;
 let tlInterval = null;
 let tlSpeed = 500;
@@ -72,7 +72,7 @@ export async function loadPhotoTimeline(forceFetch = false) {
     if (emptyEl) emptyEl.classList.add('hidden');
     slider.min = "0";
     slider.max = String(tlPhotos.length - 1);
-    if (tlCurrentIdx >= tlPhotos.length || tlCurrentIdx === 0) {
+    if (tlCurrentIdx >= tlPhotos.length || tlCurrentIdx < 0) {
         tlCurrentIdx = tlPhotos.length - 1; // Default to newest photo
     }
     renderTimelineFrame(tlCurrentIdx);
@@ -114,6 +114,11 @@ export async function renderTimelineFrame(idx) {
     document.getElementById('tl-counter').innerText = `${idx + 1} / ${tlPhotos.length}`;
     document.getElementById('timeline-date').innerText = photo.date;
 
+    const prevBtn = document.getElementById('tl-prev-btn');
+    const nextBtn = document.getElementById('tl-next-btn');
+    if (prevBtn) prevBtn.disabled = idx === 0;
+    if (nextBtn) nextBtn.disabled = idx === tlPhotos.length - 1;
+
     const imgEl = document.getElementById('timeline-img');
     // alt 不能留空串：这张图是页面主内容，不是装饰
     imgEl.alt = `plant photo ${photo.date}`;
@@ -133,12 +138,13 @@ export async function renderTimelineFrame(idx) {
         }
     }
 
-    // Preload 6 frames ahead
-    for (let step = 1; step <= 6; step++) {
-        const nextIdx = (idx + step) % tlPhotos.length;
-        if (!tlThumbCache.has(tlPhotos[nextIdx].date)) {
-            fetchThumb(tlPhotos[nextIdx].date);
-        }
+    // Preload 3 frames ahead and 3 frames behind
+    for (let step = 1; step <= 3; step++) {
+        const fwdIdx = (idx + step) % tlPhotos.length;
+        if (!tlThumbCache.has(tlPhotos[fwdIdx].date)) fetchThumb(tlPhotos[fwdIdx].date);
+        
+        const bwdIdx = (idx - step + tlPhotos.length) % tlPhotos.length;
+        if (!tlThumbCache.has(tlPhotos[bwdIdx].date)) fetchThumb(tlPhotos[bwdIdx].date);
     }
 }
 
@@ -171,6 +177,14 @@ export function seekTimeline(val) {
     const idx = parseInt(val, 10);
     if (!isNaN(idx)) {
         renderTimelineFrame(idx);
+    }
+}
+
+export function navTimeline(dir) {
+    if (tlPlaying) toggleTimelinePlay();
+    const nextIdx = tlCurrentIdx + dir;
+    if (nextIdx >= 0 && nextIdx < tlPhotos.length) {
+        renderTimelineFrame(nextIdx);
     }
 }
 

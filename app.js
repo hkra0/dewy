@@ -26,6 +26,7 @@ import { toggleLightMode, toggleSettingsGroup, retakeTodayPhoto } from './js/set
 import {
     toggleTimelinePlay,
     seekTimeline,
+    navTimeline,
     setTimelineSpeed,
     exportTimelineGIF,
     viewFullPhoto,
@@ -49,6 +50,7 @@ Object.assign(window, {
     closeHD,
     toggleTimelinePlay,
     seekTimeline,
+    navTimeline,
     setTimelineSpeed,
     exportTimelineGIF,
     viewFullPhoto,
