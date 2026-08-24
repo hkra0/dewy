@@ -33,6 +33,8 @@ import {
     closeExportModal,
     onExportFormatChange,
     submitExport,
+    downloadLatestExport,
+    resetExportForm,
     initExportModalDismiss,
     viewFullPhoto,
 } from './js/timeline.js';
@@ -62,6 +64,8 @@ Object.assign(window, {
     closeExportModal,
     onExportFormatChange,
     submitExport,
+    downloadLatestExport,
+    resetExportForm,
     viewFullPhoto,
 });
 

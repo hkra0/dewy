@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import { showToast } from './ui.js';
 import { getViewerKey, nodeCaps } from './state.js';
-import { apiGet, apiViewerPost } from './api.js';
+import { apiGet, apiViewerPost, bust } from './api.js';
 
 let tlPhotos = [];
 let tlCurrentIdx = -1;
@@ -303,34 +303,164 @@ function createWatermarkedFrame(imgUrl, dateText) {
     });
 }
 
-export function openExportModal() {
+let exportPollTimer = null;
+let currentExportStatus = null;
+
+function formatFileSize(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function showExportView(viewName) {
+    const formEl = document.getElementById('export-modal-form');
+    const progressEl = document.getElementById('export-modal-progress');
+    const completedEl = document.getElementById('export-modal-completed');
+    const footerEl = document.getElementById('export-modal-footer');
+    const submitBtn = document.getElementById('export-submit-btn');
+
+    if (formEl) formEl.classList.toggle('hidden', viewName !== 'form');
+    if (progressEl) progressEl.classList.toggle('hidden', viewName !== 'progress');
+    if (completedEl) completedEl.classList.toggle('hidden', viewName !== 'completed');
+    if (footerEl) footerEl.classList.toggle('hidden', viewName !== 'form');
+
+    if (viewName === 'form' && submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = t('start_export');
+    }
+}
+
+function updateExportProgressUI(statusData) {
+    const progressBar = document.getElementById('export-progress-bar');
+    const counterEl = document.getElementById('export-progress-counter');
+    const statusText = document.getElementById('export-status-text');
+
+    const progress = statusData.progress || { current: 0, total: 0, percent: 0 };
+    const percent = Math.min(100, Math.max(0, progress.percent || 0));
+
+    if (progressBar) progressBar.style.width = `${percent}%`;
+    if (counterEl) {
+        if (progress.total > 0) {
+            counterEl.innerText = t('export_frames_progress', {
+                current: progress.current,
+                total: progress.total,
+                percent: percent
+            });
+        } else {
+            counterEl.innerText = `${percent}%`;
+        }
+    }
+    if (statusText) {
+        statusText.innerText = t('export_in_progress', { percent });
+    }
+}
+
+function updateExportCompletedUI(statusData) {
+    const fileNameEl = document.getElementById('export-file-name');
+    const fileSizeEl = document.getElementById('export-file-size');
+
+    if (fileNameEl) {
+        fileNameEl.innerText = statusData.filename || 'dewy_timelapse.mp4';
+    }
+    if (fileSizeEl) {
+        const sizeStr = formatFileSize(statusData.file_size);
+        fileSizeEl.innerText = t('export_file_size', { size: sizeStr });
+    }
+}
+
+export async function pollExportStatus() {
+    try {
+        const res = await apiGet('/api/photos/export/status');
+        if (!res.ok) return null;
+        const data = await res.json();
+        currentExportStatus = data;
+
+        const modal = document.getElementById('export-modal');
+        const isModalOpen = modal && !modal.classList.contains('hidden');
+
+        if (data.status === 'running') {
+            if (isModalOpen) {
+                showExportView('progress');
+                updateExportProgressUI(data);
+            }
+        } else if (data.status === 'completed') {
+            stopExportPolling();
+            if (isModalOpen) {
+                showExportView('completed');
+                updateExportCompletedUI(data);
+            } else {
+                showToast(t('export_completed_toast'), 'success');
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(t('export_notif_title'), {
+                        body: t('export_notif_body'),
+                        icon: '/favicon.ico'
+                    });
+                }
+            }
+        } else if (data.status === 'failed') {
+            stopExportPolling();
+            if (isModalOpen) {
+                showExportView('form');
+            }
+            showToast(t('export_fail', { msg: data.error || 'Unknown error' }), 'error');
+        } else {
+            // idle
+            stopExportPolling();
+            if (isModalOpen) {
+                showExportView('form');
+            }
+        }
+        return data;
+    } catch (e) {
+        console.error("Failed to poll export status", e);
+        return null;
+    }
+}
+
+export function startExportPolling() {
+    stopExportPolling();
+    exportPollTimer = setInterval(pollExportStatus, 1000);
+}
+
+export function stopExportPolling() {
+    if (exportPollTimer) {
+        clearInterval(exportPollTimer);
+        exportPollTimer = null;
+    }
+}
+
+export async function openExportModal() {
     if (!tlPhotos || tlPhotos.length === 0) return;
     if (tlPlaying) toggleTimelinePlay();
 
     const modal = document.getElementById('export-modal');
     if (!modal) return;
 
-    // 重置弹窗内部视图状态
-    const formEl = document.getElementById('export-modal-form');
-    const progressEl = document.getElementById('export-modal-progress');
-    const footerEl = document.getElementById('export-modal-footer');
-    const submitBtn = document.getElementById('export-submit-btn');
-
-    if (formEl) formEl.classList.remove('hidden');
-    if (progressEl) progressEl.classList.add('hidden');
-    if (footerEl) footerEl.classList.remove('hidden');
-    if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerText = t('start_export');
-    }
-
-    // 默认导出帧率为 4 FPS
-    const speedSelect = document.getElementById('export-speed-select');
-    if (speedSelect) {
-        speedSelect.value = "4";
-    }
-
     modal.classList.remove('hidden');
+
+    // 若浏览器支持通知且尚未决定，静默请求授权
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+    }
+
+    // 默认速度重置为 4 FPS
+    const speedSelect = document.getElementById('export-speed-select');
+    if (speedSelect && !speedSelect.value) speedSelect.value = "4";
+
+    // 检查当前后端任务状态
+    const statusData = await pollExportStatus();
+    if (statusData && statusData.status === 'running') {
+        showExportView('progress');
+        updateExportProgressUI(statusData);
+        startExportPolling();
+    } else if (statusData && statusData.status === 'completed') {
+        showExportView('completed');
+        updateExportCompletedUI(statusData);
+    } else {
+        showExportView('form');
+    }
 }
 
 export function closeExportModal() {
@@ -345,26 +475,19 @@ export function onExportFormatChange() {
 export async function submitExport() {
     if (!tlPhotos || tlPhotos.length === 0) return;
 
-    const modal = document.getElementById('export-modal');
-    const formEl = document.getElementById('export-modal-form');
-    const progressEl = document.getElementById('export-modal-progress');
-    const footerEl = document.getElementById('export-modal-footer');
-    const statusText = document.getElementById('export-status-text');
-    const subText = document.getElementById('export-sub-text');
-    const submitBtn = document.getElementById('export-submit-btn');
-
     const format = document.querySelector('input[name="export-format"]:checked')?.value || 'mp4';
     const quality = document.querySelector('input[name="export-quality"]:checked')?.value || 'hd';
     const fps = parseFloat(document.getElementById('export-speed-select')?.value || '4');
     const watermark = document.getElementById('export-watermark-check')?.checked ?? true;
 
-    // 切换到生成进度界面
-    if (formEl) formEl.classList.add('hidden');
-    if (footerEl) footerEl.classList.add('hidden');
-    if (progressEl) progressEl.classList.remove('hidden');
+    showExportView('progress');
+    const progressBar = document.getElementById('export-progress-bar');
+    const counterEl = document.getElementById('export-progress-counter');
+    const statusText = document.getElementById('export-status-text');
 
+    if (progressBar) progressBar.style.width = '0%';
+    if (counterEl) counterEl.innerText = '0%';
     if (statusText) statusText.innerText = t('export_generating');
-    if (subText) subText.innerText = t('export_generating_hint');
 
     try {
         const payload = {
@@ -376,6 +499,11 @@ export async function submitExport() {
         };
 
         const res = await apiViewerPost('/api/photos/export', payload);
+        if (res.status === 409) {
+            showToast(t('export_busy'), 'warning');
+            startExportPolling();
+            return;
+        }
         if (!res.ok) {
             let errMsg = 'Server error';
             try {
@@ -387,10 +515,40 @@ export async function submitExport() {
             throw new Error(errMsg);
         }
 
+        const data = await res.json();
+        if (data && data.status === 'completed') {
+            currentExportStatus = data;
+            showExportView('completed');
+            updateExportCompletedUI(data);
+            showToast(t('export_completed_toast'), 'success');
+            await downloadLatestExport();
+            return;
+        }
+
+        showToast(t('export_started_toast'), 'info');
+        startExportPolling();
+
+    } catch (e) {
+        console.error("Export start failed:", e);
+        showToast(t('export_fail', { msg: e.message }), 'error');
+        showExportView('form');
+    }
+}
+
+export async function downloadLatestExport() {
+    const downloadBtn = document.getElementById('export-download-btn');
+    if (downloadBtn) downloadBtn.disabled = true;
+
+    try {
+        const res = await apiGet(bust('/api/photos/export/download'));
+        if (!res.ok) {
+            throw new Error(`Download failed: HTTP ${res.status}`);
+        }
+
         const blob = await res.blob();
-        const mime = format === 'mp4' ? 'video/mp4' : 'image/gif';
-        const ext = format === 'mp4' ? 'mp4' : 'gif';
-        const fileName = `dewy_timelapse_${new Date().toISOString().slice(0, 10)}.${ext}`;
+        const ext = currentExportStatus?.format || 'mp4';
+        const mime = ext === 'mp4' ? 'video/mp4' : 'image/gif';
+        const fileName = currentExportStatus?.filename || `dewy_timelapse_${new Date().toISOString().slice(0, 10)}.${ext}`;
 
         // 移动端优先唤起系统原生分享（iOS 可直接存入相册）
         if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: mime })] })) {
@@ -404,7 +562,6 @@ export async function submitExport() {
                 return;
             } catch (shareErr) {
                 if (shareErr.name === 'AbortError') {
-                    closeExportModal();
                     return;
                 }
             }
@@ -420,17 +577,17 @@ export async function submitExport() {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
         showToast(t('export_success'), 'success');
-        closeExportModal();
 
     } catch (e) {
-        console.error("Export failed:", e);
+        console.error("Download failed:", e);
         showToast(t('export_fail', { msg: e.message }), 'error');
-        // 恢复表单以便用户修改选项或重试
-        if (formEl) formEl.classList.remove('hidden');
-        if (footerEl) footerEl.classList.remove('hidden');
-        if (progressEl) progressEl.classList.add('hidden');
-        if (submitBtn) submitBtn.disabled = false;
+    } finally {
+        if (downloadBtn) downloadBtn.disabled = false;
     }
+}
+
+export function resetExportForm() {
+    showExportView('form');
 }
 
 export function initExportModalDismiss() {

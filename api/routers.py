@@ -375,32 +375,52 @@ class ExportTimelapseRequest(BaseModel):
 
 @router.post("/api/photos/export")
 def export_photos_timelapse(req: ExportTimelapseRequest):
+    """启动后台延时导出任务，或直接返回已存在的有效暂存文件。若已有任务正在进行则返回 409。"""
     try:
-        from core.logic.photo_export import export_timelapse
-        output_path = export_timelapse(
+        from core.logic.photo_export import start_async_export
+        result = start_async_export(
             export_format=req.format,
             quality=req.quality,
             fps=req.fps,
             watermark=req.watermark,
             max_frames=req.max_frames,
         )
+        if not result or result.get("status") == "busy":
+            raise HTTPException(status_code=409, detail="Export already in progress")
+        return result
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except RuntimeError as re_err:
-        raise HTTPException(status_code=500, detail=str(re_err))
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("导出延时文件失败")
-        raise HTTPException(status_code=500, detail=f"Export failed: {e}")
+        logger.exception("启动后台导出延时文件失败")
+        raise HTTPException(status_code=500, detail=f"Failed to start export: {e}")
 
-    filename = os.path.basename(output_path)
-    media_type = "video/mp4" if req.format.lower() == "mp4" else "image/gif"
+
+@router.get("/api/photos/export/status")
+def get_export_status_endpoint():
+    """获取当前延时导出任务的运行状态、进度与完成信息。"""
+    from core.logic.photo_export import get_export_status
+    return get_export_status()
+
+
+@router.get("/api/photos/export/download")
+def download_export_file():
+    """下载最新生成的延时文件。"""
+    from core.logic.photo_export import get_latest_export_file
+    res = get_latest_export_file()
+    if not res:
+        raise HTTPException(status_code=404, detail="No export file ready for download")
+
+    fpath, filename, media_type = res
     return FileResponse(
-        output_path,
+        fpath,
         media_type=media_type,
         filename=filename,
         headers={
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "no-cache",
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
     )
+
 

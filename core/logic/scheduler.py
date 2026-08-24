@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 from core.database import init_db
 from core.logic.light import apply_light_schedule
 from core.logic.photo import daily_photo_capture
+from core.logic.photo_export import clean_expired_exports
 from core.logic.soil_abc import run_abc_calibration
 from core.logic.watering import check_auto_watering, clean_soil_anomalies
 
@@ -25,7 +26,7 @@ ABC_HOUR = 3                 # 每天此时刻之后执行一次土壤 ABC 校�
 
 
 def _prune_if_new_day(now, last_prune_date):
-    """每天清理一次超期采样，返回新的 last_prune_date。
+    """每天清理一次超期采样与前日导出暂存，返回新的 last_prune_date。
 
     失败不能影响本轮的其它工作，因此单独兜住异常——
     清理不掉最多是表继续变大，下一天还会再试。
@@ -38,8 +39,9 @@ def _prune_if_new_day(now, last_prune_date):
         if removed:
             logger.info("🧹 清理超期采样 %d 条（保留 %d 天）",
                         removed, db.NODE_DATA_RETENTION_DAYS)
+        clean_expired_exports()
     except Exception:
-        logger.exception("清理超期采样失败，下一天重试")
+        logger.exception("清理超期采样与暂存失败，下一天重试")
     return today
 
 

@@ -47,35 +47,33 @@
         <button type="button" class="close-btn" onclick="closeHD()" data-i18n="close">close</button>
     </div>
 
-    <!-- 延时作品导出模态框 -->
+    <!-- 延时导出模态框 -->
     <div id="export-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true"
         aria-label="export timelapse dialog" data-i18n-aria="export_timelapse">
         <div class="modal-card" id="export-modal-card">
             <div class="modal-header">
-                <h3 class="modal-title" data-i18n="export_title">导出延时作品</h3>
+                <h3 class="modal-title" data-i18n="export_title">Export Timelapse</h3>
                 <button type="button" class="icon-btn-close" onclick="closeExportModal()" aria-label="Close"
                     data-i18n-aria="close">&times;</button>
             </div>
             <div class="modal-body" id="export-modal-form">
                 <!-- 格式选择 -->
                 <div class="form-group">
-                    <label class="form-label" data-i18n="export_format_label">导出格式</label>
+                    <label class="form-label" data-i18n="export_format_label">Export Format</label>
                     <div class="radio-card-group">
                         <label class="radio-card">
                             <input type="radio" name="export-format" value="mp4" checked
                                 onchange="onExportFormatChange()">
                             <span class="radio-card-content">
-                                <span class="radio-card-title">🎥 <span data-i18n="format_mp4_title">MP4 视频</span> <span
-                                        class="badge-rec" data-i18n="recommended">推荐</span></span>
-                                <span class="radio-card-desc" data-i18n="format_mp4_desc">全平台兼容，高画质，体积极小</span>
+                                <span class="radio-card-title" data-i18n="format_mp4_title">MP4 Video</span>
+                                <span class="radio-card-desc" data-i18n="format_mp4_desc">High definition, smooth playback, tiny file size</span>
                             </span>
                         </label>
                         <label class="radio-card">
                             <input type="radio" name="export-format" value="gif" onchange="onExportFormatChange()">
                             <span class="radio-card-content">
-                                <span class="radio-card-title">🖼️ <span data-i18n="format_gif_title">GIF
-                                        动图</span></span>
-                                <span class="radio-card-desc" data-i18n="format_gif_desc">动态图片，适合社交分享与动图展示</span>
+                                <span class="radio-card-title"><span data-i18n="format_gif_title">GIF Animation</span></span>
+                                <span class="radio-card-desc" data-i18n="format_gif_desc">Animated image, best for social sharing</span>
                             </span>
                         </label>
                     </div>
@@ -83,31 +81,29 @@
 
                 <!-- 质量选择 -->
                 <div class="form-group">
-                    <label class="form-label" data-i18n="export_quality_label">画面质量</label>
+                    <label class="form-label" data-i18n="export_quality_label">Quality</label>
                     <div class="radio-card-group">
                         <label class="radio-card">
                             <input type="radio" name="export-quality" value="hd" checked>
                             <span class="radio-card-content">
-                                <span class="radio-card-title">✨ <span data-i18n="quality_hd_title">高清原图
-                                        (1080p)</span></span>
-                                <span class="radio-card-desc" data-i18n="quality_hd_desc">树莓派端基于高清原图流式合成，画面清晰细腻</span>
+                                <span class="radio-card-title"><span data-i18n="quality_hd_title">HD Original (1080p)</span></span>
+                                <span class="radio-card-desc" data-i18n="quality_hd_desc">Rendered on Pi from original photos</span>
                             </span>
                         </label>
                         <label class="radio-card">
                             <input type="radio" name="export-quality" value="sd">
                             <span class="radio-card-content">
-                                <span class="radio-card-title">⚡ <span data-i18n="quality_sd_title">标清快速
-                                        (480p)</span></span>
-                                <span class="radio-card-desc" data-i18n="quality_sd_desc">使用缩略图合成，文件更小、生成速度更快</span>
+                                <span class="radio-card-title"><span data-i18n="quality_sd_title">Standard / Fast (480p)</span></span>
+                                <span class="radio-card-desc" data-i18n="quality_sd_desc">Rendered from thumbnails, smaller file and faster</span>
                             </span>
                         </label>
                     </div>
                 </div>
 
                 <!-- 播放速度与水印 -->
-                <div class="form-row">
+                <div class="form-row form-row--align-end">
                     <div class="form-group flex-1">
-                        <label class="form-label" for="export-speed-select" data-i18n="export_speed_label">播放速度</label>
+                        <label class="form-label" for="export-speed-select" data-i18n="export_speed_label">Playback Speed</label>
                         <select id="export-speed-select" class="form-select" data-i18n-aria="playback_speed">
                             <option value="1" data-i18n="speed_1fps">1 FPS (1.0s / day)</option>
                             <option value="2" data-i18n="speed_2fps">2 FPS (0.5s / day)</option>
@@ -115,8 +111,8 @@
                             <option value="8" data-i18n="speed_8fps">8 FPS (0.125s / day)</option>
                         </select>
                     </div>
-                    <div class="form-group flex-1 flex-center-start">
-                        <label class="checkbox-label" style="margin-top: 24px;">
+                    <div class="form-group flex-1 form-group--checkbox">
+                        <label class="checkbox-label">
                             <input type="checkbox" id="export-watermark-check" checked>
                             <span data-i18n="export_watermark_label">Include date watermark</span>
                         </label>
@@ -128,19 +124,45 @@
             <div class="modal-body hidden" id="export-modal-progress">
                 <div class="export-progress-container">
                     <div class="loader" style="margin: 0 auto 16px auto;"></div>
-                    <div class="export-status-text" id="export-status-text" data-i18n="export_generating">
-                        正在合成延时作品，请稍候...</div>
-                    <div class="export-sub-text" id="export-sub-text" data-i18n="export_generating_hint">
-                        由树莓派服务端流式合成中，无需下载海量原图...</div>
+                    <div class="export-status-text" id="export-status-text" data-i18n="export_generating">Rendering timelapse...</div>
+                    <div class="export-progress-track">
+                        <div class="export-progress-bar" id="export-progress-bar" style="width: 0%;"></div>
+                    </div>
+                    <div class="export-progress-counter" id="export-progress-counter">0%</div>
+                    <div class="export-sub-text" id="export-sub-text" data-i18n="export_generating_hint">Rendering on Pi server...</div>
+                    <div class="export-progress-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeExportModal()" data-i18n="export_run_in_bg">Run in Background</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 生成完成状态 -->
+            <div class="modal-body hidden" id="export-modal-completed">
+                <div class="export-progress-container">
+                    <div class="export-success-icon">
+                        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 0 auto; display: block;">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </div>
+                    <div class="export-status-text" data-i18n="export_completed">Export Completed</div>
+                    <div class="export-file-card">
+                        <div class="export-file-name" id="export-file-name">dewy_timelapse.mp4</div>
+                        <div class="export-file-meta" id="export-file-size">-</div>
+                    </div>
+                    <div class="export-completed-actions">
+                        <button type="button" class="btn btn-secondary" onclick="resetExportForm()" data-i18n="export_re_export">New Export</button>
+                        <button type="button" class="btn btn-primary" id="export-download-btn" onclick="downloadLatestExport()" data-i18n="export_download">Download Export</button>
+                    </div>
                 </div>
             </div>
 
             <!-- 底部按钮 -->
             <div class="modal-footer" id="export-modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeExportModal()"
-                    data-i18n="cancel">取消</button>
+                    data-i18n="cancel">Cancel</button>
                 <button type="button" class="btn btn-primary" id="export-submit-btn" onclick="submitExport()"
-                    data-i18n="start_export">开始导出</button>
+                    data-i18n="start_export">Start Export</button>
             </div>
         </div>
     </div>

@@ -7,17 +7,20 @@
    整个生命周期内存占用恒定 < 25MB。
 2. 编码生成标准 H.264 MP4（yuv420p + faststart），全平台（iOS/Android/浏览器/微信）
    原生硬件解码，体积极小（100 帧仅 ~2-4MB），传输仅需数秒。
-3. 自动缓存结果并定期清理，避免相同请求重复耗费 CPU 渲染。
+3. 后台异步导出机制：由于原图合成耗时较长，导出任务在后台线程运行，
+   提供实时进度查询与防重入互斥；完成后暂存在树莓派上，次日自动清理。
 """
 
+from datetime import datetime
 import hashlib
 import io
 import logging
 import os
 import shutil
 import subprocess
+import threading
 import time
-from typing import Optional, List, Tuple
+from typing import Callable, Optional, List, Tuple, Dict, Any
 from PIL import Image, ImageDraw, ImageFont
 
 import core.state as state
@@ -27,7 +30,20 @@ logger = logging.getLogger(__name__)
 
 # 最大合成帧数（与前端保持一致：120 帧，超过时均匀抽样保留起止）
 DEFAULT_MAX_FRAMES = 120
-CACHE_TTL_SEC = 12 * 3600  # 缓存 12 小时
+
+# 任务状态锁与全局状态
+_task_lock = threading.Lock()
+_export_state: Dict[str, Any] = {
+    "status": "idle",  # "idle" | "running" | "completed" | "failed"
+    "progress": {"current": 0, "total": 0, "percent": 0},
+    "filename": "",
+    "file_path": "",
+    "file_size": 0,
+    "created_at": 0.0,
+    "format": "",
+    "quality": "",
+    "error": None,
+}
 
 
 def select_frames(photos: List[Tuple[str, str]], max_frames: int = DEFAULT_MAX_FRAMES) -> List[Tuple[str, str]]:
@@ -44,22 +60,56 @@ def select_frames(photos: List[Tuple[str, str]], max_frames: int = DEFAULT_MAX_F
     return picked
 
 
-def _clean_expired_cache():
-    """清理过期的导出缓存文件。"""
+def clean_expired_exports():
+    """清理前一天及更早的导出缓存文件（次日删除）。"""
     try:
-        now = time.time()
         if not os.path.exists(state.EXPORT_CACHE_DIR):
             return
+        today = datetime.now().date()
         for f in os.listdir(state.EXPORT_CACHE_DIR):
+            if f.startswith("."):
+                continue
             fpath = os.path.join(state.EXPORT_CACHE_DIR, f)
             if os.path.isfile(fpath):
-                if now - os.path.getmtime(fpath) > CACHE_TTL_SEC:
+                try:
+                    mtime = os.path.getmtime(fpath)
+                    file_date = datetime.fromtimestamp(mtime).date()
+                    if file_date < today:
+                        os.remove(fpath)
+                        logger.info("🧹 已清理前日导出文件: %s", f)
+                except OSError:
+                    pass
+    except Exception as e:
+        logger.warning("清理导出缓存异常: %s", e)
+
+
+def invalidate_export_cache():
+    """清空所有延时导出缓存，并将全局任务状态重置为 idle。
+
+    在新增照片、重新拍摄照片或历史照片被稀疏化清理时调用，确保缓存与实际照片集严格同步。
+    """
+    global _export_state
+    try:
+        if os.path.exists(state.EXPORT_CACHE_DIR):
+            for f in os.listdir(state.EXPORT_CACHE_DIR):
+                if f.startswith("."):
+                    continue
+                fpath = os.path.join(state.EXPORT_CACHE_DIR, f)
+                if os.path.isfile(fpath):
                     try:
                         os.remove(fpath)
                     except OSError:
                         pass
+        with _task_lock:
+            if _export_state["status"] == "completed":
+                _export_state["status"] = "idle"
+                _export_state["file_path"] = ""
+                _export_state["filename"] = ""
+                _export_state["file_size"] = 0
+                _export_state["error"] = None
+        logger.info("🧹 已清空延时导出缓存")
     except Exception as e:
-        logger.warning("清理导出缓存异常: %s", e)
+        logger.warning("清空延时导出缓存异常: %s", e)
 
 
 def _draw_watermark(img: Image.Image, date_str: str) -> Image.Image:
@@ -155,41 +205,21 @@ def _process_frame(
         return None
 
 
-def export_timelapse(
-    export_format: str = "mp4",
-    quality: str = "hd",
-    fps: float = 4.0,
-    watermark: bool = True,
-    max_frames: int = DEFAULT_MAX_FRAMES,
-) -> str:
-    """流式合成延时视频 (MP4) 或动图 (GIF)，返回生成的文件绝对路径。
+def _compute_export_plan(
+    export_format: str,
+    quality: str,
+    fps: float,
+    watermark: bool,
+    max_frames: int,
+) -> Tuple[List[Tuple[str, str]], str, str]:
+    """计算选中的照片帧列表、缓存文件名和目标输出绝对路径。
 
-    :param export_format: "mp4" 或 "gif"
-    :param quality: "hd" (原图缩放至最高 1080p) 或 "sd" (最高 480p)
-    :param fps: 帧率 (0.5 ~ 30.0)
-    :param watermark: 是否包含日期水印
-    :param max_frames: 最大帧数
-    :return: 临时文件绝对路径
+    :return: (selected_photos, output_filename, output_path)
     """
-    export_format = export_format.lower()
-    if export_format not in ("mp4", "gif"):
-        raise ValueError("Invalid format, must be 'mp4' or 'gif'")
-
-    quality = quality.lower()
-    if quality not in ("hd", "sd"):
-        raise ValueError("Invalid quality, must be 'hd' or 'sd'")
-
-    fps = max(0.5, min(30.0, float(fps)))
-    max_frames = max(2, min(500, int(max_frames)))
-
-    _clean_expired_cache()
-
-    # 1. 查询数据库中按日期正序的所有照片
     rows = db.query_photos_asc()
     if not rows:
         raise ValueError("No photos found")
 
-    # 过滤出磁盘上真实存在的文件
     valid_photos = []
     for date_str, filename in rows:
         if quality == "hd":
@@ -209,9 +239,10 @@ def export_timelapse(
         raise ValueError("No valid photo files on disk")
 
     selected = select_frames(valid_photos, max_frames=max_frames)
+    total_frames = len(selected)
 
-    # 2. 计算缓存哈希（基于参数 + 选中的照片列表与文件最后修改时间）
-    hash_payload = f"{export_format}:{quality}:{fps}:{watermark}:{len(selected)}:"
+    # 计算缓存哈希（基于参数 + 选中的照片列表与文件最后修改时间）
+    hash_payload = f"{export_format}:{quality}:{fps}:{watermark}:{total_frames}:"
     for d, p in selected:
         try:
             mtime = os.path.getmtime(p)
@@ -222,9 +253,51 @@ def export_timelapse(
     cache_hash = hashlib.md5(hash_payload.encode()).hexdigest()
     output_filename = f"timelapse_{cache_hash}.{export_format}"
     output_path = os.path.join(state.EXPORT_CACHE_DIR, output_filename)
+    return selected, output_filename, output_path
 
+
+def export_timelapse(
+    export_format: str = "mp4",
+    quality: str = "hd",
+    fps: float = 4.0,
+    watermark: bool = True,
+    max_frames: int = DEFAULT_MAX_FRAMES,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+) -> str:
+    """流式合成延时视频 (MP4) 或动图 (GIF)，返回生成的文件绝对路径。
+
+    :param export_format: "mp4" 或 "gif"
+    :param quality: "hd" (原图缩放至最高 1080p) 或 "sd" (最高 480p)
+    :param fps: 帧率 (0.5 ~ 30.0)
+    :param watermark: 是否包含日期水印
+    :param max_frames: 最大帧数
+    :param progress_callback: 进度回调函数，接收 (current_frame, total_frames)
+    :return: 临时文件绝对路径
+    """
+    export_format = export_format.lower()
+    if export_format not in ("mp4", "gif"):
+        raise ValueError("Invalid format, must be 'mp4' or 'gif'")
+
+    quality = quality.lower()
+    if quality not in ("hd", "sd"):
+        raise ValueError("Invalid quality, must be 'hd' or 'sd'")
+
+    fps = max(0.5, min(30.0, float(fps)))
+    max_frames = max(2, min(500, int(max_frames)))
+
+    clean_expired_exports()
+
+    # 1. 计算导出规划与缓存哈希
+    selected, output_filename, output_path = _compute_export_plan(
+        export_format, quality, fps, watermark, max_frames
+    )
+    total_frames = len(selected)
+
+    # 2. 检查缓存文件是否存在
     if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
         logger.info("命中延时导出缓存: %s", output_path)
+        if progress_callback:
+            progress_callback(total_frames, total_frames)
         return output_path
 
     # 3. 检查 ffmpeg 是否可用
@@ -252,7 +325,7 @@ def export_timelapse(
                 "-movflags", "+faststart",
                 tmp_output_path
             ]
-            logger.info("开始合成 MP4 (共 %d 帧, 帧率 %.1f, 质量 %s)...", len(selected), fps, quality)
+            logger.info("开始合成 MP4 (共 %d 帧, 帧率 %.1f, 质量 %s)...", total_frames, fps, quality)
             proc = subprocess.Popen(
                 cmd,
                 stdin=subprocess.PIPE,
@@ -261,7 +334,7 @@ def export_timelapse(
             )
 
             target_size = None
-            for date_str, photo_path in selected:
+            for idx, (date_str, photo_path) in enumerate(selected):
                 frame_img = _process_frame(photo_path, date_str, target_max_dim, watermark, target_size=target_size)
                 if frame_img is None:
                     continue
@@ -273,6 +346,8 @@ def export_timelapse(
                     proc.stdin.write(buf.getvalue())
                 except (BrokenPipeError, OSError):
                     break
+                if progress_callback:
+                    progress_callback(idx + 1, total_frames)
 
             try:
                 proc.stdin.close()
@@ -298,7 +373,7 @@ def export_timelapse(
                     "-vf", "split[s0][s1];[s0]palettegen=max_colors=128:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3",
                     tmp_output_path
                 ]
-                logger.info("使用 ffmpeg 开始合成 GIF (共 %d 帧, 帧率 %.1f)...", len(selected), fps)
+                logger.info("使用 ffmpeg 开始合成 GIF (共 %d 帧, 帧率 %.1f)...", total_frames, fps)
                 proc = subprocess.Popen(
                     cmd,
                     stdin=subprocess.PIPE,
@@ -307,7 +382,7 @@ def export_timelapse(
                 )
 
                 target_size = None
-                for date_str, photo_path in selected:
+                for idx, (date_str, photo_path) in enumerate(selected):
                     frame_img = _process_frame(photo_path, date_str, target_max_dim, watermark, target_size=target_size)
                     if frame_img is None:
                         continue
@@ -319,6 +394,8 @@ def export_timelapse(
                         proc.stdin.write(buf.getvalue())
                     except (BrokenPipeError, OSError):
                         break
+                    if progress_callback:
+                        progress_callback(idx + 1, total_frames)
 
                 try:
                     proc.stdin.close()
@@ -332,13 +409,15 @@ def export_timelapse(
                     raise RuntimeError("ffmpeg GIF generation failed")
             else:
                 # Fallback: 使用 Pillow 生成 GIF（限制分辨率防 OOM）
-                logger.info("使用 Pillow fallback 开始合成 GIF (共 %d 帧)...", len(selected))
+                logger.info("使用 Pillow fallback 开始合成 GIF (共 %d 帧)...", total_frames)
                 gif_max_dim = min(480, target_max_dim)
                 frames = []
-                for date_str, photo_path in selected:
+                for idx, (date_str, photo_path) in enumerate(selected):
                     frame_img = _process_frame(photo_path, date_str, gif_max_dim, watermark)
                     if frame_img:
                         frames.append(frame_img.convert("P", palette=Image.Palette.ADAPTIVE, colors=128))
+                    if progress_callback:
+                        progress_callback(idx + 1, total_frames)
 
                 if not frames:
                     raise RuntimeError("No frames generated for GIF")
@@ -368,3 +447,189 @@ def export_timelapse(
             except OSError:
                 pass
         raise
+
+
+def _export_worker_thread(
+    export_format: str,
+    quality: str,
+    fps: float,
+    watermark: bool,
+    max_frames: int,
+):
+    """后台工作线程：执行延时合成并更新全局进度与状态。"""
+    global _export_state
+
+    def _on_progress(current: int, total: int):
+        with _task_lock:
+            percent = int((current / total) * 100) if total > 0 else 0
+            _export_state["progress"] = {
+                "current": current,
+                "total": total,
+                "percent": min(100, max(0, percent)),
+            }
+
+    try:
+        output_path = export_timelapse(
+            export_format=export_format,
+            quality=quality,
+            fps=fps,
+            watermark=watermark,
+            max_frames=max_frames,
+            progress_callback=_on_progress,
+        )
+        file_size = os.path.getsize(output_path)
+        filename = os.path.basename(output_path)
+
+        with _task_lock:
+            _export_state["status"] = "completed"
+            _export_state["file_path"] = output_path
+            _export_state["filename"] = filename
+            _export_state["file_size"] = file_size
+            _export_state["created_at"] = time.time()
+            _export_state["error"] = None
+            _export_state["progress"] = {
+                "current": _export_state["progress"]["total"] or 100,
+                "total": _export_state["progress"]["total"] or 100,
+                "percent": 100,
+            }
+
+    except Exception as e:
+        logger.exception("后台延时合成任务失败: %s", e)
+        with _task_lock:
+            _export_state["status"] = "failed"
+            _export_state["error"] = str(e)
+
+
+def start_async_export(
+    export_format: str = "mp4",
+    quality: str = "hd",
+    fps: float = 4.0,
+    watermark: bool = True,
+    max_frames: int = DEFAULT_MAX_FRAMES,
+) -> Optional[Dict[str, Any]]:
+    """启动后台导出任务或直接命中缓存返回。
+
+    - 若已有相同的导出结果且未过期，直接返回 status="completed" 与下载信息，避免重复等待。
+    - 若已有其它任务正在后台运行，返回 None (表示忙碌)。
+    - 若需要生成，则在后台线程启动流式合成并返回 status="running"。
+    """
+    global _export_state
+    export_format = export_format.lower()
+    if export_format not in ("mp4", "gif"):
+        raise ValueError("Invalid format, must be 'mp4' or 'gif'")
+    quality = quality.lower()
+    if quality not in ("hd", "sd"):
+        raise ValueError("Invalid quality, must be 'hd' or 'sd'")
+
+    fps = max(0.5, min(30.0, float(fps)))
+    max_frames = max(2, min(500, int(max_frames)))
+
+    with _task_lock:
+        if _export_state["status"] == "running":
+            return None
+
+    clean_expired_exports()
+
+    # 尝试检查是否有现成的缓存文件
+    try:
+        selected, output_filename, output_path = _compute_export_plan(
+            export_format, quality, fps, watermark, max_frames
+        )
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            file_size = os.path.getsize(output_path)
+            with _task_lock:
+                _export_state["status"] = "completed"
+                _export_state["file_path"] = output_path
+                _export_state["filename"] = output_filename
+                _export_state["file_size"] = file_size
+                _export_state["created_at"] = os.path.getmtime(output_path)
+                _export_state["format"] = export_format
+                _export_state["quality"] = quality
+                _export_state["error"] = None
+                _export_state["progress"] = {
+                    "current": len(selected),
+                    "total": len(selected),
+                    "percent": 100,
+                }
+            logger.info("⚡ 命中延时导出缓存，跳过重复导出: %s (%d KB)", output_filename, file_size // 1024)
+            return {
+                "status": "completed",
+                "hit_cache": True,
+                "filename": output_filename,
+                "file_size": file_size,
+                "format": export_format,
+                "quality": quality,
+                "download_url": "/api/photos/export/download",
+            }
+    except Exception:
+        pass
+
+    with _task_lock:
+        if _export_state["status"] == "running":
+            return None
+
+        _export_state["status"] = "running"
+        _export_state["progress"] = {"current": 0, "total": 0, "percent": 0}
+        _export_state["error"] = None
+        _export_state["format"] = export_format
+        _export_state["quality"] = quality
+        _export_state["created_at"] = time.time()
+
+    worker = threading.Thread(
+        target=_export_worker_thread,
+        args=(export_format, quality, fps, watermark, max_frames),
+        name="DewyPhotoExportWorker",
+        daemon=True,
+    )
+    worker.start()
+    return {
+        "status": "running",
+        "hit_cache": False,
+        "message": "Export started in background",
+    }
+
+
+def get_export_status() -> Dict[str, Any]:
+    """获取当前导出任务状态及完成文件信息。"""
+    with _task_lock:
+        state_copy = {
+            "status": _export_state["status"],
+            "progress": dict(_export_state["progress"]),
+            "filename": _export_state["filename"],
+            "file_size": _export_state["file_size"],
+            "created_at": _export_state["created_at"],
+            "format": _export_state["format"],
+            "quality": _export_state["quality"],
+            "error": _export_state["error"],
+            "download_url": "/api/photos/export/download" if _export_state["status"] == "completed" else None,
+        }
+
+        # 校验文件是否仍然存在；若被删除或过期则重置为 idle
+        if state_copy["status"] == "completed":
+            fpath = _export_state.get("file_path")
+            if not fpath or not os.path.exists(fpath):
+                _export_state["status"] = "idle"
+                _export_state["file_path"] = ""
+                _export_state["filename"] = ""
+                _export_state["file_size"] = 0
+                state_copy["status"] = "idle"
+                state_copy["download_url"] = None
+
+        return state_copy
+
+
+def get_latest_export_file() -> Optional[Tuple[str, str, str]]:
+    """获取当前已完成的导出文件绝对路径、文件名和媒体类型。
+
+    :return: (file_path, filename, media_type) 或 None
+    """
+    with _task_lock:
+        if _export_state["status"] != "completed":
+            return None
+        fpath = _export_state.get("file_path")
+        if not fpath or not os.path.exists(fpath):
+            return None
+        filename = _export_state.get("filename") or os.path.basename(fpath)
+        ext = _export_state.get("format") or filename.split(".")[-1].lower()
+        media_type = "video/mp4" if ext == "mp4" else "image/gif"
+        return fpath, filename, media_type

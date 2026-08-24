@@ -82,6 +82,13 @@ def daily_photo_capture(force=False):
 
         logger.info("✅ 每日照片已保存: %s (%dKB, 缩略图 %dKB)", filename, file_size // 1024, thumb_size // 1024)
 
+        # 照片发生新增或变更，清空延时导出暂存
+        try:
+            from core.logic.photo_export import invalidate_export_cache
+            invalidate_export_cache()
+        except Exception as e:
+            logger.warning("清空延时缓存异常: %s", e)
+
         # 拍照完成后检查是否需要清理
         cleanup_old_photos()
         return True
@@ -167,5 +174,12 @@ def cleanup_old_photos():
 
         if get_free_disk_gb() > limit_gb:
             break
+
+    if deleted_count > 0:
+        try:
+            from core.logic.photo_export import invalidate_export_cache
+            invalidate_export_cache()
+        except Exception as e:
+            logger.warning("清空延时缓存异常: %s", e)
 
     logger.info("✅ 清理完成，删除 %d 张照片，剩余空间 %.1fGB", deleted_count, get_free_disk_gb())

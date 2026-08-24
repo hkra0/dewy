@@ -177,8 +177,8 @@ export default {
                 });
 
                 const isImageEndpoint = url.pathname === "/api/image";
-                const isExportEndpoint = url.pathname === "/api/photos/export";
-                const isPhotoFile = url.pathname.startsWith("/api/photos/") && !isExportEndpoint;
+                const isExportDownload = url.pathname === "/api/photos/export/download";
+                const isPhotoFile = url.pathname.startsWith("/api/photos/") && url.pathname !== "/api/photos/export" && url.pathname !== "/api/photos/export/status" && !isExportDownload;
 
                 // 304 必须先于 !ok 判断：Response.ok 只认 2xx，落到下面就会被
                 // 当成故障、回一个带 "offline" body 的 304——而 304 本就不允许
@@ -208,9 +208,9 @@ export default {
                     responseHeaders.set("Cache-Control", "no-store");
                     const imgTs = piResponse.headers.get("X-Image-Timestamp");
                     if (imgTs) responseHeaders.set("X-Image-Timestamp", imgTs);
-                } else if (isPhotoFile || isExportEndpoint) {
-                    const piCt = piResponse.headers.get("Content-Type") || (isExportEndpoint ? "video/mp4" : "image/jpeg");
-                    const piCc = piResponse.headers.get("Cache-Control") || "public, max-age=86400";
+                } else if (isPhotoFile || isExportDownload) {
+                    const piCt = piResponse.headers.get("Content-Type") || (isExportDownload ? "video/mp4" : "image/jpeg");
+                    const piCc = piResponse.headers.get("Cache-Control") || (isExportDownload ? "no-cache" : "public, max-age=86400");
                     responseHeaders.set("Content-Type", piCt);
                     responseHeaders.set("Cache-Control", piCc);
                     const piCd = piResponse.headers.get("Content-Disposition");
