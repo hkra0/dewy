@@ -368,7 +368,7 @@ def get_photo(date: str, thumb: bool = False):
 class ExportTimelapseRequest(BaseModel):
     format: str = "mp4"
     quality: str = "hd"
-    fps: float = 2.0
+    fps: float = 4.0
     watermark: bool = True
     max_frames: int = 120
 

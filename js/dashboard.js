@@ -122,9 +122,10 @@ export function renderDynamicCards(nodeData, globalData) {
         const status = effectiveLightStatus(globalData.light_status);
         if (status) {
             const color = status === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
+            const statusText = status === 'ON' ? t('state_on') : (status === 'OFF' ? t('state_off') : status);
             // role/tabindex 让这张卡片可以 Tab 到达；Enter/Space 由
             // ui.js 的 initKeyboardActivation 统一处理
-            html += `<div class="card" id="light-card" role="button" tabindex="0" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">${t('light_title')}</div><div class="card-value" id="light-status" style="color: ${color};">${status}</div></div>`;
+            html += `<div class="card" id="light-card" role="button" tabindex="0" style="cursor: pointer;" onclick="toggleLight()"><div class="card-title">${t('light_title')}</div><div class="card-value" id="light-status" style="color: ${color};">${statusText}</div></div>`;
         }
     }
 

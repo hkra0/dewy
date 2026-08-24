@@ -237,7 +237,7 @@ export async function loadHistoryData(forceFetch = false) {
             return;
         }
     } else {
-        if (reqType === 'watering') document.getElementById('watering-log-wrapper').innerHTML = '<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">loading...</div>';
+        if (reqType === 'watering') document.getElementById('watering-log-wrapper').innerHTML = `<div class="loading-text" style="position: relative; height: 100px; margin-top: 15px;">${t('chart_loading')}</div>`;
         else { if (myChart) { myChart.destroy(); myChart = null; } document.getElementById('chart-loading').classList.remove('hidden'); }
     }
 

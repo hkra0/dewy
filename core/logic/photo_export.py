@@ -84,7 +84,7 @@ def _draw_watermark(img: Image.Image, date_str: str) -> Image.Image:
     if font is None:
         font = ImageFont.load_default()
 
-    text = f"📅 {date_str}"
+    text = date_str
     bbox = draw.textbbox((0, 0), text, font=font)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
@@ -158,7 +158,7 @@ def _process_frame(
 def export_timelapse(
     export_format: str = "mp4",
     quality: str = "hd",
-    fps: float = 2.0,
+    fps: float = 4.0,
     watermark: bool = True,
     max_frames: int = DEFAULT_MAX_FRAMES,
 ) -> str:

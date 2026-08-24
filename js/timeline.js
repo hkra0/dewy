@@ -1,9 +1,8 @@
 // 照片时间轴播放器与 GIF 导出。
 import { t } from './i18n.js';
 import { showToast } from './ui.js';
-import { state, getViewerKey, nodeCaps } from './state.js';
+import { getViewerKey, nodeCaps } from './state.js';
 import { apiGet, apiViewerPost } from './api.js';
-import { ensureGifshot } from './cdn.js';
 
 let tlPhotos = [];
 let tlCurrentIdx = -1;
@@ -142,7 +141,7 @@ export async function renderTimelineFrame(idx) {
     for (let step = 1; step <= 3; step++) {
         const fwdIdx = (idx + step) % tlPhotos.length;
         if (!tlThumbCache.has(tlPhotos[fwdIdx].date)) fetchThumb(tlPhotos[fwdIdx].date);
-        
+
         const bwdIdx = (idx - step + tlPhotos.length) % tlPhotos.length;
         if (!tlThumbCache.has(tlPhotos[bwdIdx].date)) fetchThumb(tlPhotos[bwdIdx].date);
     }
@@ -277,7 +276,7 @@ function createWatermarkedFrame(imgUrl, dateText) {
             ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
             ctx.font = '600 13px Inter, -apple-system, sans-serif';
-            const text = `📅 ${dateText}`;
+            const text = dateText.split('T')[0];
             const textWidth = ctx.measureText(text).width;
             const padX = 8, padY = 5;
             const boxX = 10, boxY = targetHeight - 30;
@@ -297,11 +296,11 @@ function createWatermarkedFrame(imgUrl, dateText) {
             ctx.textBaseline = 'middle';
             ctx.fillText(text, boxX + padX, boxY + boxH / 2);
 
-        resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: targetWidth, height: targetHeight });
-    };
-    img.onerror = () => resolve(null);
-    img.src = imgUrl;
-});
+            resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: targetWidth, height: targetHeight });
+        };
+        img.onerror = () => resolve(null);
+        img.src = imgUrl;
+    });
 }
 
 export function openExportModal() {
@@ -325,13 +324,10 @@ export function openExportModal() {
         submitBtn.innerText = t('start_export');
     }
 
-    // 根据当前时间轴播放速度同步默认帧率
+    // 默认导出帧率为 4 FPS
     const speedSelect = document.getElementById('export-speed-select');
     if (speedSelect) {
-        if (tlSpeed <= 150) speedSelect.value = "8";
-        else if (tlSpeed <= 300) speedSelect.value = "4";
-        else if (tlSpeed <= 600) speedSelect.value = "2";
-        else speedSelect.value = "1";
+        speedSelect.value = "4";
     }
 
     modal.classList.remove('hidden');
@@ -359,7 +355,7 @@ export async function submitExport() {
 
     const format = document.querySelector('input[name="export-format"]:checked')?.value || 'mp4';
     const quality = document.querySelector('input[name="export-quality"]:checked')?.value || 'hd';
-    const fps = parseFloat(document.getElementById('export-speed-select')?.value || '2');
+    const fps = parseFloat(document.getElementById('export-speed-select')?.value || '4');
     const watermark = document.getElementById('export-watermark-check')?.checked ?? true;
 
     // 切换到生成进度界面
@@ -396,7 +392,7 @@ export async function submitExport() {
         const ext = format === 'mp4' ? 'mp4' : 'gif';
         const fileName = `dewy_timelapse_${new Date().toISOString().slice(0, 10)}.${ext}`;
 
-        // 移动端优先唤起系统原生分享（iOS 可直接一键存入相册）
+        // 移动端优先唤起系统原生分享（iOS 可直接存入相册）
         if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: mime })] })) {
             try {
                 await navigator.share({
@@ -470,7 +466,7 @@ export async function viewFullPhoto() {
     hdImg.style.display = 'none';
     hdTs.classList.add('hidden');
     loader.style.display = 'block';
-    statusText.innerText = 'loading...';
+    statusText.innerText = t('chart_loading');
     statusText.style.display = 'block';
     statusText.style.color = 'var(--text-main)';
 
@@ -483,7 +479,7 @@ export async function viewFullPhoto() {
             statusText.style.display = 'none';
             loader.style.display = 'none';
             hdImg.style.display = 'block';
-            hdTs.innerText = '📅 ' + photo.date;
+            hdTs.innerText = photo.date;
             hdTs.classList.remove('hidden');
         };
         hdImg.src = URL.createObjectURL(blob);

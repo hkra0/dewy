@@ -13,8 +13,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"
         media="print" onload="this.media='all'">
     <noscript>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-            rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     </noscript>
     <link rel="stylesheet" href="/style.css">
 
@@ -40,20 +39,22 @@
 
 <body>
     <!-- Esc 与点击背景关闭由 initModalDismiss() 绑定（js/camera.js） -->
-    <div id="hd-modal" role="dialog" aria-modal="true" aria-label="photo viewer">
+    <div id="hd-modal" role="dialog" aria-modal="true" aria-label="photo viewer" data-i18n-aria="photo_viewer">
         <div class="loader" id="hd-loader"></div>
         <div id="hd-status" data-i18n="capturing_hd">capturing hd image...</div>
-        <img id="hd-img" src="" alt="hd view">
+        <img id="hd-img" src="" alt="hd view" data-i18n-alt="hd_view">
         <div id="hd-timestamp" class="hidden"></div>
         <button type="button" class="close-btn" onclick="closeHD()" data-i18n="close">close</button>
     </div>
 
     <!-- 延时作品导出模态框 -->
-    <div id="export-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="export timelapse dialog">
+    <div id="export-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+        aria-label="export timelapse dialog" data-i18n-aria="export_timelapse">
         <div class="modal-card" id="export-modal-card">
             <div class="modal-header">
                 <h3 class="modal-title" data-i18n="export_title">导出延时作品</h3>
-                <button type="button" class="icon-btn-close" onclick="closeExportModal()" aria-label="Close">&times;</button>
+                <button type="button" class="icon-btn-close" onclick="closeExportModal()" aria-label="Close"
+                    data-i18n-aria="close">&times;</button>
             </div>
             <div class="modal-body" id="export-modal-form">
                 <!-- 格式选择 -->
@@ -61,16 +62,19 @@
                     <label class="form-label" data-i18n="export_format_label">导出格式</label>
                     <div class="radio-card-group">
                         <label class="radio-card">
-                            <input type="radio" name="export-format" value="mp4" checked onchange="onExportFormatChange()">
+                            <input type="radio" name="export-format" value="mp4" checked
+                                onchange="onExportFormatChange()">
                             <span class="radio-card-content">
-                                <span class="radio-card-title">🎥 <span data-i18n="format_mp4_title">MP4 视频</span> <span class="badge-rec" data-i18n="recommended">推荐</span></span>
+                                <span class="radio-card-title">🎥 <span data-i18n="format_mp4_title">MP4 视频</span> <span
+                                        class="badge-rec" data-i18n="recommended">推荐</span></span>
                                 <span class="radio-card-desc" data-i18n="format_mp4_desc">全平台兼容，高画质，体积极小</span>
                             </span>
                         </label>
                         <label class="radio-card">
                             <input type="radio" name="export-format" value="gif" onchange="onExportFormatChange()">
                             <span class="radio-card-content">
-                                <span class="radio-card-title">🖼️ <span data-i18n="format_gif_title">GIF 动图</span></span>
+                                <span class="radio-card-title">🖼️ <span data-i18n="format_gif_title">GIF
+                                        动图</span></span>
                                 <span class="radio-card-desc" data-i18n="format_gif_desc">动态图片，适合社交分享与动图展示</span>
                             </span>
                         </label>
@@ -84,14 +88,16 @@
                         <label class="radio-card">
                             <input type="radio" name="export-quality" value="hd" checked>
                             <span class="radio-card-content">
-                                <span class="radio-card-title">✨ <span data-i18n="quality_hd_title">高清原图 (1080p)</span></span>
+                                <span class="radio-card-title">✨ <span data-i18n="quality_hd_title">高清原图
+                                        (1080p)</span></span>
                                 <span class="radio-card-desc" data-i18n="quality_hd_desc">树莓派端基于高清原图流式合成，画面清晰细腻</span>
                             </span>
                         </label>
                         <label class="radio-card">
                             <input type="radio" name="export-quality" value="sd">
                             <span class="radio-card-content">
-                                <span class="radio-card-title">⚡ <span data-i18n="quality_sd_title">标清快速 (480p)</span></span>
+                                <span class="radio-card-title">⚡ <span data-i18n="quality_sd_title">标清快速
+                                        (480p)</span></span>
                                 <span class="radio-card-desc" data-i18n="quality_sd_desc">使用缩略图合成，文件更小、生成速度更快</span>
                             </span>
                         </label>
@@ -102,17 +108,17 @@
                 <div class="form-row">
                     <div class="form-group flex-1">
                         <label class="form-label" for="export-speed-select" data-i18n="export_speed_label">播放速度</label>
-                        <select id="export-speed-select" class="form-select">
-                            <option value="1">1 FPS (1.0s / 天)</option>
-                            <option value="2" selected>2 FPS (0.5s / 天 - 推荐)</option>
-                            <option value="4">4 FPS (0.25s / 天)</option>
-                            <option value="8">8 FPS (流畅快放)</option>
+                        <select id="export-speed-select" class="form-select" data-i18n-aria="playback_speed">
+                            <option value="1" data-i18n="speed_1fps">1 FPS (1.0s / day)</option>
+                            <option value="2" data-i18n="speed_2fps">2 FPS (0.5s / day)</option>
+                            <option value="4" selected data-i18n="speed_4fps">4 FPS (0.25s / day)</option>
+                            <option value="8" data-i18n="speed_8fps">8 FPS (0.125s / day)</option>
                         </select>
                     </div>
                     <div class="form-group flex-1 flex-center-start">
                         <label class="checkbox-label" style="margin-top: 24px;">
                             <input type="checkbox" id="export-watermark-check" checked>
-                            <span data-i18n="export_watermark_label">包含日期水印 (📅 YYYY-MM-DD)</span>
+                            <span data-i18n="export_watermark_label">Include date watermark</span>
                         </label>
                     </div>
                 </div>
@@ -122,15 +128,19 @@
             <div class="modal-body hidden" id="export-modal-progress">
                 <div class="export-progress-container">
                     <div class="loader" style="margin: 0 auto 16px auto;"></div>
-                    <div class="export-status-text" id="export-status-text" data-i18n="export_generating">正在合成延时作品，请稍候...</div>
-                    <div class="export-sub-text" id="export-sub-text" data-i18n="export_generating_hint">由树莓派服务端流式合成中，无需下载海量原图...</div>
+                    <div class="export-status-text" id="export-status-text" data-i18n="export_generating">
+                        正在合成延时作品，请稍候...</div>
+                    <div class="export-sub-text" id="export-sub-text" data-i18n="export_generating_hint">
+                        由树莓派服务端流式合成中，无需下载海量原图...</div>
                 </div>
             </div>
 
             <!-- 底部按钮 -->
             <div class="modal-footer" id="export-modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeExportModal()" data-i18n="cancel">取消</button>
-                <button type="button" class="btn btn-primary" id="export-submit-btn" onclick="submitExport()" data-i18n="start_export">开始导出</button>
+                <button type="button" class="btn btn-secondary" onclick="closeExportModal()"
+                    data-i18n="cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="export-submit-btn" onclick="submitExport()"
+                    data-i18n="start_export">开始导出</button>
             </div>
         </div>
     </div>
@@ -146,8 +156,8 @@
         <div id="boot-actions" class="boot-actions hidden">
             <button type="button" class="action-btn boot-retry-btn" id="boot-retry-btn"
                 data-i18n="boot_retry">retry</button>
-            <button type="button" class="boot-skip-btn" id="boot-skip-btn"
-                data-i18n="boot_enter_anyway">continue anyway</button>
+            <button type="button" class="boot-skip-btn" id="boot-skip-btn" data-i18n="boot_enter_anyway">continue
+                anyway</button>
         </div>
     </div>
 
@@ -155,9 +165,9 @@
         <div class="header">
             <h1>🌱 dewy</h1>
             <div id="device-select-wrapper" class="device-select-wrapper hidden">
-                <select id="device-select" class="device-select" aria-label="device"
+                <select id="device-select" class="device-select" aria-label="device" data-i18n-aria="device"
                     onchange="switchDevice(this.value, true)">
-                    <option value="main">Loading...</option>
+                    <option value="main" data-i18n="loading">Loading...</option>
                 </select>
                 <span class="device-select-caret" aria-hidden="true">▼</span>
             </div>
@@ -165,7 +175,7 @@
 
         <!-- 这些必须是真的 <button>：换成 div 就没有 Tab 焦点、没有 Enter/Space
              激活、屏幕阅读器也读不出"按钮"。样式在 style.css 里做了 UA 复位。 -->
-        <nav class="nav" aria-label="views">
+        <nav class="nav" aria-label="views" data-i18n-aria="views">
             <button type="button" class="nav-btn active" onclick="switchTab('environment')" id="tab-environment"
                 data-i18n="env">environment</button>
             <button type="button" class="nav-btn" onclick="switchTab('system')" id="tab-system"
@@ -185,7 +195,7 @@
             <div class="card full-width hidden" id="camera-block" style="margin-top: 15px;">
                 <div class="card-title" data-i18n="camera">camera</div>
                 <div class="camera-container"><img id="cam-img" alt="camera view, activate for a high-res capture"
-                        role="button" tabindex="0" onclick="fetchHDImage()" /></div>
+                        data-i18n-alt="cam_alt" role="button" tabindex="0" onclick="fetchHDImage()" /></div>
                 <div id="cam-timestamp"></div>
             </div>
 
@@ -244,29 +254,37 @@
                 </div>
                 <div id="watering-log-wrapper" class="hidden"></div>
                 <div id="photo-timeline-wrapper" class="hidden">
-                    <div class="photo-viewer" id="photo-viewer" role="button" tabindex="0" onclick="viewFullPhoto()">
+                    <div class="photo-viewer" id="photo-viewer" role="button" tabindex="0" onclick="viewFullPhoto()"
+                        data-i18n-aria="photo_viewer">
                         <div id="timeline-loading" class="photo-empty-msg hidden" style="z-index: 5;"
                             data-i18n="chart_loading">loading...</div>
-                        <img id="timeline-img" alt="" />
+                        <img id="timeline-img" alt="" data-i18n-alt="photo_log" />
                         <div id="timeline-date" class="photo-date-label"></div>
                         <div id="timeline-empty" class="photo-empty-msg hidden" data-i18n="no_photos">no photos yet
                         </div>
                     </div>
                     <div class="timeline-controls" id="timeline-controls">
-                        <button class="tl-btn" id="tl-prev-btn" onclick="navTimeline(-1)">&#10094;</button>
-                        <button class="tl-btn" id="tl-play-btn" onclick="toggleTimelinePlay()">&#9654;</button>
-                        <button class="tl-btn" id="tl-next-btn" onclick="navTimeline(1)">&#10095;</button>
+                        <button class="tl-btn" id="tl-prev-btn" onclick="navTimeline(-1)" aria-label="Previous photo"
+                            data-i18n-aria="prev_photo">&#10094;</button>
+                        <button class="tl-btn" id="tl-play-btn" onclick="toggleTimelinePlay()"
+                            aria-label="Play timelapse" data-i18n-aria="play_timelapse">&#9654;</button>
+                        <button class="tl-btn" id="tl-next-btn" onclick="navTimeline(1)" aria-label="Next photo"
+                            data-i18n-aria="next_photo">&#10095;</button>
                         <input type="range" class="tl-slider" id="tl-slider" min="0" max="0" value="0"
                             oninput="seekTimeline(this.value)" />
                         <span class="tl-counter" id="tl-counter">0 / 0</span>
-                        <select class="tl-speed" id="tl-speed" onchange="setTimelineSpeed(this.value)">
+                        <select class="tl-speed" id="tl-speed" aria-label="Playback speed"
+                            data-i18n-aria="playback_speed" onchange="setTimelineSpeed(this.value)">
                             <option value="1000">1x</option>
                             <option value="500" selected>2x</option>
                             <option value="250">4x</option>
                         </select>
                         <button class="tl-action-btn" id="tl-export-btn" onclick="openExportModal()"
-                            data-i18n-title="export_timelapse" title="Export Timelapse" aria-label="Export">
-                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display: block;">
+                            data-i18n-title="export_timelapse" data-i18n-aria="export_timelapse"
+                            title="Export Timelapse" aria-label="Export">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                                stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+                                style="display: block;">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                 <polyline points="7 10 12 15 17 10"></polyline>
                                 <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -291,187 +309,201 @@
                  不参与网格布局，里面的 .full-width 卡片仍按 #view-settings
                  的网格直接排列。 -->
             <div class="settings-content hidden" id="settings-content">
-            <div class="card full-width form-card">
-                <div class="form-card-head">
-                    <span data-i18n="auto_water">Auto Watering</span>
-                    <label class="switch"><input type="checkbox" id="cfg-water-enabled" aria-label="auto watering"
-                            onchange="toggleSettingsGroup('cfg-water-enabled','cfg-water-group')"><span
-                            class="slider"></span></label>
-                </div>
-                <div class="form-body">
-                    <!-- 关掉开关时收起：阈值/时长此时都不会被自动浇水用到 -->
-                    <div class="form-group" id="cfg-water-group">
-                        <div class="form-row-stacked">
-                            <div class="dual-slider-header">
-                                <span data-i18n="water_thresholds">Moisture Thresholds</span>
-                                <span class="dual-slider-values"><span id="water-thresh-val">65</span>% ~ <span id="water-target-val">85</span>%</span>
-                            </div>
-                            <div class="dual-slider-container">
-                                <div class="dual-slider-track" id="water-slider-track"></div>
-                                <input type="range" id="cfg-water-threshold" min="0" max="100" step="1" value="65">
-                                <input type="range" id="cfg-water-target" min="0" max="100" step="1" value="85">
-                            </div>
-                            <div class="form-desc" data-i18n="water_threshold_hint" style="margin-top: 8px;"></div>
-                        </div>
-                        <div class="form-row-stacked">
-                            <label data-i18n="water_pulse_config" style="margin-bottom: 6px;">Pulse Config</label>
-                            <div class="input-group-row" style="flex-wrap: wrap;">
-                                <span data-i18n="sentence_pump">Pump</span>
-                                <input type="number" id="cfg-water-duration" class="form-input form-input--sm" min="0.1" max="5.0" step="0.1">
-                                <span data-i18n="sentence_sec_wait">s, wait</span>
-                                <input type="number" id="cfg-water-pulse-interval" class="form-input form-input--sm" min="10" max="300" step="1">
-                                <span data-i18n="sentence_sec">s</span>
-                            </div>
-                        </div>
-                        <div class="form-row-stacked">
-                            <label data-i18n="water_limits" style="margin-bottom: 6px;">Limits</label>
-                            <div class="input-group-row" style="flex-wrap: wrap;">
-                                <span data-i18n="sentence_max">Max</span>
-                                <input type="number" id="cfg-water-max-pulses" class="form-input form-input--sm" min="1" max="30" step="1">
-                                <span data-i18n="sentence_pulses_wait">pulses. Min wait</span>
-                                <input type="number" id="cfg-water-min-interval" class="form-input form-input--sm" min="1" max="72" step="1">
-                                <span data-i18n="sentence_hours">h</span>
-                            </div>
-                        </div>
-                        <div class="form-row multi-input">
-                            <label data-i18n="water_time_window">Operating Window</label>
-                            <div class="input-group-row">
-                                <input type="number" id="cfg-water-start-hour" class="form-input form-input--sm" min="0" max="23" step="1" title="Start Hour">
-                                <span>:00</span>
-                                <span class="separator">-</span>
-                                <input type="number" id="cfg-water-end-hour" class="form-input form-input--sm" min="0" max="23" step="1" title="End Hour">
-                                <span>:00</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <!-- 土壤湿度 ABC（自动基准校准）。只有硬件里有支持校准的土壤传感器时才
-                 显示这张卡（见 navigation.js switchDevice 的 caps.soil_calibration），
-                 与"启用"开关是否打开无关——关掉后还得能在这里重新打开它。 -->
-            <div class="card full-width form-card" id="cfg-calib-card">
-                <div class="form-card-head">
-                    <span data-i18n="soil_calibration">Soil Auto-Calibration</span>
-                    <label class="switch"><input type="checkbox" id="cfg-calib-enabled"
-                            aria-label="soil auto calibration"
-                            onchange="toggleSettingsGroup('cfg-calib-enabled','cfg-calib-group')"><span
-                            class="slider"></span></label>
-                </div>
-                <div class="form-body">
-                    <div class="form-desc" data-i18n="soil_calibration_desc">Nightly, offline: scans recent soil
-                        ADC history and re-estimates the 100% moisture baseline.</div>
-                    <!-- 关掉开关时收起：窗口期/漂移阈值此时都不会被用到 -->
-                    <div class="form-group" id="cfg-calib-group">
-                        <div class="form-row">
-                            <label for="cfg-calib-window-days" data-i18n="calib_window_days">Statistics Window
-                                (days)</label>
-                            <input type="number" id="cfg-calib-window-days" class="form-input form-input--sm" min="7"
-                                max="365" step="1">
-                        </div>
-                        <div class="form-row">
-                            <label for="cfg-calib-max-drift" data-i18n="calib_max_drift">Max Drift per Update
-                                (%)</label>
-                            <input type="number" id="cfg-calib-max-drift" class="form-input form-input--sm" min="1"
-                                max="100" step="1">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card full-width form-card">
-                <div class="form-card-head">
-                    <span data-i18n="fill_light">Fill Light</span>
-                    <label class="switch"><input type="checkbox" id="cfg-light-enabled" aria-label="fill light"
-                            onchange="toggleSettingsGroup('cfg-light-enabled','cfg-light-group')"><span
-                            class="slider"></span></label>
-                </div>
-                <div class="form-body">
-                  <!-- 关掉开关时整段收起：模式、定时/日出日落两组子设置此时都不会被用到 -->
-                  <div class="form-group" id="cfg-light-group">
-                    <div class="form-row">
-                        <label for="cfg-light-mode" data-i18n="mode">Mode</label>
-                        <select id="cfg-light-mode" class="form-select" onchange="toggleLightMode()">
-                            <option value="fixed" data-i18n="fixed_time">Fixed Time</option>
-                            <option value="sun" data-i18n="sunrise_sunset">Sunrise &amp; Sunset</option>
-                        </select>
-                    </div>
-
-                    <div id="cfg-light-fixed-group" class="form-group">
-                        <div class="form-row">
-                            <label for="cfg-light-on" data-i18n="turn_on">Turn On</label>
-                            <input type="time" id="cfg-light-on" class="form-input">
-                        </div>
-                        <div class="form-row">
-                            <label for="cfg-light-off" data-i18n="turn_off">Turn Off</label>
-                            <input type="time" id="cfg-light-off" class="form-input">
-                        </div>
-                    </div>
-
-                    <div id="cfg-light-sun-group" class="form-group hidden">
-                        <div class="form-cols">
-                            <div class="form-col">
-                                <label for="cfg-light-lat" class="form-label-block" data-i18n="lat">Latitude</label>
-                                <input type="text" id="cfg-light-lat" class="form-input form-input--full"
-                                    placeholder="auto">
-                            </div>
-                            <div class="form-col">
-                                <label for="cfg-light-lng" class="form-label-block" data-i18n="lng">Longitude</label>
-                                <input type="text" id="cfg-light-lng" class="form-input form-input--full"
-                                    placeholder="auto">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <label for="cfg-light-on-offset" data-i18n="on_offset">On Offset (min)</label>
-                            <input type="number" id="cfg-light-on-offset" class="form-input form-input--sm">
-                        </div>
-                        <div class="form-row">
-                            <label for="cfg-light-off-offset" data-i18n="off_offset">Off Offset (min)</label>
-                            <input type="number" id="cfg-light-off-offset" class="form-input form-input--sm">
-                        </div>
-                        <div id="cfg-light-effective-times" class="form-hint" data-i18n="currently_scheduled">Currently
-                            scheduled: --:-- to --:--</div>
-                    </div>
-                  </div>
-                </div>
-            </div>
-
-            <!-- 拍照。补光是所有拍摄路径（实时预览 / 高清抓拍 / 每日照片）共用的
-                 全局设置，每日照片只是其中一种拍摄，所以同属这一张卡。 -->
-            <div class="card full-width form-card" id="cfg-photo-card">
-                <div class="form-card-head">
-                    <span data-i18n="photo_capture">Photo Capture</span>
-                </div>
-                <div class="form-body">
-                    <div class="form-row" id="cfg-photo-fill-light-row">
-                        <label for="cfg-photo-fill-light" data-i18n="photo_fill_light">Fill Light While
-                            Capturing</label>
-                        <label class="switch"><input type="checkbox" id="cfg-photo-fill-light"
-                                aria-label="fill light while capturing"><span class="slider"></span></label>
-                    </div>
-                    <div class="form-row">
-                        <label for="cfg-photo-enabled" data-i18n="daily_photo">Daily Photo</label>
-                        <label class="switch"><input type="checkbox" id="cfg-photo-enabled" aria-label="daily photo"
-                                onchange="toggleSettingsGroup('cfg-photo-enabled','cfg-photo-daily-group')"><span
+                <div class="card full-width form-card">
+                    <div class="form-card-head">
+                        <span data-i18n="auto_water">Auto Watering</span>
+                        <label class="switch"><input type="checkbox" id="cfg-water-enabled" aria-label="auto watering"
+                                data-i18n-aria="auto_water"
+                                onchange="toggleSettingsGroup('cfg-water-enabled','cfg-water-group')"><span
                                 class="slider"></span></label>
                     </div>
-                    <!-- 每日照片的子设置。关掉开关时一并收起：拍照时刻无从生效，
-                         而重拍出来的照片会落进一个已经隐藏的时间轴里，拍了也看不到。 -->
-                    <div class="form-group" id="cfg-photo-daily-group">
-                        <div class="form-row">
-                            <label for="cfg-photo-hour" data-i18n="photo_hour">Capture Hour</label>
-                            <input type="number" id="cfg-photo-hour" class="form-input form-input--sm" min="0" max="23"
-                                step="1">
+                    <div class="form-body">
+                        <!-- 关掉开关时收起：阈值/时长此时都不会被自动浇水用到 -->
+                        <div class="form-group" id="cfg-water-group">
+                            <div class="form-row-stacked">
+                                <div class="dual-slider-header">
+                                    <span data-i18n="water_thresholds">Moisture Thresholds</span>
+                                    <span class="dual-slider-values"><span id="water-thresh-val">65</span>% ~ <span
+                                            id="water-target-val">85</span>%</span>
+                                </div>
+                                <div class="dual-slider-container">
+                                    <div class="dual-slider-track" id="water-slider-track"></div>
+                                    <input type="range" id="cfg-water-threshold" min="0" max="100" step="1" value="65">
+                                    <input type="range" id="cfg-water-target" min="0" max="100" step="1" value="85">
+                                </div>
+                                <div class="form-desc" data-i18n="water_threshold_hint" style="margin-top: 8px;"></div>
+                            </div>
+                            <div class="form-row-stacked">
+                                <label data-i18n="water_pulse_config" style="margin-bottom: 6px;">Pulse Config</label>
+                                <div class="input-group-row" style="flex-wrap: wrap;">
+                                    <span data-i18n="sentence_pump">Pump</span>
+                                    <input type="number" id="cfg-water-duration" class="form-input form-input--sm"
+                                        min="0.1" max="5.0" step="0.1">
+                                    <span data-i18n="sentence_sec_wait">s, wait</span>
+                                    <input type="number" id="cfg-water-pulse-interval" class="form-input form-input--sm"
+                                        min="10" max="300" step="1">
+                                    <span data-i18n="sentence_sec">s</span>
+                                </div>
+                            </div>
+                            <div class="form-row-stacked">
+                                <label data-i18n="water_limits" style="margin-bottom: 6px;">Limits</label>
+                                <div class="input-group-row" style="flex-wrap: wrap;">
+                                    <span data-i18n="sentence_max">Max</span>
+                                    <input type="number" id="cfg-water-max-pulses" class="form-input form-input--sm"
+                                        min="1" max="30" step="1">
+                                    <span data-i18n="sentence_pulses_wait">pulses. Min wait</span>
+                                    <input type="number" id="cfg-water-min-interval" class="form-input form-input--sm"
+                                        min="1" max="72" step="1">
+                                    <span data-i18n="sentence_hours">h</span>
+                                </div>
+                            </div>
+                            <div class="form-row multi-input">
+                                <label data-i18n="water_time_window">Operating Window</label>
+                                <div class="input-group-row">
+                                    <input type="number" id="cfg-water-start-hour" class="form-input form-input--sm"
+                                        min="0" max="23" step="1" title="Start Hour" data-i18n-title="start_hour">
+                                    <span>:00</span>
+                                    <span class="separator">-</span>
+                                    <input type="number" id="cfg-water-end-hour" class="form-input form-input--sm"
+                                        min="0" max="23" step="1" title="End Hour" data-i18n-title="end_hour">
+                                    <span>:00</span>
+                                </div>
+                            </div>
                         </div>
-                        <button class="form-action-btn" id="retake-photo-btn" onclick="retakeTodayPhoto()"
-                            data-i18n="retake_photo">Retake Today's Photo</button>
                     </div>
                 </div>
-            </div>
+                <!-- 土壤湿度 ABC（自动基准校准）。只有硬件里有支持校准的土壤传感器时才
+                 显示这张卡（见 navigation.js switchDevice 的 caps.soil_calibration），
+                 与"启用"开关是否打开无关——关掉后还得能在这里重新打开它。 -->
+                <div class="card full-width form-card" id="cfg-calib-card">
+                    <div class="form-card-head">
+                        <span data-i18n="soil_calibration">Soil Auto-Calibration</span>
+                        <label class="switch"><input type="checkbox" id="cfg-calib-enabled"
+                                aria-label="soil auto calibration" data-i18n-aria="soil_calibration"
+                                onchange="toggleSettingsGroup('cfg-calib-enabled','cfg-calib-group')"><span
+                                class="slider"></span></label>
+                    </div>
+                    <div class="form-body">
+                        <div class="form-desc" data-i18n="soil_calibration_desc">Nightly, offline: scans recent soil
+                            ADC history and re-estimates the 100% moisture baseline.</div>
+                        <!-- 关掉开关时收起：窗口期/漂移阈值此时都不会被用到 -->
+                        <div class="form-group" id="cfg-calib-group">
+                            <div class="form-row">
+                                <label for="cfg-calib-window-days" data-i18n="calib_window_days">Statistics Window
+                                    (days)</label>
+                                <input type="number" id="cfg-calib-window-days" class="form-input form-input--sm"
+                                    min="7" max="365" step="1">
+                            </div>
+                            <div class="form-row">
+                                <label for="cfg-calib-max-drift" data-i18n="calib_max_drift">Max Drift per Update
+                                    (%)</label>
+                                <input type="number" id="cfg-calib-max-drift" class="form-input form-input--sm" min="1"
+                                    max="100" step="1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-            <div class="card full-width form-card--flush">
-                <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfigAndRefresh()"
-                    data-i18n="save_cfg">Save Configuration</button>
-            </div>
+                <div class="card full-width form-card">
+                    <div class="form-card-head">
+                        <span data-i18n="fill_light">Fill Light</span>
+                        <label class="switch"><input type="checkbox" id="cfg-light-enabled" aria-label="fill light"
+                                data-i18n-aria="fill_light"
+                                onchange="toggleSettingsGroup('cfg-light-enabled','cfg-light-group')"><span
+                                class="slider"></span></label>
+                    </div>
+                    <div class="form-body">
+                        <!-- 关掉开关时整段收起：模式、定时/日出日落两组子设置此时都不会被用到 -->
+                        <div class="form-group" id="cfg-light-group">
+                            <div class="form-row">
+                                <label for="cfg-light-mode" data-i18n="mode">Mode</label>
+                                <select id="cfg-light-mode" class="form-select" onchange="toggleLightMode()">
+                                    <option value="fixed" data-i18n="fixed_time">Fixed Time</option>
+                                    <option value="sun" data-i18n="sunrise_sunset">Sunrise &amp; Sunset</option>
+                                </select>
+                            </div>
+
+                            <div id="cfg-light-fixed-group" class="form-group">
+                                <div class="form-row">
+                                    <label for="cfg-light-on" data-i18n="turn_on">Turn On</label>
+                                    <input type="time" id="cfg-light-on" class="form-input">
+                                </div>
+                                <div class="form-row">
+                                    <label for="cfg-light-off" data-i18n="turn_off">Turn Off</label>
+                                    <input type="time" id="cfg-light-off" class="form-input">
+                                </div>
+                            </div>
+
+                            <div id="cfg-light-sun-group" class="form-group hidden">
+                                <div class="form-cols">
+                                    <div class="form-col">
+                                        <label for="cfg-light-lat" class="form-label-block"
+                                            data-i18n="lat">Latitude</label>
+                                        <input type="text" id="cfg-light-lat" class="form-input form-input--full"
+                                            placeholder="auto" data-i18n-placeholder="auto">
+                                    </div>
+                                    <div class="form-col">
+                                        <label for="cfg-light-lng" class="form-label-block"
+                                            data-i18n="lng">Longitude</label>
+                                        <input type="text" id="cfg-light-lng" class="form-input form-input--full"
+                                            placeholder="auto" data-i18n-placeholder="auto">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <label for="cfg-light-on-offset" data-i18n="on_offset">On Offset (min)</label>
+                                    <input type="number" id="cfg-light-on-offset" class="form-input form-input--sm">
+                                </div>
+                                <div class="form-row">
+                                    <label for="cfg-light-off-offset" data-i18n="off_offset">Off Offset (min)</label>
+                                    <input type="number" id="cfg-light-off-offset" class="form-input form-input--sm">
+                                </div>
+                                <div id="cfg-light-effective-times" class="form-hint" data-i18n="currently_scheduled">
+                                    Currently
+                                    scheduled: --:-- to --:--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 拍照。补光是所有拍摄路径（实时预览 / 高清抓拍 / 每日照片）共用的
+                 全局设置，每日照片只是其中一种拍摄，所以同属这一张卡。 -->
+                <div class="card full-width form-card" id="cfg-photo-card">
+                    <div class="form-card-head">
+                        <span data-i18n="photo_capture">Photo Capture</span>
+                    </div>
+                    <div class="form-body">
+                        <div class="form-row" id="cfg-photo-fill-light-row">
+                            <label for="cfg-photo-fill-light" data-i18n="photo_fill_light">Fill Light While
+                                Capturing</label>
+                            <label class="switch"><input type="checkbox" id="cfg-photo-fill-light"
+                                    aria-label="fill light while capturing" data-i18n-aria="photo_fill_light"><span
+                                    class="slider"></span></label>
+                        </div>
+                        <div class="form-row">
+                            <label for="cfg-photo-enabled" data-i18n="daily_photo">Daily Photo</label>
+                            <label class="switch"><input type="checkbox" id="cfg-photo-enabled" aria-label="daily photo"
+                                    data-i18n-aria="daily_photo"
+                                    onchange="toggleSettingsGroup('cfg-photo-enabled','cfg-photo-daily-group')"><span
+                                    class="slider"></span></label>
+                        </div>
+                        <!-- 每日照片的子设置。关掉开关时一并收起：拍照时刻无从生效，
+                         而重拍出来的照片会落进一个已经隐藏的时间轴里，拍了也看不到。 -->
+                        <div class="form-group" id="cfg-photo-daily-group">
+                            <div class="form-row">
+                                <label for="cfg-photo-hour" data-i18n="photo_hour">Capture Hour</label>
+                                <input type="number" id="cfg-photo-hour" class="form-input form-input--sm" min="0"
+                                    max="23" step="1">
+                            </div>
+                            <button class="form-action-btn" id="retake-photo-btn" onclick="retakeTodayPhoto()"
+                                data-i18n="retake_photo">Retake Today's Photo</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card full-width form-card--flush">
+                    <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfigAndRefresh()"
+                        data-i18n="save_cfg">Save Configuration</button>
+                </div>
             </div>
         </div>
 

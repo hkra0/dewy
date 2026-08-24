@@ -34,22 +34,27 @@ const translations = {
         format_mp4_title: "MP4 Video", format_mp4_desc: "High definition, smooth playback, tiny file size",
         format_gif_title: "GIF Animation", format_gif_desc: "Animated image, best for social sharing",
         export_quality_label: "Quality", quality_hd_title: "HD Original (1080p)",
-        quality_hd_desc: "Streamingly rendered on Pi from original photos",
+        quality_hd_desc: "Rendered on Pi from original photos",
         quality_sd_title: "Standard / Fast (480p)", quality_sd_desc: "Rendered from thumbnails, smaller file and faster",
-        export_speed_label: "Playback Speed", export_watermark_label: "Include date watermark (📅 YYYY-MM-DD)",
+        export_speed_label: "Playback Speed", export_watermark_label: "Include date watermark",
         cancel: "Cancel", start_export: "Start Export", export_generating: "Rendering timelapse, please wait...",
-        export_generating_hint: "Synthesizing streamingly on Pi server, no raw download required...",
+        export_generating_hint: "Rendering on Pi server...",
         export_success: "Export completed and downloaded successfully", export_fail: "Export failed: {msg}",
         recommended: "Recommended",
         export_gif: "GIF", exporting: "creating...", gif_start: "Synthesizing GIF timeline, please wait...", gif_success: "GIF downloaded successfully", gif_error: "Failed to generate GIF", gif_lib_missing: "GIF library loading, please try again in a moment",
         load_failed: "failed to load, check connection", fail_load_cfg: "Failed to load configuration", water_clamped: "Duration must be {min}–{max}s, adjusted",
         gif_sampled: "Sampled {n} of {total} photos to keep the GIF manageable",
-        other_metrics: "other metrics", booting: "loading...",
+        other_metrics: "other metrics", booting: "loading...", loading: "loading...",
         boot_retry: "retry", boot_enter_anyway: "continue anyway",
         boot_err_network: "Can't reach the server, check your network connection and retry",
         boot_err_pi: "Can't reach the Raspberry Pi. It may be offline, or its tunnel isn't running",
         boot_err_key: "This link's access key is invalid or expired. Open the latest share link again",
         boot_err_http: "Failed to load device list (HTTP {status})",
+        speed_1fps: "1 FPS (1.0s / day)", speed_2fps: "2 FPS (0.5s / day)", speed_4fps: "4 FPS (0.25s / day)", speed_8fps: "8 FPS (0.125s / day)",
+        start_hour: "Start Hour", end_hour: "End Hour", auto: "auto", views: "views", device: "device",
+        cam_alt: "camera view, activate for a high-res capture", photo_viewer: "photo viewer", hd_view: "hd view",
+        prev_photo: "Previous photo", play_timelapse: "Play timelapse", next_photo: "Next photo", playback_speed: "Playback speed",
+        state_on: "ON", state_off: "OFF",
         metric_illuminance: "illuminance", metric_lux: "illuminance", metric_co2: "co₂",
         metric_tvoc: "tvoc", metric_ec: "conductivity", metric_ph: "ph",
         metric_altitude: "altitude", metric_gas_resistance: "gas resistance",
@@ -90,22 +95,27 @@ const translations = {
         format_mp4_title: "MP4 视频", format_mp4_desc: "全平台兼容，高画质，体积极小，播放极其流畅",
         format_gif_title: "GIF 动图", format_gif_desc: "动态图片，适合社交分享与动图展示",
         export_quality_label: "画面质量", quality_hd_title: "高清原图 (1080p)",
-        quality_hd_desc: "树莓派服务端基于原图流式合成，画面清晰细腻",
+        quality_hd_desc: "使用原图合成",
         quality_sd_title: "标清快速 (480p)", quality_sd_desc: "使用缩略图合成，文件更小、生成速度更快",
-        export_speed_label: "播放速度", export_watermark_label: "包含日期水印 (📅 YYYY-MM-DD)",
+        export_speed_label: "播放速度", export_watermark_label: "包含日期水印",
         cancel: "取消", start_export: "开始导出", export_generating: "正在合成延时作品，请稍候...",
-        export_generating_hint: "由树莓派服务端流式合成中，无需下载海量原图...",
+        export_generating_hint: "合成中...",
         export_success: "导出完成，已触发下载", export_fail: "导出失败: {msg}",
         recommended: "推荐",
-        export_gif: "导出 GIF", exporting: "合成中...", gif_start: "正在高速合成延时动图，请稍候...", gif_success: "GIF 动图已生成", gif_error: "GIF 合成失败，请重试", gif_lib_missing: "动图组件准备中，请稍后再试",
+        export_gif: "导出 GIF", exporting: "合成中...", gif_start: "正在合成延时动图，请稍候...", gif_success: "GIF 动图已生成", gif_error: "GIF 合成失败，请重试", gif_lib_missing: "动图组件准备中，请稍后再试",
         load_failed: "加载失败，请检查连接", fail_load_cfg: "配置读取失败", water_clamped: "浇水时长需在 {min}–{max} 秒之间，已自动调整",
         gif_sampled: "照片较多，已从 {total} 张中均匀抽取 {n} 张合成",
-        other_metrics: "其它指标", booting: "加载中...",
+        other_metrics: "其它指标", booting: "加载中...", loading: "加载中...",
         boot_retry: "重试", boot_enter_anyway: "仍然进入",
         boot_err_network: "连不上服务器，请检查网络连接后重试",
         boot_err_pi: "无法连接到树莓派：设备可能已离线，或隧道未运行",
         boot_err_key: "访问密钥无效或已过期，请用最新的分享链接重新打开",
         boot_err_http: "设备列表加载失败（HTTP {status}）",
+        speed_1fps: "1 FPS (1.0秒 / 天)", speed_2fps: "2 FPS (0.5秒 / 天)", speed_4fps: "4 FPS (0.25秒 / 天)", speed_8fps: "8 FPS (0.125秒 / 天)",
+        start_hour: "开始时间 (整点)", end_hour: "结束时间 (整点)", auto: "自动", views: "视图", device: "设备",
+        cam_alt: "实时画面，点击获取高清抓拍", photo_viewer: "照片查看器", hd_view: "高清视图",
+        prev_photo: "上一张", play_timelapse: "播放延时", next_photo: "下一张", playback_speed: "播放速度",
+        state_on: "开", state_off: "关",
         metric_illuminance: "光照强度", metric_lux: "光照强度", metric_co2: "二氧化碳",
         metric_tvoc: "挥发性有机物", metric_ec: "电导率", metric_ph: "酸碱度",
         metric_altitude: "海拔", metric_gas_resistance: "气体电阻",
@@ -114,18 +124,9 @@ const translations = {
     }
 };
 
-
 export const LANG_KEY = 'dewy_lang';
 export const SUPPORTED_LANGS = ['en', 'zh'];
 
-// 语言默认跟 navigator.language，没有界面控件——**这是刻意的**。
-//
-// 页面本身只有四个 tab，任何常驻的语言开关都会和主导航抢视觉权重，
-// 显得比实际功能还重要；而设置页要浇水密钥才可见，访客够不着。
-// 覆盖走链接参数（见 navigation.js 的 checkMagicLink）：
-//     https://…/?lang=zh    或    https://…/#key=xxx&lang=zh
-// 这跟本项目已有的魔法链接是同一套习惯，不是新机制，而且零像素占用。
-// 覆盖值落进 localStorage，之后一直生效，链接只需要发一次。
 function detectLang() {
     try {
         const saved = localStorage.getItem(LANG_KEY);
@@ -186,6 +187,23 @@ export function applyTranslations() {
         el.innerText = t(key);
     });
 
-    // 让屏幕阅读器与浏览器用对语言（index.html 里写死的是 lang="en"）
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+        el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
+    });
+
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder')));
+    });
+
+    document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+        el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+    });
+
+    document.querySelectorAll('[data-i18n-alt]').forEach(el => {
+        el.setAttribute('alt', t(el.getAttribute('data-i18n-alt')));
+    });
+
+    // 让屏幕阅读器与浏览器用对语言
     document.documentElement.lang = currentLang;
 }
+
