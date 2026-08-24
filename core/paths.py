@@ -21,11 +21,12 @@ TMP_IMG_PATH = os.path.join(DATA_DIR, "live.jpg")
 TMP_IMG_HQ_PATH = os.path.join(DATA_DIR, "live_hq.jpg")
 PHOTO_DIR = os.path.join(DATA_DIR, "photos")
 THUMB_DIR = os.path.join(PHOTO_DIR, "thumbs")
+EXPORT_CACHE_DIR = os.path.join(DATA_DIR, "cache", "export")
 
 POWER_SAVER_SCRIPT = os.environ.get("DEWY_POWER_SAVER") or os.path.join(PROJECT_ROOT, "power_saver.sh")
 
 
 def ensure_dirs():
     """创建运行期需要的目录。幂等。"""
-    for d in (DATA_DIR, PHOTO_DIR, THUMB_DIR):
+    for d in (DATA_DIR, PHOTO_DIR, THUMB_DIR, EXPORT_CACHE_DIR):
         os.makedirs(d, exist_ok=True)

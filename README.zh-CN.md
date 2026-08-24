@@ -53,9 +53,11 @@ AGENTS.md                深入维护笔记（分层约定、看门狗、既有�
 
 ### 1. 树莓派后端
 
-要求：Python 3.11+（低版本需装 `tomli`）；使用 ESP32 节点时需要本地 MQTT broker（如 Mosquitto）。
+要求：Python 3.11+（低版本需装 `tomli`）；系统工具 `python3-dev`、`build-essential` 与 `ffmpeg`；使用 ESP32 节点时需要本地 MQTT broker（如 Mosquitto）。
 
 ```bash
+sudo apt update
+sudo apt install -y python3-dev build-essential ffmpeg   # 系统编译与视频工具
 pip install -r requirements.txt
 cp hardware_config.example.toml hardware_config.toml   # 按实际硬件修改
 python main.py                                          # 监听 127.0.0.1:8000

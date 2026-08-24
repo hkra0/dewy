@@ -29,6 +29,11 @@ import {
     navTimeline,
     setTimelineSpeed,
     exportTimelineGIF,
+    openExportModal,
+    closeExportModal,
+    onExportFormatChange,
+    submitExport,
+    initExportModalDismiss,
     viewFullPhoto,
 } from './js/timeline.js';
 import { fetchAllData } from './js/refresh.js';
@@ -53,6 +58,10 @@ Object.assign(window, {
     navTimeline,
     setTimelineSpeed,
     exportTimelineGIF,
+    openExportModal,
+    closeExportModal,
+    onExportFormatChange,
+    submitExport,
     viewFullPhoto,
 });
 
@@ -118,6 +127,7 @@ function enterApp() {
     initHistoryNav();
     initKeyboardActivation();
     initModalDismiss();
+    initExportModalDismiss();
     fetchAllData(true);
 
     // 页面不可见时不轮询，省流量也省树莓派的电

@@ -53,9 +53,11 @@ AGENTS.md                in-depth maintenance notes (Chinese)
 
 ### 1. Raspberry Pi backend
 
-Requirements: Python 3.11+ (older versions need `tomli`), a local MQTT broker (e.g. Mosquitto) if you use ESP32 nodes.
+Requirements: Python 3.11+ (older versions need `tomli`), system tools `python3-dev`, `build-essential`, and `ffmpeg`, and a local MQTT broker (e.g. Mosquitto) if you use ESP32 nodes.
 
 ```bash
+sudo apt update
+sudo apt install -y python3-dev build-essential ffmpeg   # C compilation & video tools
 pip install -r requirements.txt
 cp hardware_config.example.toml hardware_config.toml   # then edit to match your hardware
 python main.py                                          # serves 127.0.0.1:8000

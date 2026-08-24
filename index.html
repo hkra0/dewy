@@ -48,6 +48,93 @@
         <button type="button" class="close-btn" onclick="closeHD()" data-i18n="close">close</button>
     </div>
 
+    <!-- 延时作品导出模态框 -->
+    <div id="export-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="export timelapse dialog">
+        <div class="modal-card" id="export-modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title" data-i18n="export_title">导出延时作品</h3>
+                <button type="button" class="icon-btn-close" onclick="closeExportModal()" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body" id="export-modal-form">
+                <!-- 格式选择 -->
+                <div class="form-group">
+                    <label class="form-label" data-i18n="export_format_label">导出格式</label>
+                    <div class="radio-card-group">
+                        <label class="radio-card">
+                            <input type="radio" name="export-format" value="mp4" checked onchange="onExportFormatChange()">
+                            <span class="radio-card-content">
+                                <span class="radio-card-title">🎥 <span data-i18n="format_mp4_title">MP4 视频</span> <span class="badge-rec" data-i18n="recommended">推荐</span></span>
+                                <span class="radio-card-desc" data-i18n="format_mp4_desc">全平台兼容，高画质，体积极小</span>
+                            </span>
+                        </label>
+                        <label class="radio-card">
+                            <input type="radio" name="export-format" value="gif" onchange="onExportFormatChange()">
+                            <span class="radio-card-content">
+                                <span class="radio-card-title">🖼️ <span data-i18n="format_gif_title">GIF 动图</span></span>
+                                <span class="radio-card-desc" data-i18n="format_gif_desc">动态图片，适合社交分享与动图展示</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 质量选择 -->
+                <div class="form-group">
+                    <label class="form-label" data-i18n="export_quality_label">画面质量</label>
+                    <div class="radio-card-group">
+                        <label class="radio-card">
+                            <input type="radio" name="export-quality" value="hd" checked>
+                            <span class="radio-card-content">
+                                <span class="radio-card-title">✨ <span data-i18n="quality_hd_title">高清原图 (1080p)</span></span>
+                                <span class="radio-card-desc" data-i18n="quality_hd_desc">树莓派端基于高清原图流式合成，画面清晰细腻</span>
+                            </span>
+                        </label>
+                        <label class="radio-card">
+                            <input type="radio" name="export-quality" value="sd">
+                            <span class="radio-card-content">
+                                <span class="radio-card-title">⚡ <span data-i18n="quality_sd_title">标清快速 (480p)</span></span>
+                                <span class="radio-card-desc" data-i18n="quality_sd_desc">使用缩略图合成，文件更小、生成速度更快</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 播放速度与水印 -->
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label class="form-label" for="export-speed-select" data-i18n="export_speed_label">播放速度</label>
+                        <select id="export-speed-select" class="form-select">
+                            <option value="1">1 FPS (1.0s / 天)</option>
+                            <option value="2" selected>2 FPS (0.5s / 天 - 推荐)</option>
+                            <option value="4">4 FPS (0.25s / 天)</option>
+                            <option value="8">8 FPS (流畅快放)</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1 flex-center-start">
+                        <label class="checkbox-label" style="margin-top: 24px;">
+                            <input type="checkbox" id="export-watermark-check" checked>
+                            <span data-i18n="export_watermark_label">包含日期水印 (📅 YYYY-MM-DD)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 生成进度状态 -->
+            <div class="modal-body hidden" id="export-modal-progress">
+                <div class="export-progress-container">
+                    <div class="loader" style="margin: 0 auto 16px auto;"></div>
+                    <div class="export-status-text" id="export-status-text" data-i18n="export_generating">正在合成延时作品，请稍候...</div>
+                    <div class="export-sub-text" id="export-sub-text" data-i18n="export_generating_hint">由树莓派服务端流式合成中，无需下载海量原图...</div>
+                </div>
+            </div>
+
+            <!-- 底部按钮 -->
+            <div class="modal-footer" id="export-modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeExportModal()" data-i18n="cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="export-submit-btn" onclick="submitExport()" data-i18n="start_export">开始导出</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 首屏加载态。节点列表（/api/nodes）决定哪些标签页/卡片该出现，
          没拿到就渲染主界面的话，用户会先看到一份"设备叫 main、没有系统页"的
          错误界面，再被 initNodes 改写一次。所以主界面先藏着，由 app.js
@@ -177,8 +264,14 @@
                             <option value="500" selected>2x</option>
                             <option value="250">4x</option>
                         </select>
-                        <button class="tl-action-btn" id="tl-export-btn" onclick="exportTimelineGIF()"
-                            data-i18n="export_gif" title="Export GIF">GIF</button>
+                        <button class="tl-action-btn" id="tl-export-btn" onclick="openExportModal()"
+                            data-i18n-title="export_timelapse" title="Export Timelapse" aria-label="Export">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display: block;">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>

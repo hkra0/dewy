@@ -94,6 +94,7 @@ const CSP = [
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' blob: data:",
+    "media-src 'self' blob: data:",
     "connect-src 'self'",
     "worker-src blob:",
     "object-src 'none'",
@@ -176,7 +177,8 @@ export default {
                 });
 
                 const isImageEndpoint = url.pathname === "/api/image";
-                const isPhotoFile = url.pathname.startsWith("/api/photos/");
+                const isExportEndpoint = url.pathname === "/api/photos/export";
+                const isPhotoFile = url.pathname.startsWith("/api/photos/") && !isExportEndpoint;
 
                 // 304 必须先于 !ok 判断：Response.ok 只认 2xx，落到下面就会被
                 // 当成故障、回一个带 "offline" body 的 304——而 304 本就不允许
@@ -185,7 +187,16 @@ export default {
                     return new Response(null, { status: 304, headers: { ...BASE_SECURITY_HEADERS, "Cache-Control": "no-store" } });
                 }
 
-                if (!piResponse.ok) return new Response((isImageEndpoint || isPhotoFile) ? "offline" : JSON.stringify({ error: "cannot connect to pi" }), { status: piResponse.status, headers: BASE_SECURITY_HEADERS });
+                if (!piResponse.ok) {
+                    if (isImageEndpoint || isPhotoFile) {
+                        return new Response("offline", { status: piResponse.status, headers: BASE_SECURITY_HEADERS });
+                    }
+                    const errBody = await piResponse.text();
+                    return new Response(errBody || JSON.stringify({ error: "cannot connect to pi" }), {
+                        status: piResponse.status,
+                        headers: { ...BASE_SECURITY_HEADERS, "Content-Type": piResponse.headers.get("Content-Type") || "application/json" },
+                    });
+                }
 
                 // 前端由同一个 Worker 下发，与 API 同源，所以 CORS 头本来就用不上：
                 // 而且鉴权走的是自定义头（X-Viewer-Key / x-water-key），跨源调用必须
@@ -197,11 +208,13 @@ export default {
                     responseHeaders.set("Cache-Control", "no-store");
                     const imgTs = piResponse.headers.get("X-Image-Timestamp");
                     if (imgTs) responseHeaders.set("X-Image-Timestamp", imgTs);
-                } else if (isPhotoFile) {
-                    const piCt = piResponse.headers.get("Content-Type") || "image/jpeg";
+                } else if (isPhotoFile || isExportEndpoint) {
+                    const piCt = piResponse.headers.get("Content-Type") || (isExportEndpoint ? "video/mp4" : "image/jpeg");
                     const piCc = piResponse.headers.get("Cache-Control") || "public, max-age=86400";
                     responseHeaders.set("Content-Type", piCt);
                     responseHeaders.set("Cache-Control", piCc);
+                    const piCd = piResponse.headers.get("Content-Disposition");
+                    if (piCd) responseHeaders.set("Content-Disposition", piCd);
                 } else {
                     responseHeaders.set("Content-Type", "application/json");
                     responseHeaders.set("Vary", "Accept-Encoding");

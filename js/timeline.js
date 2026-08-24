@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import { showToast } from './ui.js';
 import { state, getViewerKey, nodeCaps } from './state.js';
-import { apiGet } from './api.js';
+import { apiGet, apiViewerPost } from './api.js';
 import { ensureGifshot } from './cdn.js';
 
 let tlPhotos = [];
@@ -297,126 +297,163 @@ function createWatermarkedFrame(imgUrl, dateText) {
             ctx.textBaseline = 'middle';
             ctx.fillText(text, boxX + padX, boxY + boxH / 2);
 
-            resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: targetWidth, height: targetHeight });
+        resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: targetWidth, height: targetHeight });
+    };
+    img.onerror = () => resolve(null);
+    img.src = imgUrl;
+});
+}
+
+export function openExportModal() {
+    if (!tlPhotos || tlPhotos.length === 0) return;
+    if (tlPlaying) toggleTimelinePlay();
+
+    const modal = document.getElementById('export-modal');
+    if (!modal) return;
+
+    // 重置弹窗内部视图状态
+    const formEl = document.getElementById('export-modal-form');
+    const progressEl = document.getElementById('export-modal-progress');
+    const footerEl = document.getElementById('export-modal-footer');
+    const submitBtn = document.getElementById('export-submit-btn');
+
+    if (formEl) formEl.classList.remove('hidden');
+    if (progressEl) progressEl.classList.add('hidden');
+    if (footerEl) footerEl.classList.remove('hidden');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = t('start_export');
+    }
+
+    // 根据当前时间轴播放速度同步默认帧率
+    const speedSelect = document.getElementById('export-speed-select');
+    if (speedSelect) {
+        if (tlSpeed <= 150) speedSelect.value = "8";
+        else if (tlSpeed <= 300) speedSelect.value = "4";
+        else if (tlSpeed <= 600) speedSelect.value = "2";
+        else speedSelect.value = "1";
+    }
+
+    modal.classList.remove('hidden');
+}
+
+export function closeExportModal() {
+    const modal = document.getElementById('export-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+export function onExportFormatChange() {
+    // 预留格式切换事件处理
+}
+
+export async function submitExport() {
+    if (!tlPhotos || tlPhotos.length === 0) return;
+
+    const modal = document.getElementById('export-modal');
+    const formEl = document.getElementById('export-modal-form');
+    const progressEl = document.getElementById('export-modal-progress');
+    const footerEl = document.getElementById('export-modal-footer');
+    const statusText = document.getElementById('export-status-text');
+    const subText = document.getElementById('export-sub-text');
+    const submitBtn = document.getElementById('export-submit-btn');
+
+    const format = document.querySelector('input[name="export-format"]:checked')?.value || 'mp4';
+    const quality = document.querySelector('input[name="export-quality"]:checked')?.value || 'hd';
+    const fps = parseFloat(document.getElementById('export-speed-select')?.value || '2');
+    const watermark = document.getElementById('export-watermark-check')?.checked ?? true;
+
+    // 切换到生成进度界面
+    if (formEl) formEl.classList.add('hidden');
+    if (footerEl) footerEl.classList.add('hidden');
+    if (progressEl) progressEl.classList.remove('hidden');
+
+    if (statusText) statusText.innerText = t('export_generating');
+    if (subText) subText.innerText = t('export_generating_hint');
+
+    try {
+        const payload = {
+            format,
+            quality,
+            fps,
+            watermark,
+            max_frames: GIF_MAX_FRAMES
         };
-        img.onerror = () => resolve(null);
-        img.src = imgUrl;
+
+        const res = await apiViewerPost('/api/photos/export', payload);
+        if (!res.ok) {
+            let errMsg = 'Server error';
+            try {
+                const errData = await res.json();
+                errMsg = errData.detail || errData.error || errMsg;
+            } catch (_) {
+                errMsg = `HTTP ${res.status}`;
+            }
+            throw new Error(errMsg);
+        }
+
+        const blob = await res.blob();
+        const mime = format === 'mp4' ? 'video/mp4' : 'image/gif';
+        const ext = format === 'mp4' ? 'mp4' : 'gif';
+        const fileName = `dewy_timelapse_${new Date().toISOString().slice(0, 10)}.${ext}`;
+
+        // 移动端优先唤起系统原生分享（iOS 可直接一键存入相册）
+        if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: mime })] })) {
+            try {
+                await navigator.share({
+                    files: [new File([blob], fileName, { type: mime })],
+                    title: fileName,
+                });
+                showToast(t('export_success'), 'success');
+                closeExportModal();
+                return;
+            } catch (shareErr) {
+                if (shareErr.name === 'AbortError') {
+                    closeExportModal();
+                    return;
+                }
+            }
+        }
+
+        // 桌面端使用 a 标签下载兜底
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+        showToast(t('export_success'), 'success');
+        closeExportModal();
+
+    } catch (e) {
+        console.error("Export failed:", e);
+        showToast(t('export_fail', { msg: e.message }), 'error');
+        // 恢复表单以便用户修改选项或重试
+        if (formEl) formEl.classList.remove('hidden');
+        if (footerEl) footerEl.classList.remove('hidden');
+        if (progressEl) progressEl.classList.add('hidden');
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+export function initExportModalDismiss() {
+    const modal = document.getElementById('export-modal');
+    if (!modal) return;
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeExportModal();
+        }
+    });
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeExportModal();
     });
 }
 
-export async function exportTimelineGIF() {
-    if (!tlPhotos || tlPhotos.length === 0) return;
-    const btn = document.getElementById('tl-export-btn');
-    if (!btn || btn.disabled) return;
-
-    if (typeof gifshot === 'undefined') {
-        showToast(t('gif_lib_missing'), 'info');
-        btn.disabled = true;
-        btn.innerText = '⏳...';
-        const loaded = await ensureGifshot();
-        if (!loaded || typeof gifshot === 'undefined') {
-            btn.disabled = false;
-            btn.innerText = t('export_gif');
-            showToast(t('gif_error'), 'error');
-            return;
-        }
-        btn.disabled = false;
-    }
-
-    if (tlPlaying) toggleTimelinePlay();
-    btn.disabled = true;
-    btn.innerText = t('exporting');
-    showToast(t('gif_start'), 'info');
-
-    let gifWidth = 480, gifHeight = 360;
-
-    try {
-        const selected = selectGifFrames(tlPhotos);
-        if (selected.length < tlPhotos.length) {
-            showToast(t('gif_sampled', { n: selected.length, total: tlPhotos.length }), 'info');
-        }
-
-        // 前 50% 进度用于拉取+水印，后 50% 交给 gifshot 的 progressCallback
-        const frames = await buildGifFrames(selected, (done) => {
-            btn.innerText = `${Math.round((done / selected.length) * 50)}%`;
-        });
-
-        if (frames.length === 0) {
-            throw new Error("No frames loaded");
-        }
-
-        const frameUrls = frames.map(f => f.dataUrl);
-        gifWidth = frames[0].width;
-        gifHeight = frames[0].height;
-
-        const intervalSec = (tlSpeed || 500) / 1000;
-
-        gifshot.createGIF({
-            images: frameUrls,
-            gifWidth: gifWidth,
-            gifHeight: gifHeight,
-            interval: intervalSec,
-            numWorkers: 3,
-            sampleInterval: 10,
-            progressCallback: (captureProgress) => {
-                const totalPercent = 50 + Math.round(captureProgress * 50);
-                if (btn) btn.innerText = `${totalPercent}%`;
-            }
-        }, async function (obj) {
-            btn.disabled = false;
-            btn.innerText = t('export_gif');
-            if (!obj.error) {
-                const fileName = `dewy_timeline_${new Date().toISOString().slice(0, 10)}.gif`;
-                // Convert data URL to Blob — iOS Safari ignores <a download> on data URLs
-                // and silently blocks programmatic a.click() from the gifshot callback.
-                // Parse manually instead of using fetch() because CSP connect-src blocks data: URLs.
-                const parts = obj.image.split(',');
-                const mime = parts[0].match(/:(.*?);/)[1];
-                const bstr = atob(parts[1]);
-                let n = bstr.length;
-                const u8arr = new Uint8Array(n);
-                while (n--) {
-                    u8arr[n] = bstr.charCodeAt(n);
-                }
-                const blob = new Blob([u8arr], { type: mime });
-                // Prefer Web Share API (native "Save Image" on iOS, share sheet on Android)
-                if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'image/gif' })] })) {
-                    try {
-                        await navigator.share({
-                            files: [new File([blob], fileName, { type: 'image/gif' })],
-                        });
-                        showToast(t('gif_success'), 'success');
-                        return;
-                    } catch (shareErr) {
-                        // User cancelled or API failed — fall through to anchor download
-                        if (shareErr.name === 'AbortError') {
-                            showToast(t('gif_success'), 'success');
-                            return;
-                        }
-                    }
-                }
-                // Fallback: blob URL + <a download> (works on desktop browsers)
-                const blobUrl = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = blobUrl;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                // Revoke after a short delay so the browser has time to start the download
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-                showToast(t('gif_success'), 'success');
-            } else {
-                showToast(t('gif_error'), 'error');
-            }
-        });
-    } catch (e) {
-        console.error("Failed during GIF export", e);
-        btn.disabled = false;
-        btn.innerText = t('export_gif');
-        showToast(t('gif_error'), 'error');
-    }
-}
+// 保留兼容别名
+export const exportTimelineGIF = openExportModal;
 
 export async function viewFullPhoto() {
     if (!tlPhotos || tlPhotos.length === 0 || tlCurrentIdx < 0 || tlCurrentIdx >= tlPhotos.length) return;

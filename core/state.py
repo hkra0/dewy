@@ -14,6 +14,7 @@ from core.paths import (
     TMP_IMG_HQ_PATH,
     PHOTO_DIR,
     THUMB_DIR,
+    EXPORT_CACHE_DIR,
     ensure_dirs,
 )
 

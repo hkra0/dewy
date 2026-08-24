@@ -363,3 +363,44 @@ def get_photo(date: str, thumb: bool = False):
             cache_header = "public, max-age=86400"
         return FileResponse(target, media_type="image/jpeg", headers={"Cache-Control": cache_header})
     raise HTTPException(status_code=404, detail="Photo not found")
+
+
+class ExportTimelapseRequest(BaseModel):
+    format: str = "mp4"
+    quality: str = "hd"
+    fps: float = 2.0
+    watermark: bool = True
+    max_frames: int = 120
+
+
+@router.post("/api/photos/export")
+def export_photos_timelapse(req: ExportTimelapseRequest):
+    try:
+        from core.logic.photo_export import export_timelapse
+        output_path = export_timelapse(
+            export_format=req.format,
+            quality=req.quality,
+            fps=req.fps,
+            watermark=req.watermark,
+            max_frames=req.max_frames,
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except RuntimeError as re_err:
+        raise HTTPException(status_code=500, detail=str(re_err))
+    except Exception as e:
+        logger.exception("导出延时文件失败")
+        raise HTTPException(status_code=500, detail=f"Export failed: {e}")
+
+    filename = os.path.basename(output_path)
+    media_type = "video/mp4" if req.format.lower() == "mp4" else "image/gif"
+    return FileResponse(
+        output_path,
+        media_type=media_type,
+        filename=filename,
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+

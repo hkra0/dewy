@@ -16,6 +16,16 @@ export function apiGet(path, init = {}) {
     return fetch(path, withAuth(init, 'X-Viewer-Key', getViewerKey()));
 }
 
+/** 只读/Viewer 权限端点的 JSON POST（如 /api/photos/export）。 */
+export function apiViewerPost(path, body) {
+    const init = { method: 'POST' };
+    if (body !== undefined) {
+        init.headers = { 'Content-Type': 'application/json' };
+        init.body = JSON.stringify(body);
+    }
+    return apiGet(path, init);
+}
+
 /** 高危端点（浇水 / 切灯 / 配置读写）。 */
 export function apiWater(path, init = {}) {
     return fetch(path, withAuth(init, 'x-water-key', getWaterKey() || ''));

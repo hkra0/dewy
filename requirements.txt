@@ -1,5 +1,8 @@
 # dewy — 树莓派端（main.py / core / api / hardware）运行依赖
-# 安装： pip install -r requirements.txt
+# 安装 Python 依赖： pip install -r requirements.txt
+# 系统前置工具：
+#   - C 扩展编译（RPi.GPIO 等）：sudo apt install -y python3-dev build-essential
+#   - 延时视频/高质量动图导出：sudo apt install -y ffmpeg
 #
 # 注：Cloudflare Worker 端（worker.js）不使用本文件，由 wrangler 管理。
 #     ESP32 固件（firmware/）依赖由 platformio.ini 管理。
