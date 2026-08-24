@@ -29,6 +29,111 @@ def _pump_actuator_id():
     return config.global_config["auto_water"].get("actuator_id", DEFAULT_PUMP_ACTUATOR_ID)
 
 
+def watering_safety_status(node_id):
+    """返回归一化后的持久安全状态，供 API 与浇水入口共同使用。"""
+    status = db.query_watering_safety(node_id)
+    if not isinstance(status, dict):
+        status = {}
+    return {
+        "manual_stop": bool(status.get("manual_stop", False)),
+        "sensor_interlock": bool(status.get("sensor_interlock", False)),
+        "interlock_reason": status.get("interlock_reason"),
+        "interlock_since": status.get("interlock_since"),
+        "recovery_count": int(status.get("recovery_count", 0) or 0),
+        "updated_at": status.get("updated_at"),
+    }
+
+
+def watering_block_reason(node_id):
+    """当前禁止驱动水泵的原因；None 表示安全状态允许。"""
+    status = watering_safety_status(node_id)
+    if status["manual_stop"]:
+        return "manual_stop"
+    if status["sensor_interlock"]:
+        return "sensor_interlock"
+    return None
+
+
+def set_manual_emergency_stop(node_id, active):
+    """设置持久人工急停；落闸时立即尝试把泵切到 OFF。
+
+    状态先落库再下发 OFF：即使执行器通信失败，后续所有软件入口也已经被锁住。
+    自动传感器恢复绝不会改 manual_stop。
+    """
+    with state.watering_lock:
+        status = db.set_manual_watering_stop(node_id, active)
+        pump_off_sent = None
+        if active:
+            pump_off_sent = state.hardware_manager.trigger_actuator(
+                node_id, _pump_actuator_id(), state=False)
+            if not pump_off_sent:
+                logger.critical("人工急停已落库，但水泵 OFF 命令下发失败 (Node: %s)", node_id)
+        logger.warning("水泵人工急停 %s (Node: %s)", "已启用" if active else "已解除", node_id)
+    return {**status, "pump_off_sent": pump_off_sent}
+
+
+def evaluate_soil_sensor_safety(node_id, soil_pct, previous_soil=None):
+    """推进“传感器疑似离土”安全联锁状态机。
+
+    落闸需要两个条件同时成立：读数接近空气值，且相对上一条有效归档出现
+    大幅骤降。这样不会把普通的干土误当成拔出了传感器。
+
+    自动恢复更保守：先看到一次明显回升到恢复线之上，再要求连续若干轮
+    仍在恢复线之上。这里只清 sensor_interlock，不碰人工急停。
+    """
+    cfg = config.global_config["auto_water"]
+    air_threshold = float(cfg.get("sensor_air_threshold", 15.0))
+    drop_threshold = float(cfg.get("sensor_drop_threshold", 40.0))
+    recovery_threshold = float(cfg.get("sensor_recovery_threshold", 30.0))
+    recovery_rise = float(cfg.get("sensor_recovery_rise", 15.0))
+    recovery_samples = max(1, int(cfg.get("sensor_recovery_samples", 3)))
+
+    status = watering_safety_status(node_id)
+    if previous_soil is None:
+        previous_soil = db.query_latest_soil(node_id)
+
+    if status["sensor_interlock"]:
+        count = status["recovery_count"]
+        if soil_pct is None or soil_pct < recovery_threshold:
+            if count:
+                status = db.set_soil_sensor_recovery(node_id, 0)
+            return status
+
+        # 第一个恢复样本必须相对上一轮有明显上升；后续样本只需稳定保持。
+        if count == 0 and (previous_soil is None or soil_pct - previous_soil < recovery_rise):
+            return status
+
+        count += 1
+        if count >= recovery_samples:
+            status = db.clear_soil_sensor_interlock(node_id)
+            logger.warning(
+                "土壤传感器连续 %d 轮恢复（当前 %.1f%%），已解除自动联锁 (Node: %s)",
+                recovery_samples, soil_pct, node_id)
+            return status
+
+        status = db.set_soil_sensor_recovery(node_id, count)
+        logger.info("土壤传感器恢复确认 %d/%d (Node: %s, %.1f%%)",
+                    count, recovery_samples, node_id, soil_pct)
+        return status
+
+    if (soil_pct is not None and previous_soil is not None
+            and soil_pct <= air_threshold
+            and previous_soil - soil_pct >= drop_threshold):
+        reason = (f"soil_drop:{previous_soil:.1f}->{soil_pct:.1f};"
+                  f"air_threshold={air_threshold:.1f}")
+        status = db.latch_soil_sensor_interlock(node_id, reason)
+        # 与人工急停相同，联锁先落库再尝试 OFF；失败也不能放行后续脉冲。
+        with state.watering_lock:
+            pump_off_sent = state.hardware_manager.trigger_actuator(
+                node_id, _pump_actuator_id(), state=False)
+        if not pump_off_sent:
+            logger.critical("传感器联锁已落库，但水泵 OFF 命令下发失败 (Node: %s)", node_id)
+        logger.error(
+            "检测到土壤湿度疑似离土骤降 %.1f%% → %.1f%%，水泵已自动联锁 (Node: %s)",
+            previous_soil, soil_pct, node_id)
+    return status
+
+
 def clean_soil_anomalies(node_id):
     """浇水后土壤读数会短暂跳变，把这类突刺标记为离群值以免污染图表。"""
     rows = db.query_recent_soil(node_id, limit=5)
@@ -69,8 +174,13 @@ def trigger_watering(node_id, soil_before, duration=None,
     if duration is None: duration = config.global_config["auto_water"]["duration"]
 
     pump_id = _pump_actuator_id()
-    logger.info("💦 开启水泵 (Node: %s), 时长: %ss", node_id, duration)
-    success = state.hardware_manager.trigger_actuator(node_id, pump_id, duration=duration)
+    with state.watering_lock:
+        reason = watering_block_reason(node_id)
+        if reason:
+            logger.warning("水泵处于安全锁定状态（%s），拒绝浇水 (Node: %s)", reason, node_id)
+            return False
+        logger.info("💦 开启水泵 (Node: %s), 时长: %ss", node_id, duration)
+        success = state.hardware_manager.trigger_actuator(node_id, pump_id, duration=duration)
 
     if success:
         db.insert_watering(node_id, duration, soil_before,
@@ -120,11 +230,17 @@ def pulse_watering(node_id, soil_before):
                 node_id, soil_before, target, duration, interval, max_pulses)
 
     for i in range(max_pulses):
-        # 启泵
-        logger.info("💦 脉冲 %d/%d (Node: %s), 时长: %.1fs",
-                     i + 1, max_pulses, node_id, duration)
-        success = state.hardware_manager.trigger_actuator(
-            node_id, pump_id, duration=duration)
+        # “复查安全状态 → 启泵”在同一把锁内完成；急停接口也持这把锁，
+        # 所以急停落闸后不会再漏过一个新脉冲。
+        with state.watering_lock:
+            reason = watering_block_reason(node_id)
+            if reason:
+                logger.warning("脉冲浇水因安全锁定（%s）终止 (Node: %s)", reason, node_id)
+                break
+            logger.info("💦 脉冲 %d/%d (Node: %s), 时长: %.1fs",
+                        i + 1, max_pulses, node_id, duration)
+            success = state.hardware_manager.trigger_actuator(
+                node_id, pump_id, duration=duration)
         if not success:
             logger.error("❌ 脉冲 %d 泵启动失败，终止浇水", i + 1)
             break
@@ -134,10 +250,19 @@ def pulse_watering(node_id, soil_before):
         time.sleep(interval)
 
         # 读取实时湿度
+        previous_soil = soil_current
         soil_current = _read_soil_moisture(node_id)
         if soil_current is None:
-            logger.warning("⚠️ 脉冲 %d 后读不到土壤湿度，继续下一脉冲", i + 1)
-            continue
+            # 闭环反馈丢失时必须 fail closed；继续打满剩余脉冲会把传感器
+            # 故障直接放大成溢水事故。
+            logger.error("脉冲 %d 后读不到土壤湿度，立即终止浇水", i + 1)
+            break
+
+        status = evaluate_soil_sensor_safety(
+            node_id, soil_current, previous_soil=previous_soil)
+        if status["sensor_interlock"]:
+            logger.warning("脉冲后触发传感器安全联锁，终止本次浇水 (Node: %s)", node_id)
+            break
 
         logger.info("📊 脉冲 %d 后湿度: %.1f%% (目标: %.1f%%)",
                      i + 1, soil_current, target)
@@ -173,7 +298,13 @@ def check_auto_watering(node_id, data, now):
     满足以上全部条件后执行脉冲浇水。
     """
     cfg = config.global_config["auto_water"]
-    if state.power_save_mode or not cfg["enabled"] or cfg["node_id"] != node_id:
+    if cfg["node_id"] != node_id:
+        return
+
+    soil_pct = data.get("soil_moisture")
+    safety = evaluate_soil_sensor_safety(node_id, soil_pct)
+    if (state.power_save_mode or not cfg["enabled"]
+            or safety["manual_stop"] or safety["sensor_interlock"]):
         return
 
     # 2. 当前时刻在允许浇水的时间窗口内（支持跨天）
@@ -193,6 +324,5 @@ def check_auto_watering(node_id, data, now):
     if not can_water_now(node_id, min_interval):
         return
 
-    soil_pct = data.get("soil_moisture")
     if soil_pct is not None and soil_pct < cfg["threshold"]:
         pulse_watering(node_id, soil_pct)

@@ -22,7 +22,7 @@ import {
 import { triggerWatering, toggleLight, toggleSoilView } from './js/dashboard.js';
 import { fetchHDImage, closeHD, initModalDismiss } from './js/camera.js';
 import { initKeyboardActivation } from './js/ui.js';
-import { toggleLightMode, toggleSettingsGroup, retakeTodayPhoto } from './js/settings.js';
+import { toggleLightMode, toggleSettingsGroup, retakeTodayPhoto, togglePumpEmergencyStop } from './js/settings.js';
 import {
     toggleTimelinePlay,
     seekTimeline,
@@ -49,6 +49,7 @@ Object.assign(window, {
     toggleSettingsGroup,
     saveConfigAndRefresh,   // 保存 + 重算显隐（见 navigation.js），不是裸的 saveConfig
     retakeTodayPhoto,
+    togglePumpEmergencyStop,
     triggerWatering,
     toggleLight,          // 由 dashboard.js 生成的卡片 HTML 内联调用
     toggleSoilView,       // 点击土壤湿度卡片翻转百分比/原始 ADC

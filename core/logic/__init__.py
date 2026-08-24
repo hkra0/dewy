@@ -28,6 +28,9 @@ from core.logic.watering import (
     can_water_now,
     trigger_watering,
     check_auto_watering,
+    watering_safety_status,
+    watering_block_reason,
+    set_manual_emergency_stop,
 )
 from core.logic.photo import daily_photo_capture, cleanup_old_photos
 from core.logic.scheduler import background_logger
@@ -39,6 +42,7 @@ __all__ = [
     "compute_next_boundary", "fetch_ip_location", "get_effective_light_times", "apply_light_schedule", "set_light",
     "fill_light_for_capture",
     "clean_soil_anomalies", "can_water_now", "trigger_watering", "check_auto_watering",
+    "watering_safety_status", "watering_block_reason", "set_manual_emergency_stop",
     "daily_photo_capture", "cleanup_old_photos",
     "background_logger",
 ]

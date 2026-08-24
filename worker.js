@@ -141,7 +141,8 @@ export default {
                 || url.pathname === "/api/metrics"
                 || url.pathname === "/api/image" || url.pathname === "/api/photos" || url.pathname.startsWith("/api/photos/")) {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
-            } else if (url.pathname === "/api/water" || url.pathname === "/api/light" || url.pathname === "/api/config"
+            } else if (url.pathname === "/api/water" || url.pathname === "/api/water/emergency-stop"
+                || url.pathname === "/api/light" || url.pathname === "/api/config"
                 || url.pathname === "/api/photo/retake") {
                 // 重拍走 water key：它会驱动相机与补光灯，属于写操作。
                 // 注意路径不在 /api/photos/ 前缀下，否则会先被上面那条 viewer key

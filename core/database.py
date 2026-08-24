@@ -102,6 +102,19 @@ def init_db():
         ''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_node_data_query ON node_data (node_id, is_anomaly, timestamp)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_watering_log_node ON watering_log (node_id, timestamp)')
+        # 水泵安全状态必须跨服务重启保留。人工急停和传感器联锁分开存：
+        # 自动恢复只能清后者，绝不能替用户解除人工急停。
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS watering_safety (
+                node_id TEXT PRIMARY KEY,
+                manual_stop INTEGER NOT NULL DEFAULT 0,
+                sensor_interlock INTEGER NOT NULL DEFAULT 0,
+                interlock_reason TEXT,
+                interlock_since DATETIME,
+                recovery_count INTEGER NOT NULL DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         conn.execute('''
             CREATE TABLE IF NOT EXISTS photo_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,6 +213,18 @@ def query_recent_soil(node_id, limit=5):
         "SELECT id, soil_moisture FROM node_data WHERE node_id=? ORDER BY id DESC LIMIT ?",
         (node_id, limit),
     )
+
+
+def query_latest_soil(node_id):
+    """最近一条可用、未标异常的土壤湿度；没有历史时返回 None。"""
+    rows = query('''
+        SELECT soil_moisture
+        FROM node_data
+        WHERE node_id=? AND soil_moisture IS NOT NULL
+          AND (is_anomaly = 0 OR is_anomaly IS NULL)
+        ORDER BY id DESC LIMIT 1
+    ''', (node_id,))
+    return rows[0][0] if rows else None
 
 
 def query_soil_adc_series(node_id, days=30):
@@ -340,6 +365,82 @@ def insert_watering(node_id, duration, soil_before, pulse_count=1, soil_after=No
         "INSERT INTO watering_log (node_id, duration, soil_before, pulse_count, soil_after) VALUES (?, ?, ?, ?, ?)",
         (node_id, duration, soil_before, pulse_count, soil_after),
     )
+
+
+# ==================== watering_safety（水泵安全联锁） ====================
+
+def query_watering_safety(node_id):
+    rows = query('''
+        SELECT manual_stop, sensor_interlock, interlock_reason,
+               interlock_since, recovery_count, updated_at
+        FROM watering_safety WHERE node_id=?
+    ''', (node_id,))
+    if not rows:
+        return {
+            "manual_stop": False, "sensor_interlock": False,
+            "interlock_reason": None, "interlock_since": None,
+            "recovery_count": 0, "updated_at": None,
+        }
+    row = rows[0]
+    return {
+        "manual_stop": bool(row[0]), "sensor_interlock": bool(row[1]),
+        "interlock_reason": row[2], "interlock_since": row[3],
+        "recovery_count": int(row[4] or 0), "updated_at": row[5],
+    }
+
+
+def set_manual_watering_stop(node_id, active):
+    execute('''
+        INSERT INTO watering_safety (node_id, manual_stop, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(node_id) DO UPDATE SET
+            manual_stop=excluded.manual_stop,
+            updated_at=CURRENT_TIMESTAMP
+    ''', (node_id, int(bool(active))))
+    return query_watering_safety(node_id)
+
+
+def latch_soil_sensor_interlock(node_id, reason):
+    execute('''
+        INSERT INTO watering_safety
+            (node_id, sensor_interlock, interlock_reason, interlock_since,
+             recovery_count, updated_at)
+        VALUES (?, 1, ?, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP)
+        ON CONFLICT(node_id) DO UPDATE SET
+            sensor_interlock=1,
+            interlock_reason=excluded.interlock_reason,
+            interlock_since=COALESCE(watering_safety.interlock_since, CURRENT_TIMESTAMP),
+            recovery_count=0,
+            updated_at=CURRENT_TIMESTAMP
+    ''', (node_id, reason))
+    return query_watering_safety(node_id)
+
+
+def set_soil_sensor_recovery(node_id, count):
+    execute('''
+        INSERT INTO watering_safety
+            (node_id, sensor_interlock, recovery_count, updated_at)
+        VALUES (?, 1, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(node_id) DO UPDATE SET
+            recovery_count=excluded.recovery_count,
+            updated_at=CURRENT_TIMESTAMP
+    ''', (node_id, max(0, int(count))))
+    return query_watering_safety(node_id)
+
+
+def clear_soil_sensor_interlock(node_id):
+    execute('''
+        INSERT INTO watering_safety
+            (node_id, sensor_interlock, recovery_count, updated_at)
+        VALUES (?, 0, 0, CURRENT_TIMESTAMP)
+        ON CONFLICT(node_id) DO UPDATE SET
+            sensor_interlock=0,
+            interlock_reason=NULL,
+            interlock_since=NULL,
+            recovery_count=0,
+            updated_at=CURRENT_TIMESTAMP
+    ''', (node_id,))
+    return query_watering_safety(node_id)
 
 
 # ==================== photo_log（每日照片） ====================

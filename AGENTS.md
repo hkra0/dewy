@@ -150,9 +150,19 @@ Python 侧的续期**只写在"确认仍需省电"的那个分支里**（`logic/
 
 ### 关键业务规则
 
-- **自动浇水**：每天 6:00 检查，距上次浇水 > 12 小时且土壤湿度 < 阈值（默认 50%）时启泵，默认 0.5 秒。
-  手动浇水经 `/api/water`，时长被钳制在 0.1–1.0 秒。**浇水本身不触发任何校准**——
-  见下方"土壤湿度 ABC 校准"。
+- **自动浇水**：在配置的运行时间窗内，距上次浇水 > 最小间隔且土壤湿度低于触发阈值时，
+  以脉冲方式启泵；每个脉冲后等待渗透并重读湿度，到目标湿度或最大脉冲数即停。
+  闭环期间读不到湿度时必须立即停止，不能盲打剩余脉冲。手动浇水经 `/api/water`，时长被
+  钳制在 0.1–1.0 秒。**浇水本身不触发任何校准**——见下方"土壤湿度 ABC 校准"。
+- **水泵安全联锁**：人工急停与传感器联锁是两把独立的锁，持久化在 `watering_safety` 表。
+  设置页自动浇水开关右侧的急停旋钮走 `POST /api/water/emergency-stop`（water key）；落闸顺序必须是先写库、
+  再对执行器下发 `state=False`，且 `state.watering_lock` 保证“复查安全状态 → 启泵”不会与
+  急停并发穿透。人工急停只能人工解除，传感器恢复**绝不能**清它。
+
+  传感器联锁只在“当前湿度接近空气值”与“相对上一有效归档大幅骤降”同时成立时落闸，
+  避免把普通干土误判为离土。自动恢复先要求一次明显骤升，再要求连续多轮高于恢复线；
+  它只清传感器锁。默认阈值在 `DEFAULT_CONFIG.auto_water` 的 `sensor_*` 字段，设置页保存时
+  必须保留这些没有直接渲染的字段。所有浇水入口（手动、自动、每个后续脉冲）都要复查两把锁。
 - **土壤湿度 ABC 校准**（Automatic Baseline Calibration）：`logic/scheduler.py` 每天
   `ABC_HOUR`（3 点）之后跑一次 `logic/soil_abc.run_abc_calibration()`，离线扫描过去
   `abc_window_days`（默认 30）天的 `soil_adc_raw` 历史，两级百分位统计（日内 P5 切瞬时
@@ -464,7 +474,7 @@ API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头�
 1. **Client → Worker（只读）**：`/api/monitor`、`/api/history`、`/api/metrics`、`/api/nodes`、
    `/api/image`、`/api/photos*` 一律要求请求头 `X-Viewer-Key` 匹配 `VIEWER_MAGIC_KEY`，
    不匹配返回 404（不暴露端点存在）。**无任何旁路。**
-2. **Client → Worker（高危操作）**：`/api/water`、`/api/light`、`/api/config`、`/api/photo/retake`
+2. **Client → Worker（高危操作）**：`/api/water`、`/api/water/emergency-stop`、`/api/light`、`/api/config`、`/api/photo/retake`
    要求请求头 `x-water-key` 匹配 `WATER_MAGIC_KEY`，不匹配返回 403。
    注意 viewer key 不能用于这四个端点，两把钥匙互相独立。
 3. **Worker → Pi**：请求头 `X-BFF-To-Pi-Token` 匹配 `PI_SECRET_TOKEN`。校验挂在
@@ -511,7 +521,7 @@ CDN/字体服务的 Referer 里。`?key=` 两处都会泄漏，而 `replaceState
 
 ## 八、数据库
 
-SQLite（WAL 模式），四张表：
+SQLite（WAL 模式），主要五张表：
 
 - **`node_data`** — 环境采样的固定列（`NODE_DATA_FIELDS`）。`is_anomaly=1` 的行会被所有统计与图表排除。
 - **`node_metrics`** — 固定列之外的测量量，`(node_id, key, value)` 长表。
@@ -523,6 +533,8 @@ SQLite（WAL 模式），四张表：
   `/api/history` 的 `extra` 字段，画在隐藏的 `y3` 轴上且**默认折叠**——
   照度、CO₂ 与温湿度差着几个数量级，直接画会把原有曲线压成直线。
   图例上的显示/隐藏选择在轮询刷新时按 label 还原，否则 30 秒后就被重置。
+- **`watering_safety`** — 每节点的人工急停、传感器联锁、联锁原因/时间与恢复确认计数。
+  它是运行安全状态，不属于用户配置；必须跨服务重启保留。
   另有 `/api/metrics` 端点供外部消费。
 - **`watering_log`** — 浇水记录（时长、浇水前土壤湿度）。
 - **`photo_log`** — 每日照片索引，`date` 唯一。

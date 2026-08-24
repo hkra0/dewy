@@ -26,9 +26,14 @@ class GPIO_Relay:
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.pin, GPIO.IN)
 
-    def trigger(self, duration=0.5):
+    def trigger(self, state=None, duration=0.5):
         if not GPIO: return False
         try:
+            # 急停需要一个不依赖定时脉冲自然结束的显式断电动作。
+            # active-low 继电器在本项目里以输入态作为安全断开态。
+            if state is False:
+                GPIO.setup(self.pin, GPIO.IN)
+                return True
             GPIO.setup(self.pin, GPIO.OUT)
             GPIO.output(self.pin, self.on_state)
             time.sleep(duration)

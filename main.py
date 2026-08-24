@@ -13,6 +13,7 @@ from fastapi import FastAPI  # noqa: E402
 
 import core.state as state  # noqa: E402
 import core.config as config  # noqa: E402
+import core.database as db  # noqa: E402
 from core.mqtt_handler import on_mqtt_connect, on_mqtt_message  # noqa: E402
 from core.logic import background_logger, local_sensor_updater  # noqa: E402
 from api.routers import router  # noqa: E402
@@ -29,6 +30,9 @@ app.include_router(router)
 @app.on_event("startup")
 def start_background_logger():
     config.load_config()
+    # API 开放前先完成幂等迁移；watering_safety 若只交给后台线程创建，
+    # 启动瞬间打开设置页可能抢在它前面查询到“不存在的表”。
+    db.init_db()
     threading.Thread(target=background_logger, daemon=True).start()
     threading.Thread(target=local_sensor_updater, daemon=True).start()
 

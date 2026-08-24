@@ -21,6 +21,7 @@
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.05);
     --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.05);
     --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.05);
+    --shadow-color: rgba(0, 0, 0, 0.22);
     /* 圆角只有这三档，别再引入 5px/8px/10px 之类的中间值 */
     --radius-sm: 6px;
     --radius-md: 12px;
@@ -64,6 +65,7 @@
         --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.15);
         --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.15);
         --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.15);
+        --shadow-color: rgba(0, 0, 0, 0.45);
 
         --metric-temp: #fbbf24;
         --metric-hum: #60a5fa;
@@ -384,6 +386,12 @@ body {
     color: var(--text-main);
 }
 
+.form-card-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .form-body {
     display: flex;
     flex-direction: column;
@@ -493,6 +501,96 @@ body {
     background: var(--danger);
     border-color: var(--danger);
     color: var(--toast-text);
+}
+
+/* 工业机床式蘑菇头急停。SVG 只负责结构，颜色全部来自主题变量。 */
+.pump-emergency-knob {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+    filter: drop-shadow(0 2px 2px var(--shadow-color));
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.pump-emergency-knob svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.pump-emergency-knob:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.pump-emergency-knob:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 50%;
+}
+
+.pump-emergency-knob:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.knob-shadow {
+    fill: var(--shadow-color);
+    opacity: 0.45;
+}
+
+.knob-stem {
+    fill: var(--text-muted);
+}
+
+.knob-bezel {
+    fill: var(--surface-color);
+    stroke: var(--border-hover);
+    stroke-width: 2;
+}
+
+.knob-cap,
+.knob-top {
+    fill: currentColor;
+    stroke: var(--border-hover);
+    stroke-width: 1;
+}
+
+.knob-highlight {
+    fill: var(--toast-text);
+    opacity: 0.28;
+}
+
+/* 按下后蘑菇头沉进基座；传感器联锁则用强调色外圈提示另一路安全锁。 */
+.pump-emergency-knob.is-active .knob-cap,
+.pump-emergency-knob.is-active .knob-top,
+.pump-emergency-knob.is-active .knob-highlight {
+    transform: translateY(5px);
+}
+
+.pump-emergency-knob.is-active {
+    filter: drop-shadow(0 0 4px var(--danger));
+}
+
+.pump-emergency-knob.is-sensor-locked .knob-bezel {
+    stroke: var(--accent);
+    stroke-width: 4;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 /* ========== 头部与设备选择 ========== */

@@ -21,6 +21,9 @@ from core.paths import (
 logger = logging.getLogger(__name__)
 
 camera_lock = threading.Lock()
+# 急停接口与后台脉冲循环都可能驱动同一个水泵。持有此锁完成
+# “复查安全状态 → 下发执行器命令”，保证急停落闸后不会有新脉冲越过去。
+watering_lock = threading.RLock()
 # 可重入：database.get_conn() 会持锁，嵌套调用 DAL 时不至于自锁
 db_lock = threading.RLock()
 

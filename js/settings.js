@@ -6,6 +6,56 @@ import { apiWater, apiWaterPost } from './api.js';
 import { loadPhotoTimeline } from './timeline.js';
 
 let dualSliderInitialized = false;
+let loadedConfig = {};
+let wateringSafety = {};
+
+function renderWateringSafety(status = {}) {
+    wateringSafety = status;
+    const manual = status.manual_stop === true;
+    const sensor = status.sensor_interlock === true;
+    const label = document.getElementById('pump-safety-status');
+    const btn = document.getElementById('pump-emergency-btn');
+    const needed = loadedConfig.auto_water?.sensor_recovery_samples ?? 3;
+
+    btn.classList.toggle('is-active', manual);
+    btn.classList.toggle('is-sensor-locked', sensor);
+    btn.setAttribute('aria-pressed', manual ? 'true' : 'false');
+    btn.setAttribute('aria-label', t(manual ? 'pump_emergency_release' : 'pump_emergency_stop'));
+    btn.disabled = false;
+
+    if (manual && sensor) label.innerText = t('pump_both_locked');
+    else if (manual) label.innerText = t('pump_manual_stopped');
+    else if (sensor) label.innerText = t('pump_sensor_locked', {
+        count: status.recovery_count ?? 0, needed,
+    });
+    else label.innerText = t('pump_ready');
+    btn.title = label.innerText;
+}
+
+export async function togglePumpEmergencyStop() {
+    if (!getWaterKey()) return;
+    const btn = document.getElementById('pump-emergency-btn');
+    const active = wateringSafety.manual_stop !== true;
+    btn.disabled = true;
+    try {
+        const res = await apiWaterPost('/api/water/emergency-stop', {
+            active,
+            node_id: loadedConfig.auto_water?.node_id || 'main',
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderWateringSafety(data.watering_safety || {});
+        if (active && data.watering_safety?.pump_off_sent === false) {
+            showToast(t('pump_off_fail'), 'error');
+        } else {
+            showToast(t(active ? 'pump_stop_set' : 'pump_stop_released'), 'success');
+        }
+    } catch (e) {
+        console.error(e);
+        btn.disabled = false;
+        showToast(t('pump_stop_fail'), 'error');
+    }
+}
 
 function initDualSlider() {
     const threshInput = document.getElementById('cfg-water-threshold');
@@ -96,6 +146,7 @@ export async function fetchConfig() {
         const data = await res.json();
         if (data.error) { showToast(t('fail_load_cfg'), 'error'); return; }
 
+        loadedConfig = data;
         document.getElementById('cfg-water-enabled').checked = data.auto_water.enabled;
         document.getElementById('cfg-water-threshold').value = data.auto_water.threshold;
         document.getElementById('cfg-water-target').value = data.auto_water.target_moisture ?? 85;
@@ -105,6 +156,7 @@ export async function fetchConfig() {
         document.getElementById('cfg-water-min-interval').value = data.auto_water.min_interval_hours ?? 12;
         document.getElementById('cfg-water-start-hour').value = data.auto_water.start_hour ?? 6;
         document.getElementById('cfg-water-end-hour').value = data.auto_water.end_hour ?? 20;
+        renderWateringSafety(data.watering_safety || {});
         
         initDualSlider();
         document.getElementById('cfg-light-enabled').checked = data.auto_light.enabled;
@@ -159,6 +211,7 @@ export async function saveConfig() {
 
     const cfg = {
         auto_water: {
+            ...(loadedConfig.auto_water || {}),
             enabled: document.getElementById('cfg-water-enabled').checked,
             threshold: Math.min(100, Math.max(0, parseFloat(document.getElementById('cfg-water-threshold').value) || 65.0)),
             target_moisture: Math.min(100, Math.max(0, parseFloat(document.getElementById('cfg-water-target').value) || 85.0)),
@@ -170,6 +223,7 @@ export async function saveConfig() {
             end_hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-water-end-hour').value) || 20))
         },
         auto_light: {
+            ...(loadedConfig.auto_light || {}),
             enabled: document.getElementById('cfg-light-enabled').checked,
             mode: document.getElementById('cfg-light-mode').value,
             on_time: document.getElementById('cfg-light-on').value,
@@ -180,14 +234,17 @@ export async function saveConfig() {
             lng: document.getElementById('cfg-light-lng').value
         },
         camera: {
+            ...(loadedConfig.camera || {}),
             fill_light: document.getElementById('cfg-photo-fill-light').checked
         },
         daily_photo: {
+            ...(loadedConfig.daily_photo || {}),
             enabled: document.getElementById('cfg-photo-enabled').checked,
             // 后端按整点判断（背景循环 10 分钟一轮），越界值会让每日照片永远拍不成
             hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-photo-hour').value) || 0))
         },
         soil_calibration: {
+            ...(loadedConfig.soil_calibration || {}),
             enabled: document.getElementById('cfg-calib-enabled').checked,
             // 窗口太短统计不稳，太长又会超过 DEWY_DATA_RETENTION_DAYS（默认 365）
             window_days: Math.min(365, Math.max(7, parseInt(document.getElementById('cfg-calib-window-days').value) || 30)),

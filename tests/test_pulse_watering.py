@@ -43,6 +43,8 @@ class TestPulseWatering(unittest.TestCase):
         state.local_latest_data = {}
         state.power_save_mode = False
         db.insert_watering = MagicMock()
+        db.query_watering_safety = MagicMock(return_value={})
+        db.query_latest_soil = MagicMock(return_value=50.0)
 
     @patch("time.sleep")
     def test_reaches_target_and_stops(self, mock_sleep):
@@ -100,8 +102,8 @@ class TestPulseWatering(unittest.TestCase):
         self.assertEqual(db.insert_watering.call_args[1]["pulse_count"], 0)
 
     @patch("time.sleep")
-    def test_sensor_read_failure_continues(self, mock_sleep):
-        """读不到湿度 → 继续下一脉冲，不中断。"""
+    def test_sensor_read_failure_stops_fail_closed(self, mock_sleep):
+        """闭环反馈丢失 → 立即停止，不能盲打剩余脉冲。"""
         config.global_config["auto_water"]["max_pulses"] = 2
         state.hardware_manager.trigger_actuator.return_value = True
         # 第一次读不到，第二次达标
@@ -113,8 +115,8 @@ class TestPulseWatering(unittest.TestCase):
         from core.logic.watering import pulse_watering
         pulse_watering("main", 30.0)
 
-        self.assertEqual(state.hardware_manager.trigger_actuator.call_count, 2)
-        self.assertAlmostEqual(db.insert_watering.call_args[1]["soil_after"], 90.0)
+        self.assertEqual(state.hardware_manager.trigger_actuator.call_count, 1)
+        self.assertIsNone(db.insert_watering.call_args[1]["soil_after"])
 
 
 # ---- check_auto_watering 测试 ----
@@ -143,6 +145,8 @@ class TestCheckAutoWatering(unittest.TestCase):
         state.power_save_mode = False
         db.insert_watering = MagicMock()
         db.query_last_watering_time = MagicMock(return_value=None)
+        db.query_watering_safety = MagicMock(return_value={})
+        db.query_latest_soil = MagicMock(return_value=50.0)
 
     def test_power_save_skips(self):
         """省电模式下不浇水。"""
@@ -248,6 +252,7 @@ class TestTriggerWatering(unittest.TestCase):
         state.hardware_manager = MagicMock()
         state.hardware_manager.trigger_actuator.return_value = True
         db.insert_watering = MagicMock()
+        db.query_watering_safety = MagicMock(return_value={})
 
     def test_manual_watering_defaults(self):
         """手动浇水走 trigger_watering，pulse_count 默认 1，soil_after 默认 None。"""

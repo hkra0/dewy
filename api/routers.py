@@ -21,6 +21,9 @@ from core.logic import (
     fill_light_for_capture,
     daily_photo_capture,
     node_capabilities,
+    watering_safety_status,
+    watering_block_reason,
+    set_manual_emergency_stop,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +44,11 @@ router = APIRouter(dependencies=[Depends(verify_pi_token)])
 
 class WaterRequest(BaseModel):
     duration: float = 0.5
+    node_id: str = "main"
+
+
+class EmergencyStopRequest(BaseModel):
+    active: bool = True
     node_id: str = "main"
 
 # 允许发给前端的节点字段。白名单而非黑名单：hardware_config 的节点段里还放着
@@ -249,6 +257,10 @@ def trigger_manual_watering(req: WaterRequest):
     duration = max(0.1, min(req.duration, 1.0))
     node_id = req.node_id
 
+    blocked = watering_block_reason(node_id)
+    if blocked:
+        raise HTTPException(status_code=423, detail=f"Pump safety lock active: {blocked}")
+
     soil_pct = -1.0
     data = state.hardware_manager.read_local_node(node_id)
     if data and "soil_moisture" in data and data["soil_moisture"] is not None:
@@ -261,12 +273,25 @@ def trigger_manual_watering(req: WaterRequest):
     else:
         raise HTTPException(status_code=500, detail="Hardware error or pump not configured")
 
+
+@router.post("/api/water/emergency-stop")
+def set_pump_emergency_stop(req: EmergencyStopRequest):
+    """落下或解除人工急停。
+
+    落闸会先持久化，再立即尝试把执行器切到 OFF；解除只清人工锁，
+    传感器异常联锁若仍存在，水泵仍保持锁定。
+    """
+    status = set_manual_emergency_stop(req.node_id, req.active)
+    return {"status": "success", "watering_safety": status}
+
 @router.get("/api/config")
 def get_config_endpoint():
     on_m, off_m = get_effective_light_times()
     res = config.global_config.copy()
     res["effective_light_on"] = f"{on_m//60:02d}:{on_m%60:02d}"
     res["effective_light_off"] = f"{off_m//60:02d}:{off_m%60:02d}"
+    node_id = res.get("auto_water", {}).get("node_id", "main")
+    res["watering_safety"] = watering_safety_status(node_id)
     return res
 
 @router.post("/api/config")
@@ -422,5 +447,4 @@ def download_export_file():
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
     )
-
 
