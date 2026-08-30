@@ -111,6 +111,15 @@ const translations = {
         cfg_saved: "Configuration Saved", fail_save: "Failed to save configuration",
         fail_load_cfg: "Failed to load configuration",
 
+        // 节点设置
+        node_settings_title: "Node Settings",
+        node_settings_desc: "Remote parameters synced to ESP32 node via MQTT",
+        cfg_temp_alarm_high: "High Temp Alarm",
+        cfg_temp_alarm_low: "Low Temp Alarm",
+        cfg_feed_reset_hour: "Daily Feeding Reset Hour",
+        fed_yes: "Fed",
+        fed_no: "Not Fed",
+
         // 传感器额外指标
         metric_illuminance: "Illuminance", metric_lux: "Illuminance", metric_co2: "CO₂",
         metric_tvoc: "TVOC", metric_ec: "EC", metric_ph: "pH",
@@ -119,6 +128,7 @@ const translations = {
         metric_power: "Power", metric_energy: "Energy",
         metric_pm25: "PM2.5", metric_pm10: "PM10", metric_rssi: "Signal",
         metric_wind_speed: "Wind Speed", metric_rainfall: "Rainfall", metric_noise: "Noise",
+        metric_water_temp: "Water Temp", metric_fed: "Feeding Status",
     },
     zh: {
         // 主导航与通用
@@ -231,6 +241,15 @@ const translations = {
         cfg_saved: "配置已保存", fail_save: "配置保存失败",
         fail_load_cfg: "配置读取失败",
 
+        // 节点设置
+        node_settings_title: "节点设置",
+        node_settings_desc: "通过 MQTT 实时同步到 ESP32 节点的运行参数",
+        cfg_temp_alarm_high: "高温报警阈值",
+        cfg_temp_alarm_low: "低温报警阈值",
+        cfg_feed_reset_hour: "每日喂食重置时刻",
+        fed_yes: "已喂食",
+        fed_no: "未喂食",
+
         // 传感器额外指标
         metric_illuminance: "光照强度", metric_lux: "光照强度", metric_co2: "二氧化碳",
         metric_tvoc: "挥发性有机物", metric_ec: "电导率", metric_ph: "酸碱度",
@@ -239,6 +258,7 @@ const translations = {
         metric_power: "功率", metric_energy: "用电量",
         metric_pm25: "PM2.5", metric_pm10: "PM10", metric_rssi: "信号强度",
         metric_wind_speed: "风速", metric_rainfall: "降雨量", metric_noise: "噪音",
+        metric_water_temp: "水温", metric_fed: "喂食状态",
     }
 };
 

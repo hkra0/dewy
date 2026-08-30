@@ -35,6 +35,7 @@
     --metric-light-on: #ca8a04;
     --metric-power: #0284c7;
     --metric-cpu: #e11d48;
+    --metric-water-temp: #0284c7;
 
     /* 额外指标（驱动返回的、schema 里没有的量）按字段名轮转取用，
        见 js/metrics.js。刻意与上面的固定指标色拉开，避免误读成同一个量。 */
@@ -75,6 +76,7 @@
         --metric-light-on: #facc15;
         --metric-power: #38bdf8;
         --metric-cpu: #fb7185;
+        --metric-water-temp: #38bdf8;
 
         --metric-extra-1: #2dd4bf;
         --metric-extra-2: #fb923c;

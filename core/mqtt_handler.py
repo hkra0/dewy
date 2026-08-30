@@ -20,6 +20,13 @@ def on_mqtt_connect(client, userdata, flags, reason_code, properties):
             for actuator in acts.values():
                 if hasattr(actuator, "query"):
                     actuator.query(client)
+
+        # 连接建立后向所有支持远程配置的 ESP32 节点推送当前设置
+        try:
+            from core.logic.node_config import push_all_on_connect
+            push_all_on_connect()
+        except Exception:
+            logger.exception("推送远程节点配置异常")
     else:
         logger.error("❌ MQTT 连接失败，返回码: %s", reason_code)
 
@@ -55,6 +62,13 @@ def on_mqtt_message(client, userdata, msg):
                         state.light_status = status
                 return
         
+        # 判断是否为某个节点的配置状态回报
+        if topic in state.mqtt_config_topic_to_node:
+            node_id = state.mqtt_config_topic_to_node[topic]
+            state.node_config_state[node_id] = data
+            logger.info("📥 收到节点 %s 配置状态回报: %s", node_id, data)
+            return
+
         # 更新传感器节点数据
         if topic in state.mqtt_topic_to_node:
             node_id = state.mqtt_topic_to_node[topic]

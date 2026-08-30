@@ -33,6 +33,7 @@ from core.logic.watering import (
     set_manual_emergency_stop,
 )
 from core.logic.photo import daily_photo_capture, cleanup_old_photos
+from core.logic.node_config import push_node_settings
 from core.logic.scheduler import background_logger
 
 __all__ = [
@@ -44,5 +45,6 @@ __all__ = [
     "clean_soil_anomalies", "can_water_now", "trigger_watering", "check_auto_watering",
     "watering_safety_status", "watering_block_reason", "set_manual_emergency_stop",
     "daily_photo_capture", "cleanup_old_photos",
+    "push_node_settings",
     "background_logger",
 ]

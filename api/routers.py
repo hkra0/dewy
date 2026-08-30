@@ -1,3 +1,4 @@
+import copy
 import hmac
 import logging
 import os
@@ -54,7 +55,7 @@ class EmergencyStopRequest(BaseModel):
 # 允许发给前端的节点字段。白名单而非黑名单：hardware_config 的节点段里还放着
 # ESP32 的构建参数（wifi_password、mqtt_host…），逐个去黑名单迟早漏一个，
 # 而这个端点只要 viewer key 就能读。
-_PUBLIC_NODE_FIELDS = ("type", "description")
+_PUBLIC_NODE_FIELDS = ("type", "description", "settings_schema")
 
 
 @router.get("/api/nodes")
@@ -298,7 +299,19 @@ def get_config_endpoint():
 async def update_config(req: Request):
     try:
         cfg = await req.json()
+        old_ns = copy.deepcopy(config.global_config.get("node_settings", {}))
         config.save_config(cfg)
+        new_ns = config.global_config.get("node_settings", {})
+
+        try:
+            from core.logic.node_config import push_node_settings
+            all_nodes = set(list(old_ns.keys()) + list(new_ns.keys()))
+            for nid in all_nodes:
+                if old_ns.get(nid) != new_ns.get(nid):
+                    push_node_settings(nid)
+        except Exception:
+            logger.exception("保存配置后推送节点设置失败")
+
         return {"status": "success"}
     except ValueError as e:
         logger.warning("配置更新请求体非法: %s", e)

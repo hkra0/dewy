@@ -74,9 +74,13 @@ ignore_light_feedback_until = 0
 power_save_mode = False
 
 mqtt_topic_to_node = {}
+mqtt_config_topic_to_node = {}
 for n_id, info in hardware_manager.mqtt_nodes.items():
     if "topic" in info:
         mqtt_topic_to_node[info["topic"]] = n_id
+    if "config_topic" in info:
+        mqtt_config_topic_to_node[f"{info['config_topic']}/state"] = n_id
 
 mqtt_latest_data = {n_id: {"data": {}, "updated": False} for n_id in hardware_manager.mqtt_nodes}
 local_latest_data = {n_id: {} for n_id in hardware_manager.local_sensors}
+node_config_state = {}

@@ -109,6 +109,16 @@ export function renderDynamicCards(nodeData, globalData) {
     // 这些字段事先不可知，所以标签查不到时用字段名本身，而不是不显示——
     // 用户接了传感器却在界面上找不到读数，比标签不好看严重得多。
     for (const [key, value] of extraMetricEntries(nodeData)) {
+        if (key === 'fed') {
+            const isFed = value >= 1;
+            const fedLabel = escapeHtml(metricLabel('fed'));
+            const fedText = isFed ? t('fed_yes') : t('fed_no');
+            const fedColor = isFed ? 'var(--accent)' : 'var(--danger)';
+            const fedTime = (isFed && nodeData.fed_time) ? `<span class="card-subtitle" style="font-size: 0.85em; opacity: 0.8; margin-left: 6px;">${escapeHtml(nodeData.fed_time)}</span>` : '';
+            html += `<div class="card"><div class="card-title">${fedLabel}</div>`
+                 + `<div class="card-value" style="color: ${fedColor};">${fedText}${fedTime}</div></div>`;
+            continue;
+        }
         const label = escapeHtml(metricLabel(key));
         const unit = metricUnit(key);
         html += `<div class="card"><div class="card-title">${label}</div>`

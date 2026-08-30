@@ -538,6 +538,19 @@
                     </div>
                 </div>
 
+                <!-- 节点远程设置（动态生成，由 navigation.js 依据 caps.node_settings 显隐） -->
+                <div class="card full-width form-card hidden" id="cfg-node-settings-card">
+                    <div class="form-card-head">
+                        <span data-i18n="node_settings_title">Node Settings</span>
+                    </div>
+                    <div class="form-body">
+                        <div class="form-desc" data-i18n="node_settings_desc">Remote parameters synced to ESP32 node via MQTT</div>
+                        <div class="form-group" id="cfg-node-settings-group">
+                            <!-- 动态生成的设置项 -->
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card full-width form-card--flush">
                     <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfigAndRefresh()"
                         data-i18n="save_cfg">Save Configuration</button>

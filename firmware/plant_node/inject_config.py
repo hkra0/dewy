@@ -17,14 +17,17 @@ wifi_ssid = ""
 wifi_pwd = ""
 mqtt_host = ""
 mqtt_client_id = ""
+topic = "sensor/esp32/aqua_data"
+config_topic = "device/aqua/config"
 
 try:
     with open(config_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # 使用正则表达式提取 [nodes.sub1] 节点下的配置项
-    # 这里用正则避免强依赖 toml/tomli 库，让 PlatformIO 原生 Python 环境直接能跑
-    match = re.search(r'\[nodes\.sub1\](.*?)(?:\[|$)', content, re.DOTALL)
+    # 优先匹配 [nodes.aqua]，向下兼容 [nodes.sub1]
+    match = re.search(r'\[nodes\.aqua\](.*?)(?:\[nodes\.|$)', content, re.DOTALL)
+    if not match:
+        match = re.search(r'\[nodes\.sub1\](.*?)(?:\[nodes\.|$)', content, re.DOTALL)
     if match:
         section = match.group(1)
         s_match = re.search(r'wifi_ssid\s*=\s*"([^"]+)"', section)
@@ -38,15 +41,23 @@ try:
         
         c_match = re.search(r'mqtt_client_id\s*=\s*"([^"]+)"', section)
         if c_match: mqtt_client_id = c_match.group(1)
+
+        t_match = re.search(r'topic\s*=\s*"([^"]+)"', section)
+        if t_match: topic = t_match.group(1)
+
+        cfg_match = re.search(r'config_topic\s*=\s*"([^"]+)"', section)
+        if cfg_match: config_topic = cfg_match.group(1)
         
-    print(f"Injected Config -> SSID: {wifi_ssid}, MQTT Host: {mqtt_host}")
+    print(f"Injected Config -> SSID: {wifi_ssid}, MQTT Host: {mqtt_host}, Topic: {topic}, ConfigTopic: {config_topic}")
 
     # 将提取到的配置转化为 C++ 的宏定义注入编译环境
     env.Append(CPPDEFINES=[
         ("WIFI_SSID", '\\"' + wifi_ssid + '\\"'),
         ("WIFI_PASSWORD", '\\"' + wifi_pwd + '\\"'),
         ("MQTT_HOST", '\\"' + mqtt_host + '\\"'),
-        ("MQTT_CLIENT_ID", '\\"' + mqtt_client_id + '\\"')
+        ("MQTT_CLIENT_ID", '\\"' + mqtt_client_id + '\\"'),
+        ("MQTT_DATA_TOPIC", '\\"' + topic + '\\"'),
+        ("MQTT_CONFIG_TOPIC", '\\"' + config_topic + '\\"')
     ])
 
 except Exception as e:

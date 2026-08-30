@@ -1,7 +1,6 @@
-// 设置页：自动浇水 / 补光灯 / 每日照片配置的读取与保存。
 import { t } from './i18n.js';
-import { showToast } from './ui.js';
-import { getWaterKey } from './state.js';
+import { showToast, escapeHtml } from './ui.js';
+import { getWaterKey, state } from './state.js';
 import { apiWater, apiWaterPost } from './api.js';
 import { loadPhotoTimeline } from './timeline.js';
 
@@ -184,6 +183,43 @@ export async function fetchConfig() {
         document.getElementById('cfg-calib-window-days').value = calib.window_days ?? 30;
         document.getElementById('cfg-calib-max-drift').value = Math.round((calib.max_drift_ratio ?? 0.15) * 100);
 
+        // 远程节点动态设置
+        const dev = state.currentDevice;
+        const nodeInfo = state.availableNodes[dev] || {};
+        const schema = nodeInfo.settings_schema;
+        const nodeCard = document.getElementById('cfg-node-settings-card');
+        const nodeGroup = document.getElementById('cfg-node-settings-group');
+        if (nodeCard && nodeGroup) {
+            if (schema && Object.keys(schema).length > 0) {
+                nodeCard.classList.remove('hidden');
+                let html = '';
+                const currentVals = (data.node_settings && data.node_settings[dev]) || {};
+                for (const [key, meta] of Object.entries(schema)) {
+                    const label = t(meta.label || key);
+                    const val = currentVals[key] ?? meta.default ?? '';
+                    const min = meta.min !== undefined ? `min="${meta.min}"` : '';
+                    const max = meta.max !== undefined ? `max="${meta.max}"` : '';
+                    const step = meta.step !== undefined ? `step="${meta.step}"` : '';
+                    const unit = meta.unit ? `<span class="unit-label" style="margin-left:6px; opacity:0.8;">${escapeHtml(meta.unit)}</span>` : '';
+                    html += `<div class="form-row">
+                        <label for="cfg-ns-${escapeHtml(key)}">${escapeHtml(label)}</label>
+                        <div style="display:flex; align-items:center;">
+                            <input type="${meta.type === 'number' ? 'number' : 'text'}" 
+                                   id="cfg-ns-${escapeHtml(key)}" 
+                                   class="form-input form-input--sm" 
+                                   value="${escapeHtml(String(val))}" 
+                                   ${min} ${max} ${step}>
+                            ${unit}
+                        </div>
+                    </div>`;
+                }
+                nodeGroup.innerHTML = html;
+            } else {
+                nodeCard.classList.add('hidden');
+                nodeGroup.innerHTML = '';
+            }
+        }
+
         toggleLightMode();
         toggleSettingsGroup('cfg-water-enabled', 'cfg-water-group');
         toggleSettingsGroup('cfg-light-enabled', 'cfg-light-group');
@@ -208,6 +244,27 @@ export async function saveConfig() {
     const originalText = btn.innerText;
     btn.disabled = true;
     btn.innerText = t('saving');
+
+    // 收集当前节点的远程动态设置
+    const dev = state.currentDevice;
+    const nodeInfo = state.availableNodes[dev] || {};
+    const schema = nodeInfo.settings_schema;
+    const nodeSettings = { ...(loadedConfig.node_settings || {}) };
+    if (schema && Object.keys(schema).length > 0) {
+        const thisNodeSettings = { ...(nodeSettings[dev] || {}) };
+        for (const [key, meta] of Object.entries(schema)) {
+            const inputEl = document.getElementById(`cfg-ns-${key}`);
+            if (inputEl) {
+                if (meta.type === 'number') {
+                    const num = parseFloat(inputEl.value);
+                    thisNodeSettings[key] = isNaN(num) ? (meta.default ?? 0) : num;
+                } else {
+                    thisNodeSettings[key] = inputEl.value;
+                }
+            }
+        }
+        nodeSettings[dev] = thisNodeSettings;
+    }
 
     const cfg = {
         auto_water: {
@@ -250,7 +307,8 @@ export async function saveConfig() {
             window_days: Math.min(365, Math.max(7, parseInt(document.getElementById('cfg-calib-window-days').value) || 30)),
             // 界面按百分比展示，后端存 0-1 的比率
             max_drift_ratio: Math.min(1, Math.max(0.01, (parseFloat(document.getElementById('cfg-calib-max-drift').value) || 15) / 100))
-        }
+        },
+        node_settings: nodeSettings
     };
 
     try {

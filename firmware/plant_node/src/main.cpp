@@ -1,230 +1,43 @@
 #include <Arduino.h>
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <PubSubClient.h>
-#include <Wire.h>
-#include <Adafruit_AHTX0.h>
-#include <Adafruit_BMP280.h>
-#include <ArduinoJson.h>
+#include "config.h"
+#include "sensors.h"
+#include "led.h"
+#include "feeding.h"
+#include "network.h"
 
-// I2C 引脚定义
-#define SDA_PIN 13
-#define SCL_PIN 12
-
-// 雾化器引脚定义
-#define ATOMIZER_PIN 11
-
-// 传感器与网络对象初始化
-Adafruit_AHTX0 aht;
-Adafruit_BMP280 bmp;
-WiFiClient espClient;
-PubSubClient client(espClient);
-
-unsigned long lastSendTime = 0;
-unsigned long lastSuccessTime = 0; // 最近一次成功发布数据的时间，供看门狗判断是否卡死
-
-// 看门狗超时：这几个值都要能被单次重试成本覆盖，否则会在正常重试中途被误判为卡死
-#define WIFI_CONNECT_TIMEOUT_MS 30000UL       // 开机连 WiFi 的上限，超时说明路由器/信号有问题，重启重试
-#define MDNS_LOOKUP_TIMEOUT_MS 30000UL        // 单次 mDNS 查找上限
-#define MQTT_RECONNECT_TIMEOUT_MS 120000UL    // reconnect() 整体重试的上限，超时直接重启
-#define WATCHDOG_TIMEOUT_MS (5UL * 60UL * 1000UL) // 5 分钟没有成功发布过数据，判定为卡死
-
-// MQTT 消息接收回调函数
-void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("收到消息 [");
-  Serial.print(topic);
-  Serial.print("] ");
-  String msg = "";
-  for (unsigned int i = 0; i < length; i++) {
-    msg += (char)payload[i];
-  }
-  Serial.println(msg);
-
-  if (String(topic) == "device/esp32/atomizer/set") {
-    if (msg == "ON" || msg == "1" || msg == "on") {
-      digitalWrite(ATOMIZER_PIN, HIGH);
-      Serial.println("-> 执行：开启雾化器");
-    } else if (msg == "OFF" || msg == "0" || msg == "off") {
-      digitalWrite(ATOMIZER_PIN, LOW);
-      Serial.println("-> 执行：关闭雾化器");
-    }
-  }
-}
-
-void setup_wifi() {
-  delay(10);
-  Serial.println();
-  Serial.print("正在连接 WiFi: ");
-  Serial.println(WIFI_SSID);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  unsigned long startTime = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - startTime > WIFI_CONNECT_TIMEOUT_MS) {
-      Serial.println("\nWiFi 连接超时，重启设备重试...");
-      ESP.restart();
-    }
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("\nWiFi 连接成功!");
-  Serial.print("ESP32 IP 地址: ");
-  Serial.println(WiFi.localIP());
-
-  // 启动 mDNS 客户端
-  if (!MDNS.begin("esp32-sensor")) {
-    Serial.println("mDNS 启动失败!");
-  } else {
-    Serial.println("mDNS 启动成功!");
-  }
-}
-
-// 动态获取树莓派 IP 的函数。超过 MDNS_LOOKUP_TIMEOUT_MS 找不到就放弃，
-// 返回 0.0.0.0 交给调用方处理。
-IPAddress getMqttServerIp() {
-  Serial.printf("正在局域网内寻找 %s.local 的 IP...\n", MQTT_HOST);
-  IPAddress serverIp;
-  unsigned long startTime = millis();
-
-  while (serverIp.toString() == "0.0.0.0" || serverIp.toString() == "(IP unset)") {
-    serverIp = MDNS.queryHost(MQTT_HOST); // 发送 mDNS 广播查询
-
-    if(serverIp.toString() != "0.0.0.0" && serverIp.toString() != "(IP unset)") {
-      Serial.print("✅ 找到树莓派! IP地址是: ");
-      Serial.println(serverIp);
-      return serverIp;
-    }
-    if (millis() - startTime > MDNS_LOOKUP_TIMEOUT_MS) {
-      Serial.println("mDNS 查找超时，放弃本轮");
-      return IPAddress(0, 0, 0, 0);
-    }
-    Serial.println("未找到，1秒后重试...");
-    delay(1000);
-  }
-  return serverIp;
-}
-
-void reconnect() {
-  unsigned long startTime = millis();
-  while (!client.connected()) {
-    if (millis() - startTime > MQTT_RECONNECT_TIMEOUT_MS) {
-      Serial.println("MQTT 重连超时，重启设备重试...");
-      ESP.restart();
-    }
-
-    // 每次断开重连时，重新通过 mDNS 获取最新 IP
-    IPAddress currentServerIp = getMqttServerIp();
-    if (currentServerIp == IPAddress(0, 0, 0, 0)) {
-      continue; // mDNS 本轮没找到，交回外层继续计时重试
-    }
-    client.setServer(currentServerIp, 1883);
-
-    Serial.print("尝试连接 MQTT 服务器...");
-    // 建立连接
-    if (client.connect(MQTT_CLIENT_ID)) {
-      Serial.println("✅ 已连接到 MQTT!");
-      lastSuccessTime = millis();
-      // 连接成功后订阅雾化器控制主题
-      client.subscribe("device/esp32/atomizer/set");
-    } else {
-      Serial.print("❌ 失败, 错误码 rc=");
-      Serial.print(client.state());
-      Serial.println(" 5秒后重试");
-      delay(5000);
-    }
-  }
-}
+static unsigned long lastSendTime = 0;
+static SensorReadings lastReadings = {};
 
 void setup() {
-  Serial.begin(115200);
-  delay(3000); // 等待3秒，让电脑有足够的时间识别 USB 串口
-  Serial.println("\n========== ESP32 启动 ==========");
+    Serial.begin(115200);
+    delay(2000);
+    Serial.println("\n========== ESP32 鱼缸监控节点启动 ==========");
 
-  // 0. 初始化雾化器引脚
-  pinMode(ATOMIZER_PIN, OUTPUT);
-  digitalWrite(ATOMIZER_PIN, LOW); // 默认关闭
-
-  // 1. 初始化 WiFi 和网络
-  setup_wifi();
-
-  // 设置 MQTT 回调
-  client.setCallback(callback);
-
-  // 2. 初始化 I2C 总线
-  Wire.begin(SDA_PIN, SCL_PIN);
-
-  // 3. 初始化 AHT20 传感器
-  if (!aht.begin()) {
-    Serial.println("未找到 AHT20 传感器！请检查接线。");
-    while (1) delay(10);
-  }
-  Serial.println("AHT20 初始化成功!");
-
-  // 4. 初始化 BMP280 传感器 (地址 0x77)
-  if (!bmp.begin(0x77)) {
-    Serial.println("未找到 BMP280 传感器！请检查接线。");
-    while (1) delay(10);
-  }
-  // 配置 BMP280 参数
-  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
-                  Adafruit_BMP280::SAMPLING_X2,
-                  Adafruit_BMP280::SAMPLING_X16,
-                  Adafruit_BMP280::FILTER_X16,
-                  Adafruit_BMP280::STANDBY_MS_500);
-  Serial.println("BMP280 初始化成功!");
-
-  lastSuccessTime = millis(); // 看门狗计时从开机这一刻算起，避免刚启动就误判超时
+    config_init();     // 1. 从 NVS 读取用户配置
+    led_init();        // 2. 初始化 WS2812B RGB 灯
+    feeding_init();    // 3. 初始化 TTP223 触摸按键
+    sensors_init();    // 4. 初始化 AHT20, BMP280, DS18B20 传感器
+    network_init();    // 5. 初始化 WiFi、mDNS、NTP、MQTT
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop(); // 维持 MQTT 心跳并处理接收到的订阅消息
+    network_loop(); // 维持 MQTT 连接与心跳
 
-  // 顶层看门狗：即便 client.connected() 一直是 true，只要发布持续静默失败
-  // （比如网络出现黑洞式故障），也会在这里累计超时后强制重启自救。
-  if (millis() - lastSuccessTime > WATCHDOG_TIMEOUT_MS) {
-    Serial.println("⚠️ 超过 5 分钟没有成功发布数据，判定为卡死，重启设备...");
-    ESP.restart();
-  }
-
-  unsigned long now = millis();
-  // 每 5秒采集并发送一次数据（非阻塞方式）
-  if (now - lastSendTime > 5000) {
-    lastSendTime = now;
-
-    // --- 读取传感器数据 ---
-    sensors_event_t humidity, temp;
-    aht.getEvent(&humidity, &temp); // 读取 AHT20
-
-    float air_pressure = bmp.readPressure() / 100.0F; // 读取 BMP280 气压 (转换为 hPa)
-    
-    // 为了准确反映环境温度，这里采用 AHT20 的温度数据，BMP280 负责提供气压
-    float current_temp = temp.temperature; 
-    float current_hum = humidity.relative_humidity;
-
-    // --- 使用 ArduinoJson 打包数据 ---
-    StaticJsonDocument<200> doc;
-    doc["temperature"] = serialized(String(current_temp, 2)); // 保留两位小数
-    doc["humidity"] = serialized(String(current_hum, 2));
-    doc["pressure"] = serialized(String(air_pressure, 2));
-
-    char jsonBuffer[512];
-    serializeJson(doc, jsonBuffer);
-
-    // --- 发送数据到 MQTT ---
-    Serial.print("正在发布数据: ");
-    Serial.println(jsonBuffer);
-    
-    // 发布到 sensor/esp32/env_data 主题
-    if (client.publish("sensor/esp32/env_data", jsonBuffer)) {
-      lastSuccessTime = millis();
-    } else {
-      Serial.println("⚠️ 发布失败");
+    // 传感器采样周期 (5秒)
+    unsigned long now = millis();
+    if (now - lastSendTime >= SENSOR_INTERVAL_MS) {
+        lastSendTime = now;
+        lastReadings = sensors_read();
+        FeedingState f = feeding_get_state();
+        network_publish_data(lastReadings, f);
     }
-  }
+
+    // 喂食状态机更新 (检测触摸与每日定时重置)
+    feeding_update(lastReadings.water_temp, lastReadings.water_temp_ok);
+
+    // RGB 灯效更新 (温度报警 > 触摸闪烁 > 未喂食呼吸 > 已喂食灭)
+    FeedingState currentFeeding = feeding_get_state();
+    led_update(currentFeeding.is_fed, lastReadings.water_temp, lastReadings.water_temp_ok);
+
+    delay(10); // 微小延时出让 CPU
 }

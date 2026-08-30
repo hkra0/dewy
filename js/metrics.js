@@ -14,6 +14,7 @@ export const BUILT_IN_FIELDS = new Set([
 
 // 常见量的单位。查不到就不显示单位，而不是猜一个错的。
 const UNITS = {
+    water_temp: '℃',
     illuminance: 'lx', lux: 'lx', uv_index: '',
     co2: 'ppm', tvoc: 'ppb', ec: 'mS/cm', ph: '',
     altitude: 'm', gas_resistance: 'Ω',
@@ -42,6 +43,7 @@ export function metricUnit(key) {
 
 /** 字段名 → 颜色。同名字段每次都得到同一个颜色（简单的字符和取模）。 */
 export function metricColor(key) {
+    if (key === 'water_temp') return 'var(--metric-water-temp)';
     let sum = 0;
     for (let i = 0; i < key.length; i++) sum += key.charCodeAt(i);
     return PALETTE[sum % PALETTE.length];

@@ -93,7 +93,7 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     const caps = nodeCaps(dev);
     const hasSystem = nodeInfo.type === 'local';
     const hasPump = caps.pump;
-    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration || caps.node_settings) && !!localStorage.getItem(WATER_KEY);
 
     const hasKey = !!localStorage.getItem(STORAGE_KEY);
     const hasCamera = caps.camera;
@@ -128,6 +128,13 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     // 本身——这条规则已经在服务端 node_capabilities() 里定好了，这里只读。
     if (caps.soil_calibration) document.getElementById('cfg-calib-card').classList.remove('hidden');
     else document.getElementById('cfg-calib-card').classList.add('hidden');
+
+    // 节点远程设置卡：当该节点声明了 settings_schema 时显示
+    const nodeCard = document.getElementById('cfg-node-settings-card');
+    if (nodeCard) {
+        if (caps.node_settings) nodeCard.classList.remove('hidden');
+        else nodeCard.classList.add('hidden');
+    }
 
     if ((state.currentTab === 'system' && !hasSystem) || (state.currentTab === 'settings' && !hasSettings)) {
         switchTab('environment', false, true);
@@ -166,7 +173,7 @@ export function switchTab(tabName, pushState = true, skipFetch = false) {
     const nodeInfo = state.availableNodes[state.currentDevice] || {};
     const caps = nodeCaps();
     const hasSystem = nodeInfo.type === 'local';
-    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration || caps.node_settings) && !!localStorage.getItem(WATER_KEY);
 
     if (tabName === 'system' && !hasSystem) tabName = 'environment';
     if (tabName === 'settings' && !hasSettings) tabName = 'environment';

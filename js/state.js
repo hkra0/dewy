@@ -33,5 +33,5 @@ export const getWaterKey = () => localStorage.getItem(WATER_KEY);
  */
 export function nodeCaps(dev = state.currentDevice) {
     const info = state.availableNodes[dev];
-    return (info && info.capabilities) || { camera: false, daily_photo: false, pump: false, light: false, soil_calibration: false };
+    return (info && info.capabilities) || { camera: false, daily_photo: false, pump: false, light: false, soil_calibration: false, node_settings: false };
 }

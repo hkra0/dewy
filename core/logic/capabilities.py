@@ -30,6 +30,7 @@ def node_capabilities(node_id):
     hm = state.hardware_manager
     actuators = hm.actuators.get(node_id, {})
     has_camera = bool(hm.has_camera(node_id))
+    has_node_settings = bool(hm.mqtt_nodes.get(node_id, {}).get("settings_schema"))
 
     return {
         "camera": has_camera,
@@ -37,4 +38,5 @@ def node_capabilities(node_id):
         "pump": config.global_config["auto_water"].get("actuator_id", "pump") in actuators,
         "light": config.global_config["auto_light"].get("actuator_id", "light") in actuators,
         "soil_calibration": bool(hm.calibratable_sensors(node_id)),
+        "node_settings": has_node_settings,
     }

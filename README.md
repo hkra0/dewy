@@ -18,12 +18,13 @@ flowchart LR
 
 ## Features
 
-- **Live environment dashboard** — temperature, humidity, soil moisture, pressure per node, plus UPS power draw and system health (CPU / memory / disk). Any other numeric field a driver returns (illuminance, CO₂, EC …) gets its own card and a toggleable history series automatically — no frontend change needed.
+- **Live environment dashboard** — temperature, humidity, soil moisture, water temperature, pressure per node, plus UPS power draw and system health (CPU / memory / disk). Any other numeric field a driver returns (illuminance, CO₂, EC, water temp …) gets its own card and a toggleable history series automatically — no frontend change needed.
+- **ESP32 nodes & dynamic remote settings** — support for plant & aquarium sensor stations. Declare a `settings_schema` in TOML, and the web UI dynamically generates the settings form (e.g. temperature alarm thresholds, feeding reset time), syncing over MQTT to ESP32 onboard NVS.
 - **Automatic watering** — checked daily at 06:00; the pump runs (default 0.5 s) only if > 12 h since the last watering and soil moisture is below threshold (default 50%). Manual watering via UI is clamped to 0.1–1.0 s.
 - **Grow light scheduling** — fixed time window, or real sunrise/sunset computed from coordinates (IP geolocation fallback). Manual toggles auto-expire at the next schedule boundary.
 - **Camera** — driven through the HAL (Pi CSI via `rpicam`, or any USB/IP camera via a command template): live preview, on-demand HD captures, a daily photo + thumbnail, a photo timeline player, and GIF export. When disk space runs low, old photos are thinned on a logarithmic curve (recent days stay dense; the last 7 days are never deleted).
 - **UPS power saver** — on sustained battery discharge with no network, the Pi shuts down HDMI/LEDs/Wi-Fi and parks 3 CPU cores. A systemd watchdog guarantees the network comes back even if the service dies.
-- **Multi-node** — add a plant by adding a node to `hardware_config.toml`; the UI gains a device switcher automatically.
+- **Multi-node** — add a monitored target by adding a node to `hardware_config.toml`; the UI gains a device switcher automatically.
 - **Bilingual UI** (中文 / English), selected from `navigator.language` or `?lang=` / `#lang=`.
 - **Hardware abstraction layer** — sensors and actuators are declared in TOML and their drivers discovered automatically from `hardware/drivers/`; adding a new sensor never requires touching core code or registering it anywhere.
 

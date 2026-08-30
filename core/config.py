@@ -31,6 +31,8 @@ DEFAULT_CONFIG = {
     # （见 core/logic/soil_abc.py）——没有多株植物需要各自不同窗口期的真实
     # 场景，一个全局开关比每传感器一份配置更简单。
     "soil_calibration": {"enabled": True, "window_days": 30, "max_drift_ratio": 0.15},
+    # 远程 ESP32 节点设置（按 node_id 分组，值由 settings_schema.default 补齐）
+    "node_settings": {},
 }
 # deepcopy 而非 copy：浅拷贝下 global_config["auto_light"] 就是 DEFAULT_CONFIG
 # 里那个 dict，IP 定位回写 lat/lng 会连默认值一起改掉。
@@ -58,6 +60,19 @@ def merge_defaults(cfg):
         elif isinstance(v, dict) and isinstance(cfg[k], dict):
             for subk, subv in v.items():
                 if subk not in cfg[k]: cfg[k][subk] = subv
+
+    # ---- 远程节点设置默认值填充 ----
+    if hasattr(state, "hardware_manager") and getattr(state.hardware_manager, "mqtt_nodes", None):
+        ns = cfg.setdefault("node_settings", {})
+        for node_id, node_info in state.hardware_manager.mqtt_nodes.items():
+            schema = node_info.get("settings_schema", {})
+            if not schema:
+                continue
+            node_cfg = ns.setdefault(node_id, {})
+            for key, meta in schema.items():
+                if key not in node_cfg and isinstance(meta, dict) and "default" in meta:
+                    node_cfg[key] = meta["default"]
+
     return cfg
 
 

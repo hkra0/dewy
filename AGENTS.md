@@ -437,7 +437,44 @@ API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头�
 
 ---
 
-## 六、配置与环境变量
+## 六、ESP32 节点与统一远程配置
+
+系统支持通过 MQTT 接入 ESP32 传感器与执行器节点。固件源码位于 `firmware/plant_node/`。
+
+### 固件模块化拆分
+
+固件拆分为六个职责明确的源文件。
+
+- `config.h` / `config.cpp`：引脚定义，运行时参数结构体 `RuntimeConfig`，以及基于 ESP32 Preferences (NVS) 的掉电存储。
+- `sensors.h` / `sensors.cpp`：AHT20（温湿度）、BMP280（气压）、DS18B20（水温）驱动。初始化阶段先探测 I2C 总线，若在 (12, 13) 未找到器件会自动尝试 (13, 12) 容错。传感器未插入时不阻塞系统运行。
+- `led.h` / `led.cpp`：WS2812B RGB 灯控制。水温超限红蓝闪烁警报，触摸查看水温时按水温区间混色闪烁，未喂食时柔和琥珀光呼吸，已喂食时常灭。
+- `feeding.h` / `feeding.cpp`：TTP223 触摸防抖与喂食状态机。触摸后记录喂食时间并开启 10 秒撤销窗口，每天依 NTP 时间在设定整点自动重置为未喂食。
+- `network.h` / `network.cpp`：WiFi、mDNS、NTP、MQTT 连接与看门狗。订阅 `device/<node_id>/config/set` 下发主题，上报 `device/<node_id>/config/state` 与 `sensor/esp32/<node_id>_data`。
+- `main.cpp`：主循环调度。
+
+### 统一远程配置
+
+ESP32 的报警阈值与喂食时间不需要重新编译固件，可以在前端设置页调整并经 MQTT 实时下发。
+
+1. **Schema 声明在 hardware_config.toml**：在 `[nodes.<node_id>.settings_schema]` 下声明参数名、类型、取值范围、步长与默认值。后端不解析业务含义，仅作为元数据透传给前端。
+2. **当前值存于 data/config.json**：树莓派将各节点的当前配置保存在 `node_settings.<node_id>` 字段。
+3. **前端动态生成表单**：前端读取 `/api/nodes` 返回的 schema，在设置页自动生成对应输入控件，保存时打包提交。
+4. **MQTT 自动推送与 NVS 存储**：保存设置或 MQTT 重连时，后端向 `device/<node_id>/config/set` 发布 JSON 载荷。ESP32 收到后立即更新内存并写入板载 NVS，同时向 `device/<node_id>/config/state` 发送确认。
+
+### WS2812B 低亮度色彩保持与平滑过渡
+
+WS2812B 各通道只有 8 位整数精度（0 到 255）。如果为了降低呼吸灯亮度而直接把 RGB 数值压缩到 0 到 5，绿色通道会在乘法取整后截断为 0，导致原本的暖橙光在暗处突变为纯红，且整数跳变会在人眼产生明显的阶跃忽闪。
+
+工程处理方式如下。
+
+- 保持 `FastLED.setBrightness(255)` 完整 8 位动态范围，不提前乘缩放系数。
+- 基色固定为暖金琥珀色 `CRGB(255, 145, 25)`，通过 `nscale8_video` 等比例缩放，确保在最低亮度下绿色分量依然存在，维持恒定色温。
+- 开启 FastLED 的 `BINARY_DITHER` 硬件时间抖动，用高频微抖动弥补低亮度级数。
+- 采用正弦平方曲线平滑亮度，在暗区自然停留。
+
+---
+
+## 七、配置与环境变量
 
 ### 树莓派端
 
@@ -452,7 +489,7 @@ API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头�
 | `DEWY_LOG_FILE` | 未设 | 设置后额外落盘，按 5MB × 3 份轮转 |
 | `DEWY_UPS_SAMPLE_SEC` | `10` | UPS 电流的快档采样间隔（秒）。必须显著小于 `DISCHARGE_CONFIRM_SEC`(120) |
 
-用户可调配置存于 `data/config.json`（`auto_water` / `auto_light` / `camera` / `daily_photo`），
+用户可调配置存于 `data/config.json`（`auto_water` / `auto_light` / `camera` / `daily_photo` / `node_settings`），
 经 `/api/config` 读写，缺失字段会与 `DEFAULT_CONFIG` 自动合并（`config.merge_defaults`）。
 
 **合并在读盘与写入两条路上都要跑。** 设置页提交的是它自己渲染的那几段，
@@ -467,7 +504,7 @@ API 响应**不带 CORS 头**。前端与 API 同源，而鉴权走自定义头�
 
 ---
 
-## 七、鉴权
+## 八、鉴权
 
 三道关卡，逐级收紧：
 
@@ -519,7 +556,7 @@ CDN/字体服务的 Referer 里。`?key=` 两处都会泄漏，而 `replaceState
 
 ---
 
-## 八、数据库
+## 九、数据库
 
 SQLite（WAL 模式），主要五张表：
 
@@ -558,7 +595,7 @@ SQLite（WAL 模式），主要五张表：
 
 ---
 
-## 九、AI 代理维护注意事项
+## 十、AI 代理维护注意事项
 
 ### 必须遵守
 

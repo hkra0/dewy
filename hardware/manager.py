@@ -373,6 +373,8 @@ class HardwareManager:
         for node_info in self.mqtt_nodes.values():
             if "topic" in node_info:
                 topics.append(node_info["topic"])
+            if "config_topic" in node_info:
+                topics.append(f"{node_info['config_topic']}/state")
         # Add topics from MQTT actuators
         for node_id in self.actuators:
             for actuator in self.actuators[node_id].values():

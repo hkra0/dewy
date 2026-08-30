@@ -127,21 +127,53 @@ driver = "rpicam"           # Raspberry Pi CSI camera
 
 
 # ==============================================================================
-# Remote ESP32 Node Example
+# Remote ESP32 Node Example (e.g. Aquarium Monitor & Feeder Tracker)
 # ==============================================================================
-[nodes.sub1]
+[nodes.aqua]
 type = "mqtt_node"       # mqtt_node: Receives data via MQTT
-topic = "sensor/esp32/env_data"
-description = "ESP32 Bedroom Sensor"
+topic = "sensor/esp32/aqua_data"
+config_topic = "device/aqua/config"
+description = "ESP32 Aquarium Monitor & Feeder"
 
 # For mqtt_node, the readings come from the JSON payload the node publishes.
 # By default every numeric field in the payload is stored, so a node that starts
 # reporting a new value needs no change here. Listing `metrics` turns that into a
-# whitelist instead — useful to keep self-reported status (rssi, uptime, …) out.
-metrics = ["temperature", "humidity", "pressure"]
+# whitelist instead.
+metrics = ["water_temp", "temperature", "humidity", "pressure", "fed"]
 
-# ---- ESP32 Specific Config (Used during PlatformIO Build) ----
+# ---- Dynamic Remote Settings Schema ----
+# Declare parameters that can be tuned from the Web UI Settings tab.
+# Dewy will render the form, persist values in data/config.json, and push
+# JSON payloads to <config_topic>/set whenever settings are saved.
+[nodes.aqua.settings_schema.temp_alarm_high]
+type = "number"
+label_key = "temp_alarm_high"
+default = 32.0
+min = 20.0
+max = 40.0
+step = 0.5
+unit = "℃"
+
+[nodes.aqua.settings_schema.temp_alarm_low]
+type = "number"
+label_key = "temp_alarm_low"
+default = 18.0
+min = 5.0
+max = 25.0
+step = 0.5
+unit = "℃"
+
+[nodes.aqua.settings_schema.feed_reset_hour]
+type = "number"
+label_key = "feed_reset_hour"
+default = 7
+min = 0
+max = 23
+step = 1
+unit = ":00"
+
+# ---- ESP32 Specific Config (Injected during PlatformIO Build) ----
 wifi_ssid = "YOUR_WIFI_SSID"
 wifi_password = "YOUR_WIFI_PASSWORD"
 mqtt_host = "YOUR_MQTT_HOST"
-mqtt_client_id = "ESP32_Plant_Node_01"
+mqtt_client_id = "ESP32_Aqua_Node_01"
