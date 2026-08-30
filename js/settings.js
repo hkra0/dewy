@@ -188,10 +188,13 @@ export async function fetchConfig() {
         const nodeInfo = state.availableNodes[dev] || {};
         const schema = nodeInfo.settings_schema;
         const nodeCard = document.getElementById('cfg-node-settings-card');
+        const nodeTitle = document.getElementById('cfg-node-settings-title');
         const nodeGroup = document.getElementById('cfg-node-settings-group');
         if (nodeCard && nodeGroup) {
             if (schema && Object.keys(schema).length > 0) {
-                nodeCard.classList.remove('hidden');
+                if (nodeTitle) {
+                    nodeTitle.innerText = `${nodeInfo.description || dev} ${t('settings')}`;
+                }
                 let html = '';
                 const currentVals = (data.node_settings && data.node_settings[dev]) || {};
                 for (const [key, meta] of Object.entries(schema)) {
@@ -215,7 +218,6 @@ export async function fetchConfig() {
                 }
                 nodeGroup.innerHTML = html;
             } else {
-                nodeCard.classList.add('hidden');
                 nodeGroup.innerHTML = '';
             }
         }

@@ -9,7 +9,7 @@ import { tf } from './i18n.js';
 // 已有专属界面的字段，不进"其它指标"区：
 // 前四个是环境卡片，后两个在系统页的电源状态里。
 export const BUILT_IN_FIELDS = new Set([
-    'temperature', 'humidity', 'soil_moisture', 'soil_adc_raw', 'pressure', 'voltage', 'current',
+    'water_temp', 'temperature', 'humidity', 'soil_moisture', 'soil_adc_raw', 'pressure', 'voltage', 'current', 'fed', 'fed_time',
 ]);
 
 // 常见量的单位。查不到就不显示单位，而不是猜一个错的。

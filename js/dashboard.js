@@ -70,18 +70,23 @@ export function renderDynamicCards(nodeData, globalData) {
     const caps = nodeCaps();
     let html = '';
 
+    // 1. 水温
+    if (nodeData.water_temp !== undefined) {
+        html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('water_temp'))}</div><div class="card-value" style="color: var(--metric-water-temp);">${formatVal(nodeData.water_temp, '℃')}</div></div>`;
+    }
+
+    // 2. 气温
     if (nodeData.temperature !== undefined) {
         html += `<div class="card"><div class="card-title">` + t('temp') + `</div><div class="card-value" style="color: var(--metric-temp);">${formatVal(nodeData.temperature, '℃')}</div></div>`;
     }
+
+    // 3. 湿度
     if (nodeData.humidity !== undefined) {
         html += `<div class="card"><div class="card-title">` + t('humidity') + `</div><div class="card-value" style="color: var(--metric-hum);">${formatVal(nodeData.humidity, '%')}</div></div>`;
     }
+
+    // 4. 土壤湿度 (如果节点包含)
     if (nodeData.soil_moisture !== undefined) {
-        // 点击翻转：百分比 <-> 原始 ADC 读数。soil_adc_raw 已在 BUILT_IN_FIELDS
-        // 里，不会作为独立卡片出现。翻转状态存在 state.soilShowRaw，跨 30s
-        // 轮询重绘自然保留。
-        // --metric-soil，不是 --accent：历史曲线的土壤线用的就是 --metric-soil，
-        // 同一个指标在两个视图里必须是同一个颜色。
         const showRaw = state.soilShowRaw;
         const flippedClass = showRaw ? ' flipped' : '';
         const moistureLabel = t('soil_moisture');
@@ -101,28 +106,29 @@ export function renderDynamicCards(nodeData, globalData) {
             </div>
         </div>`;
     }
+
+    // 5. 气压
     if (nodeData.pressure !== undefined) {
         html += `<div class="card"><div class="card-title">` + t('pressure') + `</div><div class="card-value" style="color: var(--metric-pres);">${formatVal(nodeData.pressure, 'hPa')}</div></div>`;
     }
 
-    // 固定四项之外，驱动返回什么就显示什么（照度、CO₂、EC…）。
-    // 这些字段事先不可知，所以标签查不到时用字段名本身，而不是不显示——
-    // 用户接了传感器却在界面上找不到读数，比标签不好看严重得多。
+    // 6. 其它额外指标 (除固定六项与专属卡片之外的量)
     for (const [key, value] of extraMetricEntries(nodeData)) {
-        if (key === 'fed') {
-            const isFed = value >= 1;
-            const fedLabel = escapeHtml(metricLabel('fed'));
-            const fedText = isFed ? t('fed_yes') : t('fed_no');
-            const fedColor = isFed ? 'var(--accent)' : 'var(--danger)';
-            const fedTime = (isFed && nodeData.fed_time) ? `<span class="card-subtitle" style="font-size: 0.85em; opacity: 0.8; margin-left: 6px;">${escapeHtml(nodeData.fed_time)}</span>` : '';
-            html += `<div class="card"><div class="card-title">${fedLabel}</div>`
-                 + `<div class="card-value" style="color: ${fedColor};">${fedText}${fedTime}</div></div>`;
-            continue;
-        }
         const label = escapeHtml(metricLabel(key));
         const unit = metricUnit(key);
         html += `<div class="card"><div class="card-title">${label}</div>`
              + `<div class="card-value" style="color: ${metricColor(key)};">${formatVal(value, unit)}</div></div>`;
+    }
+
+    // 7. 喂食状态
+    if (nodeData.fed !== undefined) {
+        const isFed = nodeData.fed >= 1;
+        const fedLabel = escapeHtml(metricLabel('fed'));
+        const fedText = isFed ? t('fed_yes') : t('fed_no');
+        const fedColor = isFed ? 'var(--accent)' : 'var(--danger)';
+        const fedTime = (isFed && nodeData.fed_time) ? `<span class="card-subtitle" style="font-size: 0.85em; opacity: 0.8; margin-left: 6px;">${escapeHtml(nodeData.fed_time)}</span>` : '';
+        html += `<div class="card"><div class="card-title">${fedLabel}</div>`
+             + `<div class="card-value" style="color: ${fedColor};">${fedText}${fedTime}</div></div>`;
     }
 
     // 补光灯状态。挂在哪个节点上由配置决定（auto_light.node_id/actuator_id），

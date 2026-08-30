@@ -114,6 +114,20 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     if (hasPhotos) document.getElementById('hist-photos').classList.remove('hidden');
     else document.getElementById('hist-photos').classList.add('hidden');
 
+    // 自动浇水卡：仅当当前节点拥有水泵时显示
+    const waterCard = document.getElementById('cfg-water-card');
+    if (waterCard) {
+        if (hasPump) waterCard.classList.remove('hidden');
+        else waterCard.classList.add('hidden');
+    }
+
+    // 补光灯卡：仅当当前节点拥有补光灯执行器时显示
+    const lightCard = document.getElementById('cfg-light-card');
+    if (lightCard) {
+        if (caps.light) lightCard.classList.remove('hidden');
+        else lightCard.classList.add('hidden');
+    }
+
     // 没有相机就没有拍照设置可言，"重新拍摄"点了也必然失败
     if (hasCamera) document.getElementById('cfg-photo-card').classList.remove('hidden');
     else document.getElementById('cfg-photo-card').classList.add('hidden');
@@ -134,6 +148,11 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     if (nodeCard) {
         if (caps.node_settings) nodeCard.classList.remove('hidden');
         else nodeCard.classList.add('hidden');
+    }
+
+    // 若当前正在设置页，切换设备时重新拉取/刷新对应节点的设置表单
+    if (state.currentTab === 'settings' && hasSettings) {
+        fetchConfig();
     }
 
     if ((state.currentTab === 'system' && !hasSystem) || (state.currentTab === 'settings' && !hasSettings)) {

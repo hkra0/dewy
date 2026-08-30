@@ -84,14 +84,29 @@ export async function renderHistoryUI(data, type, animate = false) {
         return m ? metric(m[1], '#888') : value;
     };
 
+    const cWaterTemp = metric('--metric-water-temp', '#06b6d4');
+
+    // 水温与气温量纲一致 (℃)，共用 y 轴并默认绘制
+    if (extraKeys.includes('water_temp')) {
+        datasets.push({
+            label: metricLabel('water_temp') + ' (℃)',
+            data: chartData.map(d => (d.extra && d.extra.water_temp !== undefined) ? d.extra.water_temp : null),
+            borderColor: cWaterTemp,
+            backgroundColor: cWaterTemp,
+            tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true,
+            hidden: false,
+        });
+    }
+
     if (hasTemp) datasets.push({ label: t('chart_temp'), data: chartData.map(d => d.temp), borderColor: cTemp, backgroundColor: cTemp, tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
     if (hasHum) datasets.push({ label: t('chart_hum'), data: chartData.map(d => d.hum), borderColor: cHum, backgroundColor: cHum, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: cSoil, backgroundColor: cSoil, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: cPres, backgroundColor: cPres, tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
-    // 额外指标（照度、CO₂…）。默认折叠：它们的量纲与温湿度差着几个数量级，
+    // 其余额外指标（照度、CO₂…）。默认折叠：它们的量纲与温湿度差着几个数量级，
     // 直接画出来会把原本的曲线压成直线；放进图例让用户按需点开，
     // 数据可达，默认视图又不被破坏。
     for (const key of extraKeys) {
+        if (key === 'water_temp') continue;
         const unit = metricUnit(key);
         datasets.push({
             label: metricLabel(key) + (unit ? ` (${unit})` : ''),
