@@ -14,28 +14,58 @@ function renderWateringSafety(status = {}) {
     const sensor = status.sensor_interlock === true;
     const label = document.getElementById('pump-safety-status');
     const btn = document.getElementById('pump-emergency-btn');
+    const banner = document.getElementById('pump-safety-banner');
+    const bannerText = document.getElementById('pump-safety-banner-text');
+    const bannerAction = document.getElementById('pump-safety-banner-action');
     const needed = loadedConfig.auto_water?.sensor_recovery_samples ?? 3;
 
-    btn.classList.toggle('is-active', manual);
-    btn.classList.toggle('is-sensor-locked', sensor);
-    btn.setAttribute('aria-pressed', manual ? 'true' : 'false');
-    btn.setAttribute('aria-label', t(manual ? 'pump_emergency_release' : 'pump_emergency_stop'));
-    btn.disabled = false;
+    if (btn) {
+        btn.classList.toggle('is-active', manual);
+        btn.classList.toggle('is-sensor-locked', sensor);
+        btn.setAttribute('aria-pressed', manual ? 'true' : 'false');
+        btn.setAttribute('aria-label', t(manual ? 'pump_emergency_release' : 'pump_emergency_stop'));
+        btn.disabled = false;
+    }
 
-    if (manual && sensor) label.innerText = t('pump_both_locked');
-    else if (manual) label.innerText = t('pump_manual_stopped');
-    else if (sensor) label.innerText = t('pump_sensor_locked', {
+    let statusText = '';
+    if (manual && sensor) statusText = t('pump_both_locked');
+    else if (manual) statusText = t('pump_manual_stopped');
+    else if (sensor) statusText = t('pump_sensor_locked', {
         count: status.recovery_count ?? 0, needed,
     });
-    else label.innerText = t('pump_ready');
-    btn.title = label.innerText;
+    else statusText = t('pump_ready');
+
+    if (label) label.innerText = statusText;
+    if (btn) btn.title = statusText;
+
+    if (banner) {
+        if (manual || sensor) {
+            banner.classList.remove('hidden');
+            banner.classList.toggle('is-sensor-only', !manual && sensor);
+            if (bannerText) bannerText.innerText = statusText;
+            if (bannerAction) {
+                // 人工急停允许用户主动解除；传感器联锁由硬件读数回稳后自动清除
+                if (manual) {
+                    bannerAction.style.display = '';
+                    bannerAction.innerText = t('pump_emergency_release');
+                    bannerAction.disabled = false;
+                } else {
+                    bannerAction.style.display = 'none';
+                }
+            }
+        } else {
+            banner.classList.add('hidden');
+        }
+    }
 }
 
 export async function togglePumpEmergencyStop() {
     if (!getWaterKey()) return;
     const btn = document.getElementById('pump-emergency-btn');
+    const bannerAction = document.getElementById('pump-safety-banner-action');
     const active = wateringSafety.manual_stop !== true;
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
+    if (bannerAction) bannerAction.disabled = true;
     try {
         const res = await apiWaterPost('/api/water/emergency-stop', {
             active,
@@ -51,7 +81,8 @@ export async function togglePumpEmergencyStop() {
         }
     } catch (e) {
         console.error(e);
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
+        if (bannerAction) bannerAction.disabled = false;
         showToast(t('pump_stop_fail'), 'error');
     }
 }
