@@ -332,6 +332,18 @@ def query_daily_metrics(node_id, days=30):
     ''', (node_id, f"-{int(days)} days"))
 
 
+def query_today_first_fed_time(node_id):
+    """查询指定节点今日首次上报喂食 (fed >= 1.0) 的本地时刻字符串 (如 '07:40')。"""
+    rows = query('''
+        SELECT strftime('%H:%M', timestamp, 'localtime')
+        FROM node_metrics
+        WHERE node_id=? AND key='fed' AND value >= 1.0
+          AND date(timestamp, 'localtime') = date('now', 'localtime')
+        ORDER BY timestamp ASC LIMIT 1
+    ''', (node_id,))
+    return rows[0][0] if rows else None
+
+
 def query_latest_metrics(node_id):
     """该节点每个额外指标的最新值，返回 {key: value}。"""
     rows = query('''

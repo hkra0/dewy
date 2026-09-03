@@ -74,6 +74,14 @@ def on_mqtt_message(client, userdata, msg):
             node_id = state.mqtt_topic_to_node[topic]
             readings = _extract_readings(node_id, data)
             if readings:
+                # 若节点处于已喂食状态但 fed_time 为 "00:00" 或空（例如触摸时 NTP 尚未就绪），
+                # 尝试从今日首次喂食记录对齐，确保看板显示真实的喂食时刻
+                if readings.get("fed") == 1 and readings.get("fed_time") in ("00:00", "", None):
+                    import core.database as db
+                    first_time = db.query_today_first_fed_time(node_id)
+                    if first_time:
+                        readings["fed_time"] = first_time
+
                 state.mqtt_latest_data[node_id]["data"].update(readings)
                 state.mqtt_latest_data[node_id]["updated"] = True
                 try:

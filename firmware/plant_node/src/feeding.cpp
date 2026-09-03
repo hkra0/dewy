@@ -47,6 +47,10 @@ void feeding_init() {
 
     if (saved_fed) {
         restore_pending = true;
+        // 若 NVS 中存的时间是 "00:00"，清除以待 NTP 就绪后自动补正
+        if (restore_time == "00:00") {
+            restore_time = "";
+        }
         Serial.println("📋 NVS 中有喂食记录，等待 NTP 同步后校验日期再恢复");
     }
 
@@ -59,12 +63,12 @@ FeedingState feeding_get_state() {
 
 static String get_current_time_str() {
     struct tm timeinfo;
-    if (getLocalTime(&timeinfo, 10)) {
+    if (getLocalTime(&timeinfo, 100)) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
         return String(buf);
     }
-    return "00:00";
+    return "";  // 未同步时不写入 "00:00"，保留空串供后续 NTP 就绪时补齐
 }
 
 void feeding_update(float water_temp, bool water_temp_ok) {
@@ -73,7 +77,7 @@ void feeding_update(float water_temp, bool water_temp_ok) {
     // NTP 同步后的一次性延迟恢复：network_init() 结束、首次 getLocalTime() 成功时执行
     if (restore_pending) {
         struct tm ti;
-        if (getLocalTime(&ti, 10)) {
+        if (getLocalTime(&ti, 50)) {
             restore_pending = false;  // 无论结果如何，只尝试一次
             if (ti.tm_yday == restore_yday) {
                 state.is_fed = true;
@@ -84,6 +88,19 @@ void feeding_update(float water_temp, bool water_temp_ok) {
             }
         }
         // getLocalTime 失败说明 NTP 仍未就绪，下一次 feeding_update 再试
+    }
+
+    // 若当前已记录喂食但时间为空或 "00:00"（说明触摸瞬间 NTP 尚未就绪），
+    // 在 NTP 首次就绪后自动补齐当前真实时刻并持久化
+    if (state.is_fed && (state.fed_time == "" || state.fed_time == "00:00")) {
+        struct tm ti;
+        if (getLocalTime(&ti, 50)) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%02d:%02d", ti.tm_hour, ti.tm_min);
+            state.fed_time = String(buf);
+            save_feeding_state();
+            Serial.printf("⏰ NTP 就绪，已自动补齐喂食时刻: %s\n", state.fed_time.c_str());
+        }
     }
 
     // 1. 触摸按键检测 (带防抖与单次触发)
