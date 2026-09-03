@@ -5,6 +5,8 @@ BME280 / BMP280 Temperature, Humidity, and Pressure Sensor
 依赖 (Dependencies):
 sudo pip3 install smbus2 RPi.bme280
 """
+import time
+
 try:
     import smbus2
     import bme280
@@ -33,14 +35,31 @@ class Driver:
         except Exception as e:
             raise RuntimeError(f"Failed to load BME280 calibration on address {hex(self.address)}: {e}")
 
-    def read(self):
-        try:
-            data = bme280.sample(self.bus, self.address)
-            return {
-                "temperature": round(data.temperature, 2),
-                "humidity": round(data.humidity, 2),
-                "pressure": round(data.pressure, 2)
-            }
-        except Exception:
-            # 硬件读取失败时返回空字典，系统会自动忽略并保持上一次数据
+    def read(self, samples=3):
+        temps = []
+        hums = []
+        press = []
+        for i in range(samples):
+            try:
+                data = bme280.sample(self.bus, self.address)
+                if -40.0 <= data.temperature <= 85.0 and 0.0 <= data.humidity <= 100.0 and 300.0 <= data.pressure <= 1200.0:
+                    temps.append(data.temperature)
+                    hums.append(data.humidity)
+                    press.append(data.pressure)
+            except Exception:
+                pass
+            if i < samples - 1:
+                time.sleep(0.02)
+
+        if not temps:
             return {}
+
+        temps.sort()
+        hums.sort()
+        press.sort()
+        mid = len(temps) // 2
+        return {
+            "temperature": round(temps[mid], 2),
+            "humidity": round(hums[mid], 2),
+            "pressure": round(press[mid], 2)
+        }

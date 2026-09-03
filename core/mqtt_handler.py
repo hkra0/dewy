@@ -76,6 +76,11 @@ def on_mqtt_message(client, userdata, msg):
             if readings:
                 state.mqtt_latest_data[node_id]["data"].update(readings)
                 state.mqtt_latest_data[node_id]["updated"] = True
+                try:
+                    from core.logic.sensor_aggregator import aggregator
+                    aggregator.record_sample(node_id, readings)
+                except Exception as e:
+                    logger.debug("聚合采样记录失败 (node=%s): %s", node_id, e)
             
     except (UnicodeDecodeError, ValueError) as e:
         # 节点发来非 JSON 报文：常见于固件升级期间，不致命但要能查。

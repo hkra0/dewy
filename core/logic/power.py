@@ -82,6 +82,11 @@ def _read_all_nodes():
         data = state.hardware_manager.read_local_node(node_id)
         if data:
             state.local_latest_data[node_id] = data
+            try:
+                from core.logic.sensor_aggregator import aggregator
+                aggregator.record_sample(node_id, data)
+            except Exception:
+                pass
 
 
 def _read_ups_only(sensor_ids):
@@ -98,6 +103,12 @@ def _read_ups_only(sensor_ids):
         entry.pop(field, None)
     entry.update(data)
     state.local_latest_data[UPS_NODE_ID] = entry
+    if data:
+        try:
+            from core.logic.sensor_aggregator import aggregator
+            aggregator.record_sample(UPS_NODE_ID, data)
+        except Exception:
+            pass
 
 
 def local_sensor_updater():

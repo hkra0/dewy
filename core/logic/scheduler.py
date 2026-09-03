@@ -17,6 +17,7 @@ from core.database import init_db
 from core.logic.light import apply_light_schedule
 from core.logic.photo import daily_photo_capture
 from core.logic.photo_export import clean_expired_exports
+from core.logic.sensor_aggregator import aggregator
 from core.logic.soil_abc import run_abc_calibration
 from core.logic.watering import check_auto_watering, clean_soil_anomalies
 
@@ -62,23 +63,31 @@ def _run_abc_if_new_day(now, last_abc_date):
 
 
 def _collect_node_data(now):
-    """汇总本地传感器与 MQTT 节点的最新读数，顺带处理自动浇水。"""
+    """汇总本地传感器与 MQTT 节点的读数，顺带处理自动浇水。
+
+    采用时间窗口聚合（修剪均值）：归档数据代表 10 分钟窗口内的真实物理均值，
+    消除下采样混叠造成的折线锯齿，同时保留状态量。
+    自动浇水仍依据实时的最新读数判断。
+    """
     node_data_to_save = []
 
     for node_id in state.hardware_manager.local_sensors:
-        data = state.local_latest_data.get(node_id, {})
-        if data:
-            data = data.copy()
-            data["node_id"] = node_id
-            node_data_to_save.append(data)
+        realtime_data = state.local_latest_data.get(node_id, {})
+        if realtime_data:
+            archive_data = aggregator.get_window_summary(node_id, realtime_data)
+            archive_data["node_id"] = node_id
+            node_data_to_save.append(archive_data)
+            aggregator.reset_window(node_id)
 
-        check_auto_watering(node_id, data, now)
+        check_auto_watering(node_id, realtime_data, now)
 
     for node_id, info in state.mqtt_latest_data.items():
         if info["updated"]:
-            data = info["data"].copy()
-            data["node_id"] = node_id
-            node_data_to_save.append(data)
+            realtime_data = info["data"].copy()
+            archive_data = aggregator.get_window_summary(node_id, realtime_data)
+            archive_data["node_id"] = node_id
+            node_data_to_save.append(archive_data)
+            aggregator.reset_window(node_id)
             info["updated"] = False
 
     return node_data_to_save

@@ -5,6 +5,8 @@ AHT20 / AHT10 Temperature and Humidity Sensor Driver
 依赖 (Dependencies):
 sudo pip3 install adafruit-circuitpython-ahtx0
 """
+import time
+
 try:
     import board
     import busio
@@ -24,11 +26,35 @@ class Driver:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize AHT20 sensor: {e}")
         
-    def read(self):
-        try:
-            return {
-                "temperature": round(self.sensor.temperature, 2),
-                "humidity": round(self.sensor.relative_humidity, 2)
-            }
-        except Exception:
+    def read(self, samples=5):
+        temps = []
+        hums = []
+        for i in range(samples):
+            try:
+                t = float(self.sensor.temperature)
+                h = float(self.sensor.relative_humidity)
+                if -40.0 <= t <= 85.0 and 0.0 <= h <= 100.0:
+                    temps.append(t)
+                    hums.append(h)
+            except Exception:
+                pass
+            if i < samples - 1:
+                time.sleep(0.025)
+
+        if not temps:
             return {}
+
+        temps.sort()
+        hums.sort()
+        trim = len(temps) // 4
+        if trim > 0:
+            valid_t = temps[trim:-trim]
+            valid_h = hums[trim:-trim]
+        else:
+            valid_t = temps
+            valid_h = hums
+
+        return {
+            "temperature": round(sum(valid_t) / len(valid_t), 2),
+            "humidity": round(sum(valid_h) / len(valid_h), 2)
+        }
