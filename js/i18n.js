@@ -31,11 +31,12 @@ const translations = {
         power_status: "power status", cpu_temp: "cpu temp", ram_used: "ram used", disk_used: "disk storage used",
 
         // 历史视图
-        env_trends: "environmental trends", past_24h: "24h", daily_avg: "day", watering_log: "water",
+        env_trends: "environmental trends", past_24h: "24h", past_7d: "7d", daily_avg: "day", watering_log: "water",
         photo_log: "photo", chart_loading: "loading...", no_data: "no data available",
         no_water_records: "no watering records found", load_failed: "failed to load, check connection",
         chart_lib_missing: "chart library unavailable",
-        chart_temp: "Temp (℃)", chart_hum: "Humidity (%)", chart_soil: "Soil (%)",
+        chart_temp: "Temp (℃)", temp_core: "Core (50%)", temp_range: "Range",
+        chart_hum: "Humidity (%)", chart_soil: "Soil (%)",
         chart_pres: "Pressure (hPa)", chart_water: "Water (s)", chart_fed: "Feeding",
         table_duration: "Duration (s)", table_soil: "Soil Moisture (%)", table_pulses: "Pulses",
         table_soil_after: "Soil After (%)", table_time: "Time", syncing: "syncing...",
@@ -161,11 +162,12 @@ const translations = {
         power_status: "电源状态", cpu_temp: "处理器温度", ram_used: "内存使用率", disk_used: "存储使用率",
 
         // 历史视图
-        env_trends: "环境趋势", past_24h: "24h", daily_avg: "日均", watering_log: "浇水",
+        env_trends: "环境趋势", past_24h: "24h", past_7d: "7天", daily_avg: "日均", watering_log: "浇水",
         photo_log: "照片", chart_loading: "图表数据加载中...", no_data: "暂无数据",
         no_water_records: "暂无浇水记录", load_failed: "加载失败，请检查连接",
         chart_lib_missing: "图表组件加载失败",
-        chart_temp: "温度 (℃)", chart_hum: "湿度 (%)", chart_soil: "土壤 (%)",
+        chart_temp: "温度 (℃)", temp_core: "核心 (50%)", temp_range: "范围",
+        chart_hum: "湿度 (%)", chart_soil: "土壤 (%)",
         chart_pres: "气压 (hPa)", chart_water: "浇水 (秒)", chart_fed: "喂食",
         table_duration: "时长 (秒)", table_soil: "土壤湿度 (%)", table_pulses: "脉冲数",
         table_soil_after: "浇后湿度 (%)", table_time: "时间", syncing: "同步中...",

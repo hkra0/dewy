@@ -171,14 +171,68 @@ def get_history_data(hist_type: str = "24h", node_id: str = "main"):
             rows, water_rows = db.query_daily_history(node_id)
             watering_map = {r[0]: round(r[1], 1) if r[1] is not None else 0 for r in water_rows}
             extra_map = _group_metrics(db.query_daily_metrics(node_id))
+            temp_dist_map = db.query_daily_temp_distribution(node_id)
             rows = list(rows)
             rows.reverse()
             return [{"time": r[0][5:], "temp": round(r[1], 1) if r[1] is not None else None,
+                     "temp_dist": temp_dist_map.get(r[0]),
                      "hum": round(r[2], 1) if r[2] is not None else None,
                      "soil": round(r[3], 1) if r[3] is not None else None,
                      "pressure": round(r[4], 1) if r[4] is not None else None,
                      "water": watering_map.get(r[0], 0),
                      "extra": extra_map.get(r[0], {})} for r in rows]
+
+        elif hist_type == "7d":
+            sensor_rows, water_rows = db.query_7d_history(node_id)
+            extra_map = _group_metrics(db.query_7d_metrics(node_id))
+
+            timeline = {}
+            for r in sensor_rows:
+                hour_full = r[0]
+                time_str = hour_full[5:]
+                epoch = int(r[5]) if r[5] is not None else 0
+                timeline[time_str] = {
+                    "time": time_str,
+                    "epoch": epoch,
+                    "temp": round(r[1], 1) if r[1] is not None else None,
+                    "hum": round(r[2], 1) if r[2] is not None else None,
+                    "soil": round(r[3], 1) if r[3] is not None else None,
+                    "pressure": round(r[4], 1) if r[4] is not None else None,
+                    "water": 0,
+                    "extra": extra_map.get(hour_full, {})
+                }
+
+            for w in water_rows:
+                if w[0] is None or w[1] is None: continue
+                hour_full = w[0]
+                time_str = hour_full[5:]
+                dur = float(w[1])
+                soil_val = round(w[2], 1) if w[2] is not None and w[2] >= 0 else None
+                epoch = int(w[3]) if w[3] is not None else 0
+                if time_str in timeline:
+                    timeline[time_str]["water"] = round(timeline[time_str]["water"] + dur, 1)
+                    if timeline[time_str]["soil"] is None and soil_val is not None:
+                        timeline[time_str]["soil"] = soil_val
+                else:
+                    timeline[time_str] = {
+                        "time": time_str,
+                        "epoch": epoch,
+                        "temp": None,
+                        "hum": None,
+                        "soil": soil_val,
+                        "pressure": None,
+                        "water": round(dur, 1),
+                        "extra": extra_map.get(hour_full, {})
+                    }
+
+            sorted_points = sorted(timeline.values(), key=lambda x: x["epoch"])
+            return [{"time": p["time"],
+                     "temp": p["temp"],
+                     "hum": p["hum"],
+                     "soil": p["soil"],
+                     "pressure": p["pressure"],
+                     "water": p["water"] if p["water"] > 0 else 0,
+                     "extra": p["extra"]} for p in sorted_points]
 
         else: # 24h
             sensor_rows, water_rows = db.query_24h_history(node_id)

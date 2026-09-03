@@ -332,6 +332,23 @@ def query_daily_metrics(node_id, days=30):
     ''', (node_id, f"-{int(days)} days"))
 
 
+def query_7d_metrics(node_id, days=7):
+    """过去 days 天按小时聚合的额外指标，返回 [(时刻桶, key, 聚合值), ...]。
+
+    时刻桶格式为 'YYYY-MM-DD HH:00'，调用方据此切片并进同一条时间轴。
+    离散事件（如 fed 喂食）按 MAX 聚合避免被 0 冲淡，连续测量量按 AVG 聚合。
+    """
+    return query('''
+        SELECT strftime('%Y-%m-%d %H:00', timestamp, 'localtime') as hour_bucket,
+               key,
+               CASE WHEN key = 'fed' THEN MAX(value) ELSE AVG(value) END
+        FROM node_metrics
+        WHERE node_id=? AND timestamp >= datetime('now', ?)
+        GROUP BY hour_bucket, key
+        ORDER BY hour_bucket ASC
+    ''', (node_id, f"-{int(days)} days"))
+
+
 def query_today_first_fed_time(node_id):
     """查询指定节点今日首次上报喂食 (fed >= 1.0) 的本地时刻字符串 (如 '07:40')。"""
     rows = query('''
@@ -548,6 +565,50 @@ def query_daily_history(node_id, limit=30):
     return rows, water_rows
 
 
+def query_daily_temp_distribution(node_id, limit=30):
+    """返回过去 limit 天内逐日温度分布 {day: {'min': ..., 'p25': ..., 'p75': ..., 'max': ...}}。
+
+    排除离群值与 NULL。利用 ORDER BY day ASC, temperature ASC 由 SQLite 先行排序，
+    在 Python 中进行线性插值分位数统计，提取当天的极端范围与 50% 核心停留区间 (IQR)。
+    """
+    window = f"-{int(limit) + 1} days"
+    rows = query('''
+        SELECT date(timestamp, 'localtime') as day, temperature
+        FROM node_data
+        WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL)
+          AND temperature IS NOT NULL
+          AND timestamp >= datetime('now', ?)
+        ORDER BY day ASC, temperature ASC
+    ''', (node_id, window))
+
+    day_temps = {}
+    for day, temp in rows:
+        day_temps.setdefault(day, []).append(temp)
+
+    result = {}
+    for day, vals in day_temps.items():
+        if not vals:
+            continue
+        n = len(vals)
+
+        def _pct(q):
+            if n == 1:
+                return vals[0]
+            k = q * (n - 1)
+            f = int(k)
+            c = f + 1 if f + 1 < n else f
+            return vals[f] * (c - k) + vals[c] * (k - f)
+
+        result[day] = {
+            "min": round(vals[0], 1),
+            "p25": round(_pct(0.25), 1),
+            "p75": round(_pct(0.75), 1),
+            "max": round(vals[-1], 1),
+        }
+    return result
+
+
+
 def query_24h_history(node_id):
     """返回 (24 小时内环境采样, 24 小时内浇水记录)。"""
     sensor_rows = query('''
@@ -564,3 +625,32 @@ def query_24h_history(node_id):
         ORDER BY timestamp ASC
     ''', (node_id,))
     return sensor_rows, water_rows
+
+
+def query_7d_history(node_id, days=7):
+    """返回 (过去 days 天按小时聚合的环境采样, 过去 days 天按小时聚合的浇水记录)。
+
+    按 strftime('%Y-%m-%d %H:00', timestamp, 'localtime') 分组保证跨年单调递增，
+    每小时返回 (hour_bucket, avg_temp, avg_hum, avg_soil, avg_pres, min_epoch)。
+    """
+    window = f"-{int(days)} days"
+    sensor_rows = query('''
+        SELECT strftime('%Y-%m-%d %H:00', timestamp, 'localtime') as hour_bucket,
+               AVG(temperature), AVG(humidity), AVG(soil_moisture), AVG(pressure),
+               MIN(strftime('%s', timestamp))
+        FROM node_data
+        WHERE node_id=? AND (is_anomaly = 0 OR is_anomaly IS NULL)
+          AND timestamp >= datetime('now', ?)
+        GROUP BY hour_bucket
+        ORDER BY hour_bucket ASC
+    ''', (node_id, window))
+    water_rows = query('''
+        SELECT strftime('%Y-%m-%d %H:00', timestamp, 'localtime') as hour_bucket,
+               SUM(duration), AVG(soil_before), MIN(strftime('%s', timestamp))
+        FROM watering_log
+        WHERE node_id=? AND timestamp >= datetime('now', ?)
+        GROUP BY hour_bucket
+        ORDER BY hour_bucket ASC
+    ''', (node_id, window))
+    return sensor_rows, water_rows
+

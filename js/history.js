@@ -32,6 +32,30 @@ function showHistoryError(type, hasData) {
     el.classList.remove('hidden');
 }
 
+/** 将颜色转换为指定透明度的 RGBA 字符串，兼容 hex (#rgb, #rrggbb) 与 rgb 格式。 */
+function hexToRgba(color, alpha) {
+    if (!color) return `rgba(217, 119, 6, ${alpha})`;
+    color = color.trim();
+    if (color.startsWith('rgb')) {
+        const m = color.match(/\d+/g);
+        if (m && m.length >= 3) return `rgba(${m[0]}, ${m[1]}, ${m[2]}, ${alpha})`;
+    }
+    const clean = color.replace('#', '');
+    if (clean.length === 3) {
+        const r = parseInt(clean[0] + clean[0], 16);
+        const g = parseInt(clean[1] + clean[1], 16);
+        const b = parseInt(clean[2] + clean[2], 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    if (clean.length === 6) {
+        const num = parseInt(clean, 16);
+        if (!isNaN(num)) {
+            return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
+        }
+    }
+    return `rgba(217, 119, 6, ${alpha})`;
+}
+
 export async function renderHistoryUI(data, type, animate = false) {
     if (type === 'watering') {
         const wrapper = document.getElementById('watering-log-wrapper');
@@ -99,7 +123,82 @@ export async function renderHistoryUI(data, type, animate = false) {
         });
     }
 
-    if (hasTemp) datasets.push({ label: t('chart_temp'), data: chartData.map(d => d.temp), borderColor: cTemp, backgroundColor: cTemp, tension: 0.4, pointRadius: 0, yAxisID: 'y', spanGaps: true });
+    const hasTempDist = type === 'daily' && chartData.some(d => d.temp_dist && typeof d.temp_dist === 'object');
+
+    // 每日视图：绘制温度分位数密度条带 (Fan Chart / Density Ribbon)
+    if (hasTemp && hasTempDist) {
+        // 外层极值带 (Min ~ Max)，透明度 10%
+        datasets.push({
+            label: 'temp_max',
+            data: chartData.map(d => d.temp_dist ? d.temp_dist.max : null),
+            borderColor: 'transparent',
+            backgroundColor: 'transparent',
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0.4,
+            yAxisID: 'y',
+            spanGaps: true,
+            isTempBand: true,
+            hideFromLegend: true,
+            fill: false,
+        });
+        datasets.push({
+            label: 'temp_min',
+            data: chartData.map(d => d.temp_dist ? d.temp_dist.min : null),
+            borderColor: 'transparent',
+            backgroundColor: hexToRgba(cTemp, 0.10),
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0.4,
+            yAxisID: 'y',
+            spanGaps: true,
+            isTempBand: true,
+            hideFromLegend: true,
+            fill: '-1',
+        });
+        // 内层核心带 (P25 ~ P75 四分位距)，透明度 18%
+        datasets.push({
+            label: 'temp_p75',
+            data: chartData.map(d => d.temp_dist ? d.temp_dist.p75 : null),
+            borderColor: 'transparent',
+            backgroundColor: 'transparent',
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0.4,
+            yAxisID: 'y',
+            spanGaps: true,
+            isTempBand: true,
+            hideFromLegend: true,
+            fill: false,
+        });
+        datasets.push({
+            label: 'temp_p25',
+            data: chartData.map(d => d.temp_dist ? d.temp_dist.p25 : null),
+            borderColor: 'transparent',
+            backgroundColor: hexToRgba(cTemp, 0.18),
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0.4,
+            yAxisID: 'y',
+            spanGaps: true,
+            isTempBand: true,
+            hideFromLegend: true,
+            fill: '-1',
+        });
+    }
+
+    if (hasTemp) datasets.push({
+        label: t('chart_temp'),
+        data: chartData.map(d => d.temp),
+        borderColor: cTemp,
+        backgroundColor: cTemp,
+        tension: 0.4,
+        pointRadius: 0,
+        yAxisID: 'y',
+        spanGaps: true,
+        isTemp: true,
+        tempDist: chartData.map(d => d.temp_dist),
+    });
     if (hasHum) datasets.push({ label: t('chart_hum'), data: chartData.map(d => d.hum), borderColor: cHum, backgroundColor: cHum, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasSoil) datasets.push({ label: t('chart_soil'), data: chartData.map(d => d.soil), borderColor: cSoil, backgroundColor: cSoil, tension: 0.4, pointRadius: 0, yAxisID: 'y1', spanGaps: true });
     if (hasPres) datasets.push({ label: t('chart_pres'), data: chartData.map(d => d.pressure), borderColor: cPres, backgroundColor: cPres, tension: 0.4, pointRadius: 0, yAxisID: 'y2', spanGaps: true });
@@ -213,6 +312,58 @@ export async function renderHistoryUI(data, type, animate = false) {
     const tooltipText = computedStyle.getPropertyValue('--text-main').trim() || '#fff';
     const gridColor = computedStyle.getPropertyValue('--border').trim() || 'rgba(0,0,0,0.1)';
 
+    const legendFilter = (item, chartData) => !chartData.datasets[item.datasetIndex]?.hideFromLegend;
+
+    const onLegendClick = (e, legendItem, legend) => {
+        const chart = legend.chart;
+        const index = legendItem.datasetIndex;
+        const isVisible = chart.isDatasetVisible(index);
+        chart.setDatasetVisibility(index, !isVisible);
+
+        const clickedDs = chart.data.datasets[index];
+        if (clickedDs && clickedDs.isTemp) {
+            chart.data.datasets.forEach((ds, i) => {
+                if (ds.isTempBand) {
+                    chart.setDatasetVisibility(i, !isVisible);
+                }
+            });
+        }
+        chart.update();
+    };
+
+    const formatTooltipLabel = (context) => {
+        if (context.dataset.isTempBand) {
+            return null;
+        }
+        if (context.dataset.isWatering) {
+            const waterVal = context.dataset.waterData ? context.dataset.waterData[context.dataIndex] : '';
+            return `${context.dataset.label}: ${waterVal}`;
+        }
+        if (context.dataset.isFeeding) {
+            const fedVal = context.dataset.fedData ? context.dataset.fedData[context.dataIndex] : '';
+            return `${context.dataset.label}: ${fedVal}`;
+        }
+        if (context.dataset.isTemp && context.dataset.tempDist) {
+            const dist = context.dataset.tempDist[context.dataIndex];
+            if (dist && dist.min !== undefined && dist.max !== undefined) {
+                const val = context.parsed.y !== null ? context.parsed.y : '--';
+                return [
+                    `${context.dataset.label}: ${val}℃`,
+                    `  ${t('temp_core')}: ${dist.p25} ~ ${dist.p75}℃`,
+                    `  ${t('temp_range')}: ${dist.min} ~ ${dist.max}℃`
+                ];
+            }
+        }
+        let label = context.dataset.label || '';
+        if (label) {
+            label += ': ';
+        }
+        if (context.parsed.y !== null) {
+            label += context.parsed.y;
+        }
+        return label;
+    };
+
     if (myChart) {
         // 先记下用户在图例上的显示/隐藏选择。历史页 30 秒轮询一次，
         // 每轮都整体换掉 datasets——不还原的话，用户刚点开的额外指标
@@ -225,10 +376,17 @@ export async function renderHistoryUI(data, type, animate = false) {
         myChart.data.datasets = datasets;
 
         datasets.forEach((ds, i) => {
-            if (wasVisible.has(ds.label)) {
+            if (ds.isTempBand) {
+                const tempVisible = wasVisible.has(t('chart_temp')) ? wasVisible.get(t('chart_temp')) : true;
+                myChart.getDatasetMeta(i).hidden = !tempVisible;
+            } else if (wasVisible.has(ds.label)) {
                 myChart.getDatasetMeta(i).hidden = !wasVisible.get(ds.label);
             }
         });
+
+        myChart.options.plugins.legend.labels.filter = legendFilter;
+        myChart.options.plugins.legend.onClick = onLegendClick;
+        myChart.options.plugins.tooltip.callbacks.label = formatTooltipLabel;
 
         myChart.options.plugins.legend.labels.color = textColor;
         myChart.options.plugins.tooltip.titleColor = tooltipText;
@@ -261,28 +419,14 @@ export async function renderHistoryUI(data, type, animate = false) {
         options: {
             responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { labels: { color: textColor, boxWidth: 16, boxHeight: 10, useBorderRadius: true, borderRadius: 5 } },
+                legend: {
+                    labels: { color: textColor, boxWidth: 16, boxHeight: 10, useBorderRadius: true, borderRadius: 5, filter: legendFilter },
+                    onClick: onLegendClick
+                },
                 tooltip: {
                     titleColor: tooltipText, bodyColor: tooltipText, backgroundColor: tooltipBg, titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 10, cornerRadius: 8, borderColor: gridColor, borderWidth: 1,
                     callbacks: {
-                        label: function (context) {
-                            if (context.dataset.isWatering) {
-                                const waterVal = context.dataset.waterData ? context.dataset.waterData[context.dataIndex] : '';
-                                return `${context.dataset.label}: ${waterVal}`;
-                            }
-                            if (context.dataset.isFeeding) {
-                                const fedVal = context.dataset.fedData ? context.dataset.fedData[context.dataIndex] : '';
-                                return `${context.dataset.label}: ${fedVal}`;
-                            }
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed.y !== null) {
-                                label += context.parsed.y;
-                            }
-                            return label;
-                        }
+                        label: formatTooltipLabel
                     }
                 }
             },
