@@ -44,6 +44,7 @@ export function metricUnit(key) {
 /** 字段名 → 颜色。同名字段每次都得到同一个颜色（简单的字符和取模）。 */
 export function metricColor(key) {
     if (key === 'water_temp') return 'var(--metric-water-temp)';
+    if (key === 'fed') return 'var(--metric-fed)';
     let sum = 0;
     for (let i = 0; i < key.length; i++) sum += key.charCodeAt(i);
     return PALETTE[sum % PALETTE.length];

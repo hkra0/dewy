@@ -36,7 +36,7 @@ const translations = {
         no_water_records: "no watering records found", load_failed: "failed to load, check connection",
         chart_lib_missing: "chart library unavailable",
         chart_temp: "Temp (℃)", chart_hum: "Humidity (%)", chart_soil: "Soil (%)",
-        chart_pres: "Pressure (hPa)", chart_water: "Water (s)",
+        chart_pres: "Pressure (hPa)", chart_water: "Water (s)", chart_fed: "Feeding",
         table_duration: "Duration (s)", table_soil: "Soil Moisture (%)", table_pulses: "Pulses",
         table_soil_after: "Soil After (%)", table_time: "Time", syncing: "syncing...",
 
@@ -166,7 +166,7 @@ const translations = {
         no_water_records: "暂无浇水记录", load_failed: "加载失败，请检查连接",
         chart_lib_missing: "图表组件加载失败",
         chart_temp: "温度 (℃)", chart_hum: "湿度 (%)", chart_soil: "土壤 (%)",
-        chart_pres: "气压 (hPa)", chart_water: "浇水 (秒)",
+        chart_pres: "气压 (hPa)", chart_water: "浇水 (秒)", chart_fed: "喂食",
         table_duration: "时长 (秒)", table_soil: "土壤湿度 (%)", table_pulses: "脉冲数",
         table_soil_after: "浇后湿度 (%)", table_time: "时间", syncing: "同步中...",
 

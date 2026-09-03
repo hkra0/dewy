@@ -77,6 +77,7 @@ export async function renderHistoryUI(data, type, animate = false) {
     const cSoil = metric('--metric-soil', '#059669');
     const cPres = metric('--metric-pres', '#7c3aed');
     const cWater = metric('--metric-water', '#0891b2');
+    const cFed = metric('--metric-fed', '#10b981');
 
     // metrics.js 给的是 var(--x) 形式（卡片直接用得上），Chart.js 只认真实色值
     const resolveColor = (value) => {
@@ -106,7 +107,7 @@ export async function renderHistoryUI(data, type, animate = false) {
     // 直接画出来会把原本的曲线压成直线；放进图例让用户按需点开，
     // 数据可达，默认视图又不被破坏。
     for (const key of extraKeys) {
-        if (key === 'water_temp') continue;
+        if (key === 'water_temp' || key === 'fed' || key === 'fed_time') continue;
         const unit = metricUnit(key);
         datasets.push({
             label: metricLabel(key) + (unit ? ` (${unit})` : ''),
@@ -135,6 +136,66 @@ export async function renderHistoryUI(data, type, animate = false) {
         yAxisID: 'y1',
         isWatering: true,
         waterData: chartData.map(d => d.water)
+    });
+
+    // 喂食事件图钉（离散事件）：
+    // 在 24h 视图中进行边沿检测（只在 0 -> 1 跳变时记录事件点，避免全天持续产生几十个密集点）；
+    // 在 daily 视图中，当天均值大于 0 则视为当天已喂食。
+    // 固定在隐藏辅助轴 yEvent 的顶部 (96)，不挤压温湿度主轴。
+    let fedPoints = [];
+    let fedInfo = [];
+    let hasFedEvent = false;
+    const hasFedMetric = extraKeys.includes('fed') || chartData.some(d => d.extra && d.extra.fed !== undefined);
+
+    if (hasFedMetric) {
+        if (type === 'daily') {
+            chartData.forEach(d => {
+                const fedVal = (d.extra && d.extra.fed != null) ? Number(d.extra.fed) : 0;
+                if (fedVal > 0) {
+                    fedPoints.push(96);
+                    fedInfo.push(t('fed_yes'));
+                    hasFedEvent = true;
+                } else {
+                    fedPoints.push(null);
+                    fedInfo.push(null);
+                }
+            });
+        } else {
+            for (let i = 0; i < chartData.length; i++) {
+                const d = chartData[i];
+                const currentFed = (d.extra && d.extra.fed != null) ? Number(d.extra.fed) : 0;
+                const prevFed = (i > 0 && chartData[i - 1].extra && chartData[i - 1].extra.fed != null)
+                    ? Number(chartData[i - 1].extra.fed) : 0;
+                const isEdge = (currentFed >= 1 && prevFed < 1 && (i > 0 || chartData.length === 1));
+                if (isEdge) {
+                    fedPoints.push(96);
+                    fedInfo.push(t('fed_yes'));
+                    hasFedEvent = true;
+                } else {
+                    fedPoints.push(null);
+                    fedInfo.push(null);
+                }
+            }
+        }
+    }
+
+    if (hasFedEvent) datasets.push({
+        type: 'line',
+        label: t('chart_fed'),
+        data: fedPoints,
+        borderColor: cFed,
+        backgroundColor: cFed,
+        pointBackgroundColor: cFed,
+        pointBorderColor: cFed,
+        pointBorderWidth: 2,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointStyle: 'rectRot',
+        showLine: false,
+        spanGaps: false,
+        yAxisID: 'yEvent',
+        isFeeding: true,
+        fedData: fedInfo
     });
 
     // Chart.js 改为按需加载：只看环境页的访客不必下载这 200KB。
@@ -181,6 +242,9 @@ export async function renderHistoryUI(data, type, animate = false) {
         myChart.options.scales.y.grid.color = gridColor;
         myChart.options.scales.y1.ticks.color = textColor;
         myChart.options.scales.y1.grid.color = gridColor;
+        if (!myChart.options.scales.yEvent) {
+            myChart.options.scales.yEvent = { type: 'linear', display: false, min: 0, max: 100, grid: { drawOnChartArea: false, color: gridColor } };
+        }
 
         if (animate || myChart.lastReqType !== type) {
             myChart.update();
@@ -206,6 +270,10 @@ export async function renderHistoryUI(data, type, animate = false) {
                                 const waterVal = context.dataset.waterData ? context.dataset.waterData[context.dataIndex] : '';
                                 return `${context.dataset.label}: ${waterVal}`;
                             }
+                            if (context.dataset.isFeeding) {
+                                const fedVal = context.dataset.fedData ? context.dataset.fedData[context.dataIndex] : '';
+                                return `${context.dataset.label}: ${fedVal}`;
+                            }
                             let label = context.dataset.label || '';
                             if (label) {
                                 label += ': ';
@@ -224,7 +292,9 @@ export async function renderHistoryUI(data, type, animate = false) {
                 y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false, color: gridColor }, ticks: { color: textColor, font: { size: 10 } } },
                 y2: { type: 'linear', display: false, grid: { drawOnChartArea: false, color: gridColor } },
                 // 额外指标共用一条隐藏轴：它们彼此量纲也不同，但都不该去挤压主轴
-                y3: { type: 'linear', display: false, grid: { drawOnChartArea: false, color: gridColor } }
+                y3: { type: 'linear', display: false, grid: { drawOnChartArea: false, color: gridColor } },
+                // 事件图钉（喂食等离散事件）固定顶部标尺辅助轴
+                yEvent: { type: 'linear', display: false, min: 0, max: 100, grid: { drawOnChartArea: false, color: gridColor } }
             }
         }
     });
