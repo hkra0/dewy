@@ -120,6 +120,7 @@ const translations = {
         cfg_feed_reset_hour: "Daily Feeding Reset Hour",
         fed_yes: "Fed",
         fed_no: "Not Fed",
+        fed_skipped: "Skipped",
 
         // 传感器额外指标
         metric_illuminance: "Illuminance", metric_lux: "Illuminance", metric_co2: "CO₂",
@@ -251,6 +252,7 @@ const translations = {
         cfg_feed_reset_hour: "每日喂食重置时刻",
         fed_yes: "已喂食",
         fed_no: "未喂食",
+        fed_skipped: "已跳过",
 
         // 传感器额外指标
         metric_illuminance: "光照强度", metric_lux: "光照强度", metric_co2: "二氧化碳",

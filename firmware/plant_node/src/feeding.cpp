@@ -4,13 +4,16 @@
 #include <time.h>
 #include <Preferences.h>
 
-static FeedingState state = {false, ""};
+static FeedingState state = {false, false, ""};
 static unsigned long fed_timestamp = 0;
 static int last_reset_day = -1;
 
+// ---- 触摸按键状态 (支持长按检测) ----
 static int last_touch_state = LOW;
 static unsigned long last_debounce_time = 0;
-static bool touch_processed = false;
+static bool touch_is_down = false;          // 当前按住状态
+static unsigned long touch_down_time = 0;   // 按下时刻 (millis)
+static bool touch_action_fired = false;     // 本次触摸已触发动作
 
 static Preferences feedPrefs;
 
@@ -18,6 +21,7 @@ static Preferences feedPrefs;
 static bool restore_pending = false;  // feeding_init 读到了 NVS 有喂食记录
 static String restore_time = "";      // 待恢复的 fed_time
 static int restore_yday = -1;         // 待恢复的 tm_yday
+static bool restore_is_skip = false;  // 待恢复的是跳过状态而非已喂食
 
 // ---- NVS 持久化辅助 ----
 
@@ -25,6 +29,7 @@ static void save_feeding_state() {
     struct tm ti;
     feedPrefs.begin("feed_st", false);
     feedPrefs.putBool("is_fed", state.is_fed);
+    feedPrefs.putBool("is_skip", state.is_skipped);
     feedPrefs.putString("fed_time", state.fed_time);
     // 记录日历天 (tm_yday)，重启后据此判断是否跨天
     if (getLocalTime(&ti, 10)) {
@@ -40,18 +45,21 @@ void feeding_init() {
     // 无法通过 getLocalTime() 验证是否属于当天。
     // 实际的日期校验与状态恢复推迟到 feeding_update() 首次获取到有效时间时执行。
     feedPrefs.begin("feed_st", true);  // 只读
-    bool saved_fed    = feedPrefs.getBool("is_fed", false);
-    restore_time      = feedPrefs.getString("fed_time", "");
-    restore_yday      = feedPrefs.getInt("fed_yday", -1);
+    bool saved_fed     = feedPrefs.getBool("is_fed", false);
+    bool saved_skip    = feedPrefs.getBool("is_skip", false);
+    restore_time       = feedPrefs.getString("fed_time", "");
+    restore_yday       = feedPrefs.getInt("fed_yday", -1);
     feedPrefs.end();
 
-    if (saved_fed) {
+    if (saved_fed || saved_skip) {
         restore_pending = true;
+        restore_is_skip = saved_skip;
         // 若 NVS 中存的时间是 "00:00"，清除以待 NTP 就绪后自动补正
         if (restore_time == "00:00") {
             restore_time = "";
         }
-        Serial.println("📋 NVS 中有喂食记录，等待 NTP 同步后校验日期再恢复");
+        Serial.printf("📋 NVS 中有%s记录，等待 NTP 同步后校验日期再恢复\n",
+                       saved_skip ? "跳过喂食" : "喂食");
     }
 
     Serial.println("👆 TTP223 触摸按键初始化完成");
@@ -80,9 +88,15 @@ void feeding_update(float water_temp, bool water_temp_ok) {
         if (getLocalTime(&ti, 50)) {
             restore_pending = false;  // 无论结果如何，只尝试一次
             if (ti.tm_yday == restore_yday) {
-                state.is_fed = true;
+                if (restore_is_skip) {
+                    state.is_skipped = true;
+                } else {
+                    state.is_fed = true;
+                }
                 state.fed_time = restore_time;
-                Serial.printf("🔁 NTP 就绪，从 NVS 恢复今日喂食状态: %s\n", restore_time.c_str());
+                Serial.printf("🔁 NTP 就绪，从 NVS 恢复今日%s状态: %s\n",
+                              restore_is_skip ? "跳过喂食" : "喂食",
+                              restore_time.c_str());
             } else {
                 Serial.println("⏭️ NVS 喂食记录非当天，不恢复（跨天重启）");
             }
@@ -103,7 +117,17 @@ void feeding_update(float water_temp, bool water_temp_ok) {
         }
     }
 
-    // 1. 触摸按键检测 (带防抖与单次触发)
+    // ---- 触摸按键检测 (带防抖 + 长按区分) ----
+    //
+    // 设计：
+    //   未喂食状态：
+    //     短按 (按下 < 1.5s 后释放) → 标记已喂食
+    //     长按 (按住 ≥ 1.5s)        → 跳过今日喂食 (松手前即触发)
+    //   已喂食/已跳过 且在 10 秒撤销窗口内：
+    //     短按 → 撤销 (回到未喂食)
+    //   已喂食/已跳过 且超出撤销窗口：
+    //     短按 → 水温指示闪烁
+
     int reading = digitalRead(TOUCH_PIN);
     if (reading != last_touch_state) {
         last_debounce_time = now;
@@ -111,29 +135,62 @@ void feeding_update(float water_temp, bool water_temp_ok) {
     last_touch_state = reading;
 
     if ((now - last_debounce_time) > TOUCH_DEBOUNCE_MS) {
-        if (reading == HIGH && !touch_processed) {
-            touch_processed = true;
+        // reading 已稳定（去抖完成）
 
-            if (!state.is_fed) {
-                // 首次触摸：记录已喂食
-                state.is_fed = true;
+        if (reading == HIGH && !touch_is_down) {
+            // ── 上升沿：手指刚按下 ──
+            touch_is_down = true;
+            touch_down_time = now;
+            touch_action_fired = false;
+        }
+
+        if (reading == HIGH && touch_is_down && !touch_action_fired) {
+            // ── 持续按住中：检测长按 ──
+            unsigned long held_ms = now - touch_down_time;
+            if (!state.is_fed && !state.is_skipped && held_ms >= LONG_PRESS_MS) {
+                // 未喂食状态下长按：跳过今日喂食
+                touch_action_fired = true;
+                state.is_skipped = true;
                 state.fed_time = get_current_time_str();
                 fed_timestamp = now;
                 save_feeding_state();
-                Serial.printf("🐟 触摸确认喂食! 记录时间: %s (10秒内再次触摸可撤销)\n", state.fed_time.c_str());
-            } else if (state.is_fed && (now - fed_timestamp <= FEED_CANCEL_WINDOW_MS)) {
-                // 10 秒内二次触摸：撤销喂食
-                state.is_fed = false;
-                state.fed_time = "";
-                save_feeding_state();
-                Serial.println("↩️ 10秒内再次触摸：已撤销喂食确认 (恢复未喂食状态)");
-            } else {
-                // 平时已喂食状态下触摸：触发水温混色闪烁提示
-                Serial.println("🌡️ 已喂食状态下触摸：触发水温指示闪烁");
-                led_trigger_temp_flash(water_temp, water_temp_ok);
+                Serial.printf("⏭️ 长按确认跳过今日喂食! 记录时间: %s (10秒内再次触摸可撤销)\n",
+                              state.fed_time.c_str());
             }
-        } else if (reading == LOW) {
-            touch_processed = false;
+        }
+
+        if (reading == LOW && touch_is_down) {
+            // ── 下降沿：手指松开 ──
+            if (!touch_action_fired) {
+                // 未触发过长按 → 视为短按
+                if (!state.is_fed && !state.is_skipped) {
+                    // 首次短触：记录已喂食
+                    state.is_fed = true;
+                    state.fed_time = get_current_time_str();
+                    fed_timestamp = now;
+                    save_feeding_state();
+                    Serial.printf("🐟 触摸确认喂食! 记录时间: %s (10秒内再次触摸可撤销)\n",
+                                  state.fed_time.c_str());
+                } else if (state.is_fed && (now - fed_timestamp <= FEED_CANCEL_WINDOW_MS)) {
+                    // 10 秒内短触：撤销喂食
+                    state.is_fed = false;
+                    state.fed_time = "";
+                    save_feeding_state();
+                    Serial.println("↩️ 10秒内再次触摸：已撤销喂食确认 (恢复未喂食状态)");
+                } else if (state.is_skipped && (now - fed_timestamp <= FEED_CANCEL_WINDOW_MS)) {
+                    // 10 秒内短触：撤销跳过
+                    state.is_skipped = false;
+                    state.fed_time = "";
+                    save_feeding_state();
+                    Serial.println("↩️ 10秒内再次触摸：已撤销跳过操作 (恢复未喂食状态)");
+                } else {
+                    // 平时已喂食/已跳过状态下触摸：触发水温混色闪烁提示
+                    Serial.println("🌡️ 已喂食/已跳过状态下触摸：触发水温指示闪烁");
+                    led_trigger_temp_flash(water_temp, water_temp_ok);
+                }
+            }
+            touch_is_down = false;
+            touch_action_fired = false;
         }
     }
 
@@ -143,6 +200,7 @@ void feeding_update(float water_temp, bool water_temp_ok) {
         if (timeinfo.tm_hour == rtConfig.feed_reset_hour && last_reset_day != timeinfo.tm_mday) {
             last_reset_day = timeinfo.tm_mday;
             state.is_fed = false;
+            state.is_skipped = false;
             state.fed_time = "";
             save_feeding_state();
             Serial.printf("🌅 到达本地时间 %d:00，已重置今日喂食状态为未喂食\n", rtConfig.feed_reset_hour);

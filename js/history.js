@@ -206,7 +206,7 @@ export async function renderHistoryUI(data, type, animate = false) {
     // 直接画出来会把原本的曲线压成直线；放进图例让用户按需点开，
     // 数据可达，默认视图又不被破坏。
     for (const key of extraKeys) {
-        if (key === 'water_temp' || key === 'fed' || key === 'fed_time') continue;
+        if (key === 'water_temp' || key === 'fed' || key === 'fed_time' || key === 'skipped') continue;
         const unit = metricUnit(key);
         datasets.push({
             label: metricLabel(key) + (unit ? ` (${unit})` : ''),
@@ -244,15 +244,20 @@ export async function renderHistoryUI(data, type, animate = false) {
     let fedPoints = [];
     let fedInfo = [];
     let hasFedEvent = false;
-    const hasFedMetric = extraKeys.includes('fed') || chartData.some(d => d.extra && d.extra.fed !== undefined);
+    const hasFedMetric = extraKeys.includes('fed') || extraKeys.includes('skipped') || chartData.some(d => d.extra && (d.extra.fed !== undefined || d.extra.skipped !== undefined));
 
     if (hasFedMetric) {
         if (type === 'daily') {
             chartData.forEach(d => {
                 const fedVal = (d.extra && d.extra.fed != null) ? Number(d.extra.fed) : 0;
+                const skipVal = (d.extra && d.extra.skipped != null) ? Number(d.extra.skipped) : 0;
                 if (fedVal > 0) {
                     fedPoints.push(96);
                     fedInfo.push(t('fed_yes'));
+                    hasFedEvent = true;
+                } else if (skipVal > 0) {
+                    fedPoints.push(96);
+                    fedInfo.push(t('fed_skipped'));
                     hasFedEvent = true;
                 } else {
                     fedPoints.push(null);
@@ -263,12 +268,20 @@ export async function renderHistoryUI(data, type, animate = false) {
             for (let i = 0; i < chartData.length; i++) {
                 const d = chartData[i];
                 const currentFed = (d.extra && d.extra.fed != null) ? Number(d.extra.fed) : 0;
+                const currentSkip = (d.extra && d.extra.skipped != null) ? Number(d.extra.skipped) : 0;
                 const prevFed = (i > 0 && chartData[i - 1].extra && chartData[i - 1].extra.fed != null)
                     ? Number(chartData[i - 1].extra.fed) : 0;
-                const isEdge = (currentFed >= 1 && prevFed < 1 && (i > 0 || chartData.length === 1));
-                if (isEdge) {
+                const prevSkip = (i > 0 && chartData[i - 1].extra && chartData[i - 1].extra.skipped != null)
+                    ? Number(chartData[i - 1].extra.skipped) : 0;
+                const isFedEdge = (currentFed >= 1 && prevFed < 1 && (i > 0 || chartData.length === 1));
+                const isSkipEdge = (currentSkip >= 1 && prevSkip < 1 && (i > 0 || chartData.length === 1));
+                if (isFedEdge) {
                     fedPoints.push(96);
                     fedInfo.push(t('fed_yes'));
+                    hasFedEvent = true;
+                } else if (isSkipEdge) {
+                    fedPoints.push(96);
+                    fedInfo.push(t('fed_skipped'));
                     hasFedEvent = true;
                 } else {
                     fedPoints.push(null);

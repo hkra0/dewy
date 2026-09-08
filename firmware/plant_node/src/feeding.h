@@ -3,6 +3,7 @@
 
 struct FeedingState {
     bool is_fed;
+    bool is_skipped;
     String fed_time; // 如 "08:35"，未喂食时为空串
 };
 

@@ -182,7 +182,8 @@ bool network_publish_data(const SensorReadings& sensors, const FeedingState& fee
     }
 
     doc["fed"] = feeding.is_fed ? 1 : 0;
-    if (feeding.is_fed && feeding.fed_time.length() > 0) {
+    doc["skipped"] = feeding.is_skipped ? 1 : 0;
+    if ((feeding.is_fed || feeding.is_skipped) && feeding.fed_time.length() > 0) {
         doc["fed_time"] = feeding.fed_time;
     }
 

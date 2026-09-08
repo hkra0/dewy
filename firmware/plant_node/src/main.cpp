@@ -37,7 +37,7 @@ void loop() {
 
     // RGB 灯效更新 (温度报警 > 触摸闪烁 > 未喂食呼吸 > 已喂食灭)
     FeedingState currentFeeding = feeding_get_state();
-    led_update(currentFeeding.is_fed, lastReadings.water_temp, lastReadings.water_temp_ok);
+    led_update(currentFeeding.is_fed || currentFeeding.is_skipped, lastReadings.water_temp, lastReadings.water_temp_ok);
 
     delay(10); // 微小延时出让 CPU
 }
