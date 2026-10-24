@@ -36,7 +36,9 @@ void feeding_init() {
     } else {
         // A yearless legacy record cannot establish a real feeding timestamp.
         // Suppress one day's reminder conservatively, retaining the original keys.
-        p.begin("feed_st",true); legacy_pending=p.getBool("is_fed",false); p.end();
+        p.begin("feed_st",true);
+        legacy_pending=p.getBool("is_fed",false) || p.getBool("is_skip",false);
+        p.end();
         save_state();
     }
     temperature_alarm_init();

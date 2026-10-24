@@ -146,10 +146,11 @@ export function renderDynamicCards(nodeData, globalData) {
         html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('fed'))}</div><div class="card-value" style="color:var(--text-muted)">${escapeHtml(t('feeding_' + status))}</div>${score}${when}${next}</div>`;
     } else if (nodeData.fed !== undefined) {
         const isFed = nodeData.fed >= 1;
+        const isSkipped = nodeData.skipped >= 1;
         const fedLabel = escapeHtml(metricLabel('fed'));
-        const fedText = isFed ? t('fed_yes') : t('fed_no');
-        const fedColor = isFed ? 'var(--accent)' : 'var(--danger)';
-        const fedTime = (isFed && nodeData.fed_time) ? `<span class="card-subtitle" style="font-size: 0.85em; opacity: 0.8; margin-left: 6px;">${escapeHtml(nodeData.fed_time)}</span>` : '';
+        const fedText = isSkipped ? t('fed_skipped') : (isFed ? t('fed_yes') : t('fed_no'));
+        const fedColor = isSkipped ? 'var(--text-muted)' : (isFed ? 'var(--accent)' : 'var(--danger)');
+        const fedTime = ((isFed || isSkipped) && nodeData.fed_time) ? `<span class="card-subtitle" style="font-size: 0.85em; opacity: 0.8; margin-left: 6px;">${escapeHtml(nodeData.fed_time)}</span>` : '';
         html += `<div class="card"><div class="card-title">${fedLabel}</div>`
              + `<div class="card-value" style="color: ${fedColor};">${fedText}${fedTime}</div></div>`;
     }

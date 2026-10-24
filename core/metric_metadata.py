@@ -5,6 +5,7 @@ SNAPSHOT_METADATA = frozenset({
 })
 METRIC_METADATA = {
     "fed": {"aggregation": "latest"},
+    "skipped": {"aggregation": "latest"},
     "feeding_score": {"aggregation": "latest"},
     **{key: {"aggregation": "latest"} for key in SNAPSHOT_METADATA},
 }

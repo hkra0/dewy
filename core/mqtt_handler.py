@@ -56,6 +56,9 @@ def update_node_snapshot(node_id, data, received_at=None):
         return
     info = state.mqtt_latest_data[node_id]
     if version == 2:
+        # Keep main's skipped-event history working with both v2 firmware builds
+        # and legacy numeric flags, even if the node's metric list predates it.
+        readings["skipped"] = int(data.get("feeding_state") == "skipped")
         declared = state.hardware_manager.mqtt_nodes.get(node_id, {}).get("metrics", [])
         for key in set(info["data"]) | set(declared):
             readings.setdefault(key, None)
@@ -66,6 +69,8 @@ def update_node_snapshot(node_id, data, received_at=None):
         # Replace atomically so readers cannot observe half an updated snapshot.
         info["data"] = readings
     else:
+        if isinstance(data.get("skipped"), (int, float)) and data["skipped"] in (0, 1):
+            readings["skipped"] = int(data["skipped"])
         previous = info["data"]
         if previous.get("data_version") == 2:
             # Firmware rollback: old packets must select the legacy UI again.
@@ -79,6 +84,14 @@ def update_node_snapshot(node_id, data, received_at=None):
             readings["fed_time"] = data["fed_time"]
         elif data.get("fed") == 0:
             readings["fed_time"] = None
+        if data.get("fed") == 1 and readings.get("fed_time") in ("00:00", "", None):
+            # Legacy firmware has no reliable action timestamp before NTP sync.
+            # Preserve main's fallback using an existing archived feeding event;
+            # v2 timestamps are device-owned and must never be fabricated here.
+            import core.database as db
+            first_time = db.query_today_first_fed_time(node_id)
+            if isinstance(first_time, str) and first_time:
+                readings["fed_time"] = first_time
         info["data"] = {**previous, **readings}
     info["received_at"] = time.time() if received_at is None else received_at
     info["updated"] = True

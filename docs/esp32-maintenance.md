@@ -28,6 +28,83 @@ Pi 重连时订阅所有已配置维护密钥的 MQTT 节点，每个节点使�
 `<config_topic>/maintenance/set` 与 `<config_topic>/maintenance/state`，不使用 retained 消息。
 固件每 5 秒发布心跳。节点超过 20 秒未回报显示离线。
 
+## USB 安装与检查（Windows）
+
+先确认设备端口和芯片型号，不要在连接多块板时依赖自动选端口。
+例如本次 aqua 经 USB Serial/JTAG 识别为 ESP32-S3 / 4 MiB Flash；`COM4` 仅是本次分配的端口，
+重新插线或换电脑后需要重新检查。
+
+```powershell
+pio device list
+$env:DEWY_NODE = 'aqua'
+# 清除构建测试曾使用的临时覆盖，改用私有 hardware_config.toml 的真实密钥。
+Remove-Item Env:DEWY_MAINTENANCE_KEY -ErrorAction SilentlyContinue
+pio run -e esp32s3mini
+pio run -e esp32s3mini --target upload --upload-port COM4
+```
+
+**首次基线安装不要加 `--target nobuild`**：本项目中这一组合可能只传应用镜像，
+省略 bootloader、分区表和初始 OTA 数据。检查实际刷写输出，应包含以下四处写入与各自的
+`Hash of data verified`，不能仅以 PlatformIO 最后一行 SUCCESS 判断安装完整。
+
+| 地址 | 镜像 | 用途 |
+| --- | --- | --- |
+| `0x0000` | `bootloader.bin` | 启用回滚的 ESP32-S3 bootloader |
+| `0x8000` | `partitions.bin` | 双 OTA 应用槽与 NVS 布局 |
+| `0xe000` | Arduino `boot_app0.bin` | 初始 OTA 启动选择数据 |
+| `0x10000` | `firmware.bin` | 当前节点应用 |
+
+这些地址针对当前 `esp32s3mini` / 默认分区表，换板型或自定义分区表时以对应构建配置为准。
+本布局的 NVS 在 `0x9000–0xdfff`，正常上传不擦除此区域；不要为安装固件运行整片 `erase_flash`。
+变更分区表前，必须先核对旧 NVS 的地址与长度，不能因为文件名相同就认为布局一致。
+
+可在操作前读取 NVS 与旧分区表作本地备份。若原生 USB 的 stub 流式整片读取报
+`Corrupt data, expected ...`，可用 esptool 的 `--no-stub read_flash` ROM 方式读取必要区域；
+本次以此方式成功备份了 20 KiB NVS。备份含私有配置或状态，只放被 Git 忽略的私有目录。
+ROM/应用串口没有捕获到启动文本时，不应直接认定启动失败；可订阅维护状态，验证 HMAC、
+目标 build、`boot_state=valid`、`rollback=true` 与 `ota_protocol=DEWY_OTA:2`。
+
+## 维护密钥同步与 Git 部署
+
+`maintenance_key` 是电脑、设备和 Pi 三者共同的节点凭据；它不同于网页的 water key，
+也不同于 Worker 的 Pi token。它不在 Git 中，推送、拉取代码都不会同步这个字段。
+构建完再重新生成密钥，会使已刷入设备的密钥与服务器不一致。
+
+1. 以**已刷入设备的构建所用的本地私有配置**为准，确认 `[nodes.aqua].maintenance_key`
+   存在且有效。不要在聊天、命令行参数、Git 提交或终端输出中粘贴密钥。
+2. SSH 登录 Pi，确认服务 `WorkingDirectory` 对应的部署目录；使用 Tailscale SSH 时先完成
+   额外身份验证。只更新 Pi 私有 `hardware_config.toml` 的对应节点密钥，不整份覆盖电脑配置，
+   避免改掉 Pi 的传感器、执行器或其他节点配置。
+3. 修改前把旧配置备份到部署目录的 `data/backups/`（文件权限 600）。经 SSH 标准输入或
+   受保护的 SFTP 通道传入密钥；更新后解析 TOML，确认除该字段外内容不变，再原子替换文件。
+   对比密钥时只输出相等与否，原子写入使用同目录临时文件，权限设为 600。
+4. 确保部署的 Git 版本包含 `core/logic/maintenance.py`。如果部署目录仍是旧版本，
+   仅改密钥不能使旧程序订阅新的维护主题。按下列步骤同步代码后再重启服务。
+
+本仓库的 Pi 服务为 `dewy.service`；其他部署以自己的服务名和项目路径替换：
+
+```sh
+cd /path/to/dewy
+git status --short                 # 必须干净；私有 hardware_config.toml 应被忽略
+git branch --show-current          # 正式部署应为 main
+git remote get-url origin          # 核对确实是预期仓库
+git fetch origin
+git merge --ff-only origin/main    # 仅允许快进，分叉时先排查，不 reset --hard
+git rev-parse HEAD
+git rev-parse origin/main          # 两个 SHA 必须一致
+sudo systemctl restart dewy.service
+systemctl is-active dewy.service
+```
+
+维护设置在服务启动时加载，编辑文件后必须重启才会重新订阅 MQTT 维护主题。
+若启用了 Worker 日志/接口，服务日志和状态输出中也不应出现维护密钥。
+用 Pi 本机的 BFF token 请求 `/api/maintenance/aqua`（token 仅在请求头中传递、不打印），
+或从管理员网页读取，检查节点在线、签名验证后的 build 与刚刷入的一致。
+只有发布代码、Pi 服务版本与私有节点密钥都一致，才能判断同步完成；单看 Git 拉取成功不够。
+
+Worker 独立于 Pi 的 Git 拉取：更新后需要单独部署 Worker 才能开放网页维护路由和新模块，
+否则浏览器仍可能加载旧页面或收到 404。同步密钥不会自动执行 Worker 部署。
+
 ## 网页升级
 
 设置 `DEWY_NODE` 为目标节点，运行 `pio run -e esp32s3mini`，选择输出的

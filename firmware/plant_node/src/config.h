@@ -18,6 +18,7 @@
 // 常量
 #define SENSOR_INTERVAL_MS      5000UL
 #define TOUCH_DEBOUNCE_MS       50UL
+#define LONG_PRESS_MS           1500UL
 #define FEED_CANCEL_WINDOW_MS   10000UL
 
 #include "aqua_model.h"

@@ -50,6 +50,22 @@ class AquaProtocolTest(unittest.TestCase):
         self.assertEqual(state.mqtt_latest_data["tank"]["data"]["water_temp"], 20)
         self.assertIsNone(state.mqtt_latest_data["tank"]["data"]["fed_time"])
 
+    def test_legacy_missing_time_uses_archived_event_but_v2_does_not(self):
+        with patch('core.database.query_today_first_fed_time', return_value='07:40') as query:
+            update_node_snapshot("tank", {"fed": 1, "fed_time": "00:00"})
+            self.assertEqual(state.mqtt_latest_data["tank"]["data"]["fed_time"], '07:40')
+            update_node_snapshot("tank", {"data_version": 2, "fed": 1, "fed_time": None})
+            self.assertIsNone(state.mqtt_latest_data["tank"]["data"]["fed_time"])
+            query.assert_called_once_with('tank')
+
+    def test_skipped_history_survives_declared_metrics_and_protocol_upgrade(self):
+        update_node_snapshot("tank", {"fed": 0, "skipped": 1})
+        self.assertEqual(state.mqtt_latest_data["tank"]["data"]["skipped"], 1)
+        update_node_snapshot("tank", {"data_version": 2, "feeding_state": "skipped", "fed": 0})
+        self.assertEqual(aggregator.get_window_summary("tank")["skipped"], 1)
+        update_node_snapshot("tank", {"data_version": 2, "feeding_state": "waiting", "fed": 0})
+        self.assertEqual(aggregator.get_window_summary("tank")["skipped"], 0)
+
     def test_unknown_protocol_does_not_refresh_old_snapshot(self):
         update_node_snapshot("tank", {"data_version": 3, "water_temp": 25}, 100)
         self.assertTrue(node_snapshot(state.mqtt_latest_data["tank"], 100)["stale"])
