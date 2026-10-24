@@ -1,64 +1,44 @@
 Import("env")
+import json
 import os
-import re
-
-print("Running inject_config.py...")
-
-# 获取项目根目录 (现在 PlatformIO 项目根目录直接就是当前整个大项目的根目录)
-root_dir = env.get("PROJECT_DIR")
-
-# 优先读取真实的 hardware_config.toml，如果没有则读取 example
-config_path = os.path.join(root_dir, "hardware_config.toml")
-if not os.path.exists(config_path):
-    config_path = os.path.join(root_dir, "hardware_config.example.toml")
-    print(f"Warning: using {config_path} because hardware_config.toml not found")
-
-wifi_ssid = ""
-wifi_pwd = ""
-mqtt_host = ""
-mqtt_client_id = ""
-topic = "sensor/esp32/aqua_data"
-config_topic = "device/aqua/config"
-
+import secrets
+from pathlib import Path
 try:
-    with open(config_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
-    # 优先匹配 [nodes.aqua]，向下兼容 [nodes.sub1]
-    match = re.search(r'\[nodes\.aqua\](.*?)(?:\[nodes\.|$)', content, re.DOTALL)
-    if not match:
-        match = re.search(r'\[nodes\.sub1\](.*?)(?:\[nodes\.|$)', content, re.DOTALL)
-    if match:
-        section = match.group(1)
-        s_match = re.search(r'wifi_ssid\s*=\s*"([^"]+)"', section)
-        if s_match: wifi_ssid = s_match.group(1)
-        
-        p_match = re.search(r'wifi_password\s*=\s*"([^"]+)"', section)
-        if p_match: wifi_pwd = p_match.group(1)
-        
-        h_match = re.search(r'mqtt_host\s*=\s*"([^"]+)"', section)
-        if h_match: mqtt_host = h_match.group(1)
-        
-        c_match = re.search(r'mqtt_client_id\s*=\s*"([^"]+)"', section)
-        if c_match: mqtt_client_id = c_match.group(1)
-
-        t_match = re.search(r'topic\s*=\s*"([^"]+)"', section)
-        if t_match: topic = t_match.group(1)
-
-        cfg_match = re.search(r'config_topic\s*=\s*"([^"]+)"', section)
-        if cfg_match: config_topic = cfg_match.group(1)
-        
-    print(f"Injected Config -> SSID: {wifi_ssid}, MQTT Host: {mqtt_host}, Topic: {topic}, ConfigTopic: {config_topic}")
-
-    # 将提取到的配置转化为 C++ 的宏定义注入编译环境
-    env.Append(CPPDEFINES=[
-        ("WIFI_SSID", '\\"' + wifi_ssid + '\\"'),
-        ("WIFI_PASSWORD", '\\"' + wifi_pwd + '\\"'),
-        ("MQTT_HOST", '\\"' + mqtt_host + '\\"'),
-        ("MQTT_CLIENT_ID", '\\"' + mqtt_client_id + '\\"'),
-        ("MQTT_DATA_TOPIC", '\\"' + topic + '\\"'),
-        ("MQTT_CONFIG_TOPIC", '\\"' + config_topic + '\\"')
-    ])
-
-except Exception as e:
-    print(f"Error reading config: {e}")
+root = Path(env.get("PROJECT_DIR"))
+# Rollback needs the real SDK/bootloader option and Arduino's delayed-check hook.
+# A compiler -D cannot retrofit a precompiled bootloader. Fail the build on an
+# incompatible framework rather than publish an unprotected OTA image.
+framework = Path(env.PioPlatform().get_package_dir("framework-arduinoespressif32"))
+sdk = framework / "tools" / "sdk" / env.BoardConfig().get("build.mcu") / "sdkconfig"
+sdk_text = sdk.read_text(encoding="utf-8")
+core_text = (framework / "cores" / "esp32" / "esp32-hal-misc.c").read_text(encoding="utf-8")
+if ("CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y" not in sdk_text
+        or "CONFIG_APP_ROLLBACK_ENABLE=y" not in sdk_text
+        or "if(!verifyRollbackLater())" not in core_text):
+    raise ValueError("Framework must provide rollback-enabled SDK/bootloader and verifyRollbackLater hook")
+path = root / "hardware_config.toml"
+if not path.exists():
+    path = root / "hardware_config.example.toml"
+node_id = os.environ.get("DEWY_NODE") or env.GetProjectOption("custom_node", "")
+if not node_id:
+    raise ValueError("Select a target with DEWY_NODE or PlatformIO custom_node")
+with path.open("rb") as f:
+    node = tomllib.load(f)["nodes"][node_id]
+if node.get("type") != "mqtt_node":
+    raise ValueError("Firmware target must be a mqtt_node")
+definitions = {"WIFI_SSID": node["wifi_ssid"], "WIFI_PASSWORD": node["wifi_password"],
+               "MQTT_HOST": node["mqtt_host"], "MQTT_CLIENT_ID": node["mqtt_client_id"],
+               "MQTT_DATA_TOPIC": node["topic"], "MQTT_CONFIG_TOPIC": node["config_topic"]}
+key = os.environ.get("DEWY_MAINTENANCE_KEY", node.get("maintenance_key", ""))
+if key and (len(key) < 32 or not key.isascii()):
+    raise ValueError("maintenance_key must be ASCII and at least 32 characters")
+definitions.update(DEWY_NODE_ID=node_id, DEWY_BOARD=env.BoardConfig().id,
+                   DEWY_BUILD_ID=secrets.token_hex(16), DEWY_MAINTENANCE_KEY=key)
+if not key:
+    print("Remote maintenance disabled: configure maintenance_key before the first USB flash")
+env.Append(CPPDEFINES=[(key, env.StringifyMacro(value)) for key, value in definitions.items()])
+print(f"Firmware target: {node_id}")

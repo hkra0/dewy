@@ -8,6 +8,29 @@ let dualSliderInitialized = false;
 let loadedConfig = {};
 let wateringSafety = {};
 
+let configPollGeneration = 0;
+function renderNodeConfigStatus(statuses = {}) {
+    const el = document.getElementById('node-config-status');
+    if (!el) return;
+    const report = statuses[state.currentDevice] || { status: 'pending' };
+    el.textContent = t('node_config_' + report.status) + (report.error ? `: ${report.error}` : '');
+    el.title = report.actual ? JSON.stringify(report.actual, null, 2) : '';
+}
+async function pollNodeConfigStatus(generation, attempts = 0) {
+    if (generation !== configPollGeneration || !getWaterKey()) return;
+    try {
+        const res = await apiWater('/api/config');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (generation !== configPollGeneration) return;
+        renderNodeConfigStatus(data.node_config_status);
+        const status = data.node_config_status?.[state.currentDevice]?.status;
+        if (status === 'pending' && attempts < 19) {
+            setTimeout(() => pollNodeConfigStatus(generation, attempts + 1), 1500);
+        }
+    } catch (error) { console.error(error); }
+}
+
 function renderWateringSafety(status = {}) {
     wateringSafety = status;
     const manual = status.manual_stop === true;
@@ -235,19 +258,22 @@ export async function fetchConfig() {
                     const max = meta.max !== undefined ? `max="${meta.max}"` : '';
                     const step = meta.step !== undefined ? `step="${meta.step}"` : '';
                     const unit = meta.unit ? `<span class="unit-label" style="margin-left:6px; opacity:0.8;">${escapeHtml(meta.unit)}</span>` : '';
-                    html += `<div class="form-row">
-                        <label for="cfg-ns-${escapeHtml(key)}">${escapeHtml(label)}</label>
-                        <div style="display:flex; align-items:center;">
-                            <input type="${meta.type === 'number' ? 'number' : 'text'}" 
-                                   id="cfg-ns-${escapeHtml(key)}" 
-                                   class="form-input form-input--sm" 
-                                   value="${escapeHtml(String(val))}" 
-                                   ${min} ${max} ${step}>
-                            ${unit}
-                        </div>
-                    </div>`;
+                    const id = `cfg-ns-${escapeHtml(key)}`;
+                    let control;
+                    if (meta.type === 'boolean') {
+                        control = `<input type="checkbox" id="${id}" ${val === true ? 'checked' : ''}>`;
+                    } else if (meta.type === 'select') {
+                        control = `<select id="${id}" class="form-input">${(meta.options || []).map(option =>
+                            `<option value="${escapeHtml(option)}" ${option === val ? 'selected' : ''}>${escapeHtml(t('option_' + option))}</option>`).join('')}</select>`;
+                    } else {
+                        control = `<input type="${meta.type === 'number' ? 'number' : 'text'}" id="${id}"
+                            class="form-input form-input--sm" value="${escapeHtml(String(val))}" ${min} ${max} ${step}>`;
+                    }
+                    html += `<div class="form-row"><label for="${id}">${escapeHtml(label)}</label><div>${control}${unit}</div></div>`;
                 }
+                html += '<p id="node-config-status" class="card-subtitle" aria-live="polite"></p>';
                 nodeGroup.innerHTML = html;
+                renderNodeConfigStatus(data.node_config_status);
             } else {
                 nodeGroup.innerHTML = '';
             }
@@ -291,6 +317,8 @@ export async function saveConfig() {
                 if (meta.type === 'number') {
                     const num = parseFloat(inputEl.value);
                     thisNodeSettings[key] = isNaN(num) ? (meta.default ?? 0) : num;
+                } else if (meta.type === 'boolean') {
+                    thisNodeSettings[key] = inputEl.checked;
                 } else {
                     thisNodeSettings[key] = inputEl.value;
                 }
@@ -347,6 +375,10 @@ export async function saveConfig() {
     try {
         const res = await apiWaterPost('/api/config', cfg);
         if (res.ok) {
+            loadedConfig = cfg;
+            const result = await res.json();
+            renderNodeConfigStatus(result.node_config_status);
+            setTimeout(() => pollNodeConfigStatus(++configPollGeneration), 1500);
             showToast(t('cfg_saved'), 'success');
 
             setTimeout(() => {

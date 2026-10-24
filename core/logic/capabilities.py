@@ -39,4 +39,5 @@ def node_capabilities(node_id):
         "light": config.global_config["auto_light"].get("actuator_id", "light") in actuators,
         "soil_calibration": bool(hm.calibratable_sensors(node_id)),
         "node_settings": has_node_settings,
+        "maintenance": bool(hm.mqtt_nodes.get(node_id, {}).get("config_topic")),
     }

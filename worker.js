@@ -1,3 +1,4 @@
+import M_MAINTENANCE from "./js/maintenance.js";
 import HTML_TEMPLATE from "./index.html";
 import CSS_TEMPLATE from "./style.css";
 import JS_TEMPLATE from "./app.js";
@@ -20,6 +21,7 @@ import M_REFRESH from "./js/refresh.js";
 import M_METRICS from "./js/metrics.js";
 
 const JS_MODULES = {
+    "/js/maintenance.js": M_MAINTENANCE,
     "/app.js": JS_TEMPLATE,
     "/js/api.js": M_API,
     "/js/i18n.js": M_I18N,
@@ -143,11 +145,11 @@ export default {
                 if (clientKey !== VIEWER_MAGIC_KEY) return new Response("not found", { status: 404, headers: BASE_SECURITY_HEADERS });
             } else if (url.pathname === "/api/water" || url.pathname === "/api/water/emergency-stop"
                 || url.pathname === "/api/light" || url.pathname === "/api/config"
-                || url.pathname === "/api/photo/retake") {
+                || url.pathname === "/api/photo/retake" || url.pathname.startsWith("/api/maintenance/")) {
                 // 重拍走 water key：它会驱动相机与补光灯，属于写操作。
                 // 注意路径不在 /api/photos/ 前缀下，否则会先被上面那条 viewer key
                 // 分支接走，变成只读鉴权。
-                if (url.pathname !== "/api/config" && request.method !== "POST") return new Response("method not allowed", { status: 405, headers: BASE_SECURITY_HEADERS });
+                if (url.pathname !== "/api/config" && !url.pathname.startsWith("/api/maintenance/") && request.method !== "POST") return new Response("method not allowed", { status: 405, headers: BASE_SECURITY_HEADERS });
                 const clientWaterKey = request.headers.get("x-water-key");
                 if (clientWaterKey !== WATER_MAGIC_KEY) {
                     return new Response(JSON.stringify({ error: "invalid key" }), { status: 403, headers: { ...BASE_SECURITY_HEADERS, "Content-Type": "application/json" } });
@@ -219,6 +221,7 @@ export default {
                 } else {
                     responseHeaders.set("Content-Type", "application/json");
                     responseHeaders.set("Vary", "Accept-Encoding");
+                    if (url.pathname.startsWith("/api/maintenance/")) responseHeaders.set("Cache-Control", "no-store");
                 }
                 
                 return new Response(piResponse.body, { status: piResponse.status, headers: responseHeaders });

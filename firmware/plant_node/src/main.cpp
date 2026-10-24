@@ -4,40 +4,40 @@
 #include "led.h"
 #include "feeding.h"
 #include "network.h"
-
-static unsigned long lastSendTime = 0;
-static SensorReadings lastReadings = {};
-
+#include "temperature_alarm.h"
+#include "maintenance.h"
+static uint32_t lastRead=0, lastSend=0;
+static SensorReadings readings{};
+static String lastStatus;
 void setup() {
     Serial.begin(115200);
-    delay(2000);
-    Serial.println("\n========== ESP32 鱼缸监控节点启动 ==========");
-
-    config_init();     // 1. 从 NVS 读取用户配置
-    led_init();        // 2. 初始化 WS2812B RGB 灯
-    feeding_init();    // 3. 初始化 TTP223 触摸按键
-    sensors_init();    // 4. 初始化 AHT20, BMP280, DS18B20 传感器
-    network_init();    // 5. 初始化 WiFi、mDNS、NTP、MQTT
+    maintenance_init();
+    config_init(); led_init(); feeding_init(); sensors_init(); network_init();
 }
-
 void loop() {
-    network_loop(); // 维持 MQTT 连接与心跳
-
-    // 传感器采样周期 (5秒)
-    unsigned long now = millis();
-    if (now - lastSendTime >= SENSOR_INTERVAL_MS) {
-        lastSendTime = now;
-        lastReadings = sensors_read();
-        FeedingState f = feeding_get_state();
-        network_publish_data(lastReadings, f);
+    // Network I/O runs on its own task. Hardware interaction never waits for a broker.
+    network_loop();
+    const uint32_t now=millis();
+    auto water=sensors_water();
+    if(uint32_t(now-lastRead)>=SENSOR_INTERVAL_MS) { readings=sensors_read(); lastRead=now; }
+    readings.water_temp=water.value; readings.water_temp_ok=water.valid; readings.water_temp_age=water.age;
+    temperature_alarm_update(water);
+    auto policySample=water;
+    if(temperature_alarms.events[aqua::Probe].active) policySample.pause=aqua::Sample::Fault;
+    else if(temperature_alarms.events[aqua::High].active) policySample.pause=aqua::Sample::Hot;
+    else if(temperature_alarms.events[aqua::Low].active) policySample.pause=aqua::Sample::Cold;
+    feeding_update(policySample);
+    auto f=feeding_get_state();
+    led_update(!f.prompting,water.value,water.valid);
+    String status=String(f.status)+"|"+f.fed_time+"|"+String(f.next_date);
+    for(int i=0;i<aqua::AlarmCount;i++) {
+        auto& e=temperature_alarms.events[i];
+        status+=String(e.active)+String(e.acknowledged)+String(e.silenced)+String(e.id);
     }
-
-    // 喂食状态机更新 (检测触摸与每日定时重置)
-    feeding_update(lastReadings.water_temp, lastReadings.water_temp_ok);
-
-    // RGB 灯效更新 (温度报警 > 触摸闪烁 > 未喂食呼吸 > 已喂食灭)
-    FeedingState currentFeeding = feeding_get_state();
-    led_update(currentFeeding.is_fed, lastReadings.water_temp, lastReadings.water_temp_ok);
-
-    delay(10); // 微小延时出让 CPU
+    if(status!=lastStatus || uint32_t(now-lastSend)>=SENSOR_INTERVAL_MS) {
+        // Copies data into a queue; the network task publishes the newest snapshot.
+        network_publish_data(readings,f); lastSend=now; lastStatus=status;
+    }
+    maintenance_loop_heartbeat();
+    delay(10);
 }

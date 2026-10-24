@@ -1,3 +1,4 @@
+#include "maintenance.h"
 #include "sensors.h"
 #include "config.h"
 #include <Wire.h>
@@ -13,7 +14,10 @@ static DallasTemperature ds18b20(&oneWire);
 
 static bool aht_online = false;
 static bool bmp_online = false;
-static bool ds_online = false;
+static aqua::Sample water;
+static aqua::ProbeQuality probe;
+static bool converting=true;
+static uint32_t conversion_started=0;
 
 static bool scan_i2c_bus(int sda, int scl) {
     Wire.end();
@@ -21,43 +25,43 @@ static bool scan_i2c_bus(int sda, int scl) {
     Wire.setClock(100000); // 100kHz 标准速率
     delay(50);
 
-    Serial.printf("🔍 扫描 I2C (SDA=%d, SCL=%d): ", sda, scl);
+    RemoteSerial.printf("🔍 扫描 I2C (SDA=%d, SCL=%d): ", sda, scl);
     int count = 0;
     for (uint8_t addr = 1; addr < 127; addr++) {
         Wire.beginTransmission(addr);
         if (Wire.endTransmission() == 0) {
-            Serial.printf("[0x%02X] ", addr);
+            RemoteSerial.printf("[0x%02X] ", addr);
             count++;
         }
     }
     if (count == 0) {
-        Serial.println("(无响应)");
+        RemoteSerial.println("(无响应)");
         return false;
     } else {
-        Serial.printf("共发现 %d 个设备\n", count);
+        RemoteSerial.printf("共发现 %d 个设备\n", count);
         return true;
     }
 }
 
 void sensors_init() {
-    Serial.println("📡 初始化传感器...");
+    RemoteSerial.println("📡 初始化传感器...");
 
     // 先尝试配置的 SDA=12, SCL=13
     bool found = scan_i2c_bus(SDA_PIN, SCL_PIN);
     if (!found) {
         // 若未找到，尝试引脚对调 SDA=13, SCL=12 (防线序反接容错)
         if (scan_i2c_bus(SCL_PIN, SDA_PIN)) {
-            Serial.println("💡 提示: 检测到 I2C 引脚反接，已自动纠正并接管总线");
+            RemoteSerial.println("💡 提示: 检测到 I2C 引脚反接，已自动纠正并接管总线");
         }
     }
 
     // 1. 初始化 AHT20
     if (aht.begin()) {
         aht_online = true;
-        Serial.println("✅ AHT20 初始化成功!");
+        RemoteSerial.println("✅ AHT20 初始化成功!");
     } else {
         aht_online = false;
-        Serial.println("⚠️ 未找到 AHT20 传感器 (检查是否接线或地址)");
+        RemoteSerial.println("⚠️ 未找到 AHT20 传感器 (检查是否接线或地址)");
     }
 
     // 2. 初始化 BMP280 (尝试 0x77 与 0x76)
@@ -68,31 +72,35 @@ void sensors_init() {
                         Adafruit_BMP280::SAMPLING_X16,
                         Adafruit_BMP280::FILTER_X16,
                         Adafruit_BMP280::STANDBY_MS_500);
-        Serial.println("✅ BMP280 初始化成功!");
+        RemoteSerial.println("✅ BMP280 初始化成功!");
     } else {
         bmp_online = false;
-        Serial.println("⚠️ 未找到 BMP280 传感器 (检查是否接线或地址)");
+        RemoteSerial.println("⚠️ 未找到 BMP280 传感器 (检查是否接线或地址)");
     }
 
     // 3. 初始化 DS18B20
     ds18b20.begin();
     ds18b20.setWaitForConversion(false); // 非阻塞转换请求
+    ds18b20.setResolution(12);
     ds18b20.requestTemperatures();
-    delay(100);
-    float testTemp = ds18b20.getTempCByIndex(0);
-    if (testTemp > -55.0f && testTemp < 125.0f && testTemp != 85.0f) {
-        ds_online = true;
-        Serial.printf("✅ DS18B20 初始化成功! 当前水温: %.2f ℃\n", testTemp);
-    } else {
-        ds_online = false;
-        Serial.println("⚠️ 未检测到 DS18B20 探头 (可能未接线，继续运行)");
-    }
+    conversion_started=millis();
 }
 
 #include <algorithm>
 
-static float last_valid_water_temp = 0.0f;
-static int water_err_count = 0;
+aqua::Sample sensors_water() {
+    const uint32_t now=millis();
+    water=probe.snapshot(now);
+    if(converting && uint32_t(now-conversion_started)>=750) {
+        // Completed 12-bit conversion (750 ms); 85 C indicates a possible reset.
+        water=probe.converted(ds18b20.getTempCByIndex(0),now);
+        converting=false;
+    }
+    if(!converting && uint32_t(now-conversion_started)>=SENSOR_INTERVAL_MS) {
+        ds18b20.requestTemperatures(); conversion_started=now; converting=true;
+    }
+    return water;
+}
 
 SensorReadings sensors_read() {
     SensorReadings r = {};
@@ -175,27 +183,8 @@ SensorReadings sensors_read() {
         }
     }
 
-    // 3. 读取 DS18B20 (水温，带短时错误保持平滑)
-    ds18b20.requestTemperatures();
-    float wt = ds18b20.getTempCByIndex(0);
-    if (wt > -55.0f && wt < 125.0f && wt != 85.0f && wt != DEVICE_DISCONNECTED_C) {
-        r.water_temp = wt;
-        r.water_temp_ok = true;
-        ds_online = true;
-        last_valid_water_temp = wt;
-        water_err_count = 0;
-    } else {
-        // 偶发通信失败时，允许保持最近一次有效值最多 3 轮 (约 15 秒)，防图表深 V 峡谷
-        if (last_valid_water_temp > -50.0f && water_err_count < 3) {
-            water_err_count++;
-            r.water_temp = last_valid_water_temp;
-            r.water_temp_ok = true;
-        } else {
-            r.water_temp = 0.0f;
-            r.water_temp_ok = false;
-            ds_online = false;
-        }
-    }
-
+    r.water_temp=water.value;
+    r.water_temp_ok=water.valid;
+    r.water_temp_age=water.age;
     return r;
 }

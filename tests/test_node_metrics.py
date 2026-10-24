@@ -65,6 +65,12 @@ class NodeMetricsTest(unittest.TestCase):
         db.insert_node_data([{"node_id": "main", "status": "ok", "fw": None, "flag": True}])
         self.assertEqual(db.query_metric_keys("main"), [])
 
+    def test_protocol_metadata_is_not_archived_as_measurements(self):
+        db.insert_node_data([{"node_id": "tank", "data_version": 2, "water_temp_age": 10,
+                              "next_prompt_date": 20270101, "received_at": 1700000000,
+                              "feeding_score": 54, "fed": 0}])
+        self.assertEqual(db.query_metric_keys("tank"), ["fed", "feeding_score"])
+
     def test_history_returns_points_in_chronological_order(self):
         for v in (1.0, 2.0, 3.0):
             db.insert_node_data([{"node_id": "main", "co2": v}])

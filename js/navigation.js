@@ -1,3 +1,4 @@
+import { refreshMaintenance } from './maintenance.js';
 // 设备/标签页/历史子页的切换与 URL 同步。
 import { state, STORAGE_KEY, WATER_KEY, getViewerKey, nodeCaps } from './state.js';
 import { setLang } from './i18n.js';
@@ -93,7 +94,7 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
     const caps = nodeCaps(dev);
     const hasSystem = nodeInfo.type === 'local';
     const hasPump = caps.pump;
-    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration || caps.node_settings) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration || caps.node_settings || caps.maintenance) && !!localStorage.getItem(WATER_KEY);
 
     const hasKey = !!localStorage.getItem(STORAGE_KEY);
     const hasCamera = caps.camera;
@@ -166,6 +167,7 @@ export function switchDevice(dev, pushState = false, skipFetch = false) {
         switchHistType('24h');
     }
 
+    refreshMaintenance();
     if (pushState) updateURL();
     if (!skipFetch) fetchAllData(false);
 }
@@ -192,7 +194,7 @@ export function switchTab(tabName, pushState = true, skipFetch = false) {
     const nodeInfo = state.availableNodes[state.currentDevice] || {};
     const caps = nodeCaps();
     const hasSystem = nodeInfo.type === 'local';
-    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration || caps.node_settings) && !!localStorage.getItem(WATER_KEY);
+    const hasSettings = (caps.pump || caps.light || caps.camera || caps.soil_calibration || caps.node_settings || caps.maintenance) && !!localStorage.getItem(WATER_KEY);
 
     if (tabName === 'system' && !hasSystem) tabName = 'environment';
     if (tabName === 'settings' && !hasSettings) tabName = 'environment';
@@ -219,6 +221,7 @@ export function switchTab(tabName, pushState = true, skipFetch = false) {
 
     if (tabName === 'history' && !skipFetch) loadHistoryData(false);
     if (tabName === 'settings') fetchConfig();
+    refreshMaintenance();
 }
 
 export function switchHistType(type) {

@@ -12,6 +12,7 @@
 
 import threading
 from collections import defaultdict
+from core.metric_metadata import aggregation_mode
 
 # 每个指标在单个 10 分钟窗口内保留的最大样本数，防止极端异常下内存无界膨胀
 MAX_WINDOW_SAMPLES = 200
@@ -56,7 +57,7 @@ class SensorAggregator:
         # 结构：{node_id: {metric: latest_val}} 用于状态量或布尔量
         self._state_buffers = defaultdict(dict)
 
-    def record_sample(self, node_id, data):
+    def record_sample(self, node_id, data, metadata=None):
         """记录一次采样数据。
 
         支持任意字典，自动区分连续数值与离散/布尔状态。
@@ -67,11 +68,14 @@ class SensorAggregator:
         with self._lock:
             for k, v in data.items():
                 if v is None:
+                    self._numeric_buffers[node_id].pop(k, None)
+                    self._state_buffers[node_id][k] = None
                     continue
                 # 布尔量（bool 是 int 的子类，需优先判断）
-                if isinstance(v, bool):
+                if isinstance(v, bool) or aggregation_mode(k, metadata) == "latest":
                     self._state_buffers[node_id][k] = v
                 elif isinstance(v, (int, float)):
+                    self._state_buffers[node_id].pop(k, None)
                     buf = self._numeric_buffers[node_id][k]
                     if len(buf) < MAX_WINDOW_SAMPLES:
                         buf.append(float(v))
@@ -92,7 +96,7 @@ class SensorAggregator:
         fallback = dict(latest_snapshot or {})
 
         with self._lock:
-            num_metrics = dict(self._numeric_buffers.get(node_id, {}))
+            num_metrics = {k: list(v) for k, v in self._numeric_buffers.get(node_id, {}).items()}
             state_metrics = dict(self._state_buffers.get(node_id, {}))
 
         # 1. 聚合数值型指标

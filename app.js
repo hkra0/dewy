@@ -1,3 +1,4 @@
+import { uploadFirmware } from './js/maintenance.js';
 // dewy 前端入口。
 //
 // 以 ES 模块加载（index.html 里是 <script type="module" src="/app.js">）。
@@ -42,6 +43,7 @@ import { fetchAllData } from './js/refresh.js';
 
 // —— 供 index.html 的内联事件处理器调用 ——
 Object.assign(window, {
+    uploadFirmware,
     switchTab,
     switchDevice,
     switchHistType,

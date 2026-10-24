@@ -165,10 +165,11 @@ def _extra_metric_rows(record):
     只收数值：驱动返回状态字符串（"ok"、设备型号之类）是常见写法，
     把它们塞进 value REAL 列没有意义。None 也跳过，长表里存空行没价值。
     """
+    from core.metric_metadata import SNAPSHOT_METADATA
     node_id = record.get("node_id")
     rows = []
     for key, value in record.items():
-        if key in _NON_METRIC_KEYS or key in NODE_DATA_FIELDS:
+        if key in _NON_METRIC_KEYS or key in NODE_DATA_FIELDS or key in SNAPSHOT_METADATA:
             continue
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             continue

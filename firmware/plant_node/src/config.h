@@ -20,15 +20,9 @@
 #define TOUCH_DEBOUNCE_MS       50UL
 #define FEED_CANCEL_WINDOW_MS   10000UL
 
-// 运行时可调配置
-struct RuntimeConfig {
-    float temp_alarm_high = 32.0f;
-    float temp_alarm_low  = 18.0f;
-    int   feed_reset_hour = 7;
-};
-
+#include "aqua_model.h"
+using RuntimeConfig = aqua::Config;
 extern RuntimeConfig rtConfig;
-
 void config_init();
-void config_apply(const char* json);
+bool config_apply(const char* json);
 String config_to_json();

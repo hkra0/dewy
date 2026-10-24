@@ -83,6 +83,11 @@ def _collect_node_data(now):
 
     for node_id, info in state.mqtt_latest_data.items():
         if info["updated"]:
+            from core.mqtt_handler import node_snapshot
+            if node_snapshot(info)["stale"]:
+                aggregator.reset_window(node_id)
+                info["updated"] = False
+                continue
             realtime_data = info["data"].copy()
             archive_data = aggregator.get_window_summary(node_id, realtime_data)
             archive_data["node_id"] = node_id

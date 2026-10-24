@@ -682,3 +682,26 @@ SQLite（WAL 模式），主要五张表：
 ### 已知待办
 
 - 暂无。
+
+## 十一、ESP32 OTA 与远程日志
+
+- 维护链路复用 MQTT，编排在 `core/logic/maintenance.py`，固件在
+  `firmware/plant_node/src/maintenance.cpp`；使用 `<config_topic>/maintenance/set|state`。
+- `/api/maintenance/<node>` 与其 `/firmware` 子路径全部归 **water key**，包括日志读取。
+  不要加到 Worker 的 viewer 白名单。Pi 端仍受 router 的 BFF token 依赖保护。
+- 每节点 `maintenance_key` 是私有硬件配置，构建时注入；不得加入 `/api/nodes` 白名单。
+  指令与回报双向 HMAC-SHA256，指令绑定 boot id 和 session，不能改成无鉴权 OTA。
+- MQTT 回调由网络任务独占，OTA 的 Update API 只在该任务调用，不能在主循环并发调用。
+  分块重试保持幂等；超时必须 abort。完整镜像校验通过之前不得切换启动槽。
+- 成功条件是新 boot id、目标 build、`boot_state=valid` 与匹配的持久化成功记录。
+  不能把“HTTP 202”“传输 100%”或刚收到新固件心跳当作升级成功。
+- 回滚依赖固定工具链提供的真实 rollback bootloader。`verifyRollbackLater()` 覆盖
+  Arduino 提前确认，在 setup 前启动 120 秒试运行定时器。必须至少稳定 30 秒、主循环
+  健康且收到 Pi 对新 boot id 的签名确认才标记 VALID。不要在 setup 或首次联网时确认。
+  不要把这个试运行定时器做成循环续期；未确认时应独立到期重启，由 bootloader 回滚。
+- NVS 原子记录保存候选 build、槽名与会话，旧槽恢复后回报 rolled_back。没有最终回报
+  只能显示 outcome_unknown，晚到结果可修正任务。首次安装此回滚基线必须 USB 完整上传。
+- 应用日志用 `RemoteSerial`，同时写实体串口和有界队列。ESP32 24 行、Pi/网页 300 行，
+  不落库、不落盘；ROM/SDK/panic 输出不在远程镜像范围。
+- 网页模块 `js/maintenance.js` 在节点/页签切换时取消旧轮询的显示权，避免跨节点刷错状态。
+  仓库脚本 `scripts/esp32_maintenance.py` 使用 water key，完整配置见 `docs/esp32-maintenance.md`。

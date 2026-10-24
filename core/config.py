@@ -69,6 +69,16 @@ def merge_defaults(cfg):
             if not schema:
                 continue
             node_cfg = ns.setdefault(node_id, {})
+            # Existing nodes stay daily. Only a newly configured node receives its
+            # schema's explicit policy; defaults must not silently change a deployment.
+            if node_cfg and "feeding_mode" in schema and "feeding_mode" not in node_cfg:
+                node_cfg["feeding_mode"] = "daily"
+                if "low_alarm_enabled" in schema:
+                    node_cfg.setdefault("low_alarm_enabled", True)
+                if "feed_max_temp" in schema and "temp_alarm_high" in node_cfg:
+                    node_cfg.setdefault("feed_max_temp", node_cfg["temp_alarm_high"])
+            if "feed_reset_hour" in node_cfg and "feed_start_hour" not in node_cfg:
+                node_cfg["feed_start_hour"] = node_cfg["feed_reset_hour"]
             for key, meta in schema.items():
                 if key not in node_cfg and isinstance(meta, dict) and "default" in meta:
                     node_cfg[key] = meta["default"]

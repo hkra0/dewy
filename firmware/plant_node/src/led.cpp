@@ -1,5 +1,7 @@
+#include "maintenance.h"
 #include "led.h"
 #include "config.h"
+#include "temperature_alarm.h"
 #include <FastLED.h>
 
 static CRGB leds[NUM_LEDS];
@@ -17,7 +19,7 @@ void led_init() {
     leds[0] = CRGB::Black;
     current_color = CRGB::Black;
     FastLED.show();
-    Serial.println("💡 WS2812B RGB 灯初始化成功 (已启用动态低亮度色温补偿模式)");
+    RemoteSerial.println("💡 WS2812B RGB 灯初始化成功 (已启用动态低亮度色温补偿模式)");
 }
 
 void led_trigger_temp_flash(float water_temp, bool water_temp_ok) {
@@ -25,6 +27,12 @@ void led_trigger_temp_flash(float water_temp, bool water_temp_ok) {
     flash_until = flash_start + FLASH_DURATION_MS;
 
     if (water_temp_ok) {
+        if(water_temp<rtConfig.feed_min_temp || (rtConfig.low_alarm_enabled && water_temp<rtConfig.temp_alarm_low)) {
+            base_flash_color=CRGB(50,160,220); return;
+        }
+        if(water_temp>=rtConfig.feed_max_temp) {
+            base_flash_color=CRGB(220,0,0); return;
+        }
         float low = rtConfig.temp_alarm_low;
         float high = rtConfig.temp_alarm_high;
         float ratio = 0.5f;
@@ -40,7 +48,7 @@ void led_trigger_temp_flash(float water_temp, bool water_temp_ok) {
         uint8_t hue = (uint8_t)(96.0f - ratio * 76.0f);
         base_flash_color = CHSV(hue, 225, 255);
     } else {
-        base_flash_color = CRGB(60, 80, 70); // 传感器未就绪时显示柔和暖白微光
+        base_flash_color = CRGB(160, 110, 0); // 传感器未就绪时显示柔和暖白微光
     }
 }
 
@@ -65,32 +73,19 @@ void led_update(bool is_fed, float water_temp, bool water_temp_ok) {
     unsigned long now = millis();
     CRGB target_color = CRGB::Black;
 
-    // 1. 最高优先级：水温超限警报 (500ms 纯色闪烁)
-    if (water_temp_ok) {
-        if (water_temp > rtConfig.temp_alarm_high) {
-            // 高温警报：纯红闪烁
-            bool blink_on = ((now / 250) % 2) == 0;
-            target_color = blink_on ? CRGB(220, 0, 0) : CRGB::Black;
-            leds[0] = target_color;
-            current_color = target_color;
-            FastLED.show();
-            return;
-        } else if (water_temp < rtConfig.temp_alarm_low) {
-            // 低温警报：纯蓝闪烁
-            bool blink_on = ((now / 250) % 2) == 0;
-            target_color = blink_on ? CRGB(0, 0, 220) : CRGB::Black;
-            leds[0] = target_color;
-            current_color = target_color;
-            FastLED.show();
-            return;
-        }
+    auto alarm=temperature_alarms.showing(local_time_now());
+    if(alarm!=aqua::None) {
+        bool on=alarm==aqua::Change ? (now%1600<120 || (now%1600>=300 && now%1600<420)) : now%1000<250;
+        CRGB color=alarm==aqua::Probe ? CRGB(200,130,0) : alarm==aqua::High ? CRGB(220,0,0) :
+            alarm==aqua::Low ? CRGB(0,90,220) : CRGB(170,0,180);
+        current_color=on ? color : CRGB::Black; leds[0]=current_color; FastLED.show(); return;
     }
 
     // 2. 次高优先级：触摸触发的水温平滑微光指示 (带正弦钟形曲线淡入淡出)
-    if (now < flash_until) {
+    if (uint32_t(now-flash_start) < FLASH_DURATION_MS) {
         unsigned long elapsed = now - flash_start;
         float progress = (float)elapsed / (float)FLASH_DURATION_MS; // 0.0 -> 1.0
-        float envelope = sin(progress * PI); // 0.0 -> 1.0 -> 0.0
+        float envelope = fabs(sin(progress * 3 * PI)); // 0.0 -> 1.0 -> 0.0
         
         target_color = base_flash_color;
         // 峰值缩放至 55 (柔和微光，不刺眼)

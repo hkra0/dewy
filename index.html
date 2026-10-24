@@ -33,6 +33,7 @@
     <link rel="modulepreload" href="/js/history.js">
     <link rel="modulepreload" href="/js/timeline.js">
     <link rel="modulepreload" href="/js/settings.js">
+    <link rel="modulepreload" href="/js/maintenance.js">
     <link rel="modulepreload" href="/js/refresh.js">
     <link rel="modulepreload" href="/js/metrics.js">
 </head>
@@ -566,6 +567,20 @@
                     </div>
                 </div>
 
+                <div class="card full-width form-card hidden" id="cfg-maintenance-card">
+                    <div class="form-card-head" data-i18n="maint_title">Remote Maintenance</div>
+                    <div class="form-body">
+                        <p class="form-desc" data-i18n="maint_desc">Upload application firmware.bin for this node. Initial installation requires USB.</p>
+                        <label for="maintenance-file" data-i18n="maint_file">Firmware (.bin)</label>
+                        <input type="file" id="maintenance-file" accept=".bin,application/octet-stream">
+                        <button type="button" class="action-btn" id="maintenance-upload" onclick="uploadFirmware()" disabled data-i18n="maint_upload">Update firmware</button>
+                        <progress id="maintenance-progress" max="100" value="0" data-i18n-aria="maint_progress"></progress>
+                        <p id="maintenance-status" role="status"></p>
+                        <p id="maintenance-feedback" role="alert" class="hidden"></p>
+                        <h3 data-i18n="maint_logs">Serial output</h3>
+                        <pre id="maintenance-log" tabindex="0" data-i18n-aria="maint_logs" aria-label="Serial output"></pre>
+                    </div>
+                </div>
                 <div class="card full-width form-card--flush">
                     <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfigAndRefresh()"
                         data-i18n="save_cfg">Save Configuration</button>

@@ -1,11 +1,14 @@
 #pragma once
 #include <Arduino.h>
-
+#include "aqua_model.h"
 struct FeedingState {
-    bool is_fed;
-    String fed_time; // 如 "08:35"，未喂食时为空串
+    bool is_fed=false;
+    String fed_time;
+    const char* status="time_pending";
+    float score=0;
+    int next_date=0;
+    bool prompting=false;
 };
-
 void feeding_init();
-void feeding_update(float water_temp, bool water_temp_ok);
+void feeding_update(const aqua::Sample& sample);
 FeedingState feeding_get_state();

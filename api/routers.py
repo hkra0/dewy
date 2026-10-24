@@ -13,6 +13,7 @@ from pydantic import BaseModel
 import core.state as state
 import core.config as config
 import core.database as db
+from core.logic.node_config import config_status
 from core.logic import (
     trigger_watering,
     get_effective_light_times,
@@ -43,6 +44,34 @@ def verify_pi_token(x_bff_to_pi_token: str = Header(None)):
 
 router = APIRouter(dependencies=[Depends(verify_pi_token)])
 
+
+@router.get("/api/maintenance/{node_id}")
+def maintenance_status(node_id: str, after: int = 0):
+    from core.logic.maintenance import status
+    try:
+        return status(node_id, max(0, after))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/api/maintenance/{node_id}/firmware", status_code=202)
+async def maintenance_update(node_id: str, request: Request):
+    from core.logic.maintenance import MAX_FIRMWARE, start_update
+    if request.headers.get("content-type", "").split(";")[0] != "application/octet-stream":
+        raise HTTPException(status_code=415, detail="Send application/octet-stream firmware.bin")
+    # Bound actual bytes, including requests without Content-Length; no multipart dependency.
+    image = bytearray()
+    async for chunk in request.stream():
+        if len(image) + len(chunk) > MAX_FIRMWARE:
+            raise HTTPException(status_code=413, detail="Firmware exceeds 4 MiB")
+        image.extend(chunk)
+    try:
+        return start_update(node_id, image)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
 class WaterRequest(BaseModel):
     duration: float = 0.5
     node_id: str = "main"
@@ -55,7 +84,7 @@ class EmergencyStopRequest(BaseModel):
 # 允许发给前端的节点字段。白名单而非黑名单：hardware_config 的节点段里还放着
 # ESP32 的构建参数（wifi_password、mqtt_host…），逐个去黑名单迟早漏一个，
 # 而这个端点只要 viewer key 就能读。
-_PUBLIC_NODE_FIELDS = ("type", "description", "settings_schema")
+_PUBLIC_NODE_FIELDS = ("type", "description", "settings_schema", "metric_metadata")
 
 
 @router.get("/api/nodes")
@@ -91,7 +120,8 @@ def get_monitor_data():
             nodes_data[node_id] = state.local_latest_data[node_id].copy()
         
     for node_id, info in state.mqtt_latest_data.items():
-        nodes_data[node_id] = info["data"].copy()
+        from core.mqtt_handler import node_snapshot
+        nodes_data[node_id] = node_snapshot(info)
 
     return {
         "timestamp": int(time.time()),
@@ -293,12 +323,17 @@ def get_config_endpoint():
     res["effective_light_off"] = f"{off_m//60:02d}:{off_m%60:02d}"
     node_id = res.get("auto_water", {}).get("node_id", "main")
     res["watering_safety"] = watering_safety_status(node_id)
+    res["node_config_status"] = config_status()
     return res
 
 @router.post("/api/config")
 async def update_config(req: Request):
     try:
         cfg = await req.json()
+        if not isinstance(cfg, dict):
+            raise ValueError("Configuration must be an object")
+        from core.logic.node_config import validate_node_settings
+        validate_node_settings(cfg.get("node_settings", {}))
         old_ns = copy.deepcopy(config.global_config.get("node_settings", {}))
         config.save_config(cfg)
         new_ns = config.global_config.get("node_settings", {})
@@ -312,10 +347,10 @@ async def update_config(req: Request):
         except Exception:
             logger.exception("保存配置后推送节点设置失败")
 
-        return {"status": "success"}
+        return {"status": "success", "node_config_status": config_status()}
     except ValueError as e:
         logger.warning("配置更新请求体非法: %s", e)
-        raise HTTPException(status_code=400, detail="Invalid JSON")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/api/light")
 def toggle_manual_light():

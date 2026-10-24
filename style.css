@@ -1773,3 +1773,26 @@ input:checked+.slider:before {
     margin: 0 2px;
     color: var(--border);
 }
+
+/* Bounded maintenance console; text is inserted with textContent. */
+#maintenance-log {
+    max-height: 22rem;
+    min-height: 7rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: var(--bg-color);
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+}
+#maintenance-progress { width: 100%; accent-color: var(--accent); }
+#maintenance-status { white-space: pre-wrap; overflow-wrap: anywhere; }
+#maintenance-feedback {
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

@@ -57,6 +57,22 @@ const WATER_MIN_S = 0.1;
 const WATER_MAX_S = 1.0;
 const WATER_DEFAULT_S = 0.5;
 
+function waterStatus(data) {
+    const parts = [];
+    if (data.stale) parts.push(t('feeding_stale'));
+    if (data.water_temp_valid === false) parts.push(t('feeding_probe_fault'));
+    else if (data.water_temp_age > 0) parts.push(t('sample_age', { seconds: data.water_temp_age }));
+    if (data.time_valid === false) parts.push(t('feeding_time_pending'));
+    for (const alarm of data.alarms || []) {
+        let text = t('alarm_' + alarm.kind);
+        if (alarm.kind === 'change') text += ' · ' + t(alarm.direction > 0 ? 'temp_rising' : 'temp_falling');
+        if (alarm.acknowledged) text += ' · ' + t('alarm_ack');
+        else if (alarm.silenced) text += ' · ' + t('alarm_silent');
+        parts.push(text);
+    }
+    return escapeHtml(parts.join(' · '));
+}
+
 export function renderDynamicCards(nodeData, globalData) {
     const container = document.getElementById('dynamic-cards');
 
@@ -72,7 +88,7 @@ export function renderDynamicCards(nodeData, globalData) {
 
     // 1. 水温
     if (nodeData.water_temp !== undefined) {
-        html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('water_temp'))}</div><div class="card-value" style="color: var(--metric-water-temp);">${formatVal(nodeData.water_temp, '℃')}</div></div>`;
+        html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('water_temp'))}</div><div class="card-value" style="color: var(--metric-water-temp);">${formatVal(nodeData.water_temp, '℃')}</div><div class="card-subtitle">${waterStatus(nodeData)}</div></div>`;
     }
 
     // 2. 气温
@@ -121,7 +137,14 @@ export function renderDynamicCards(nodeData, globalData) {
     }
 
     // 7. 喂食状态
-    if (nodeData.fed !== undefined) {
+    if (nodeData.feeding_state) {
+        const status = nodeData.stale ? 'stale' : nodeData.feeding_state;
+        const score = Number.isFinite(nodeData.feeding_score) ? `<div class="card-subtitle">${t('feeding_progress')}: ${nodeData.feeding_score.toFixed(1)}</div>` : '';
+        const when = nodeData.fed_time ? `<div class="card-subtitle">${t('last_fed')}: ${escapeHtml(nodeData.fed_time)}</div>` : '';
+        const nextDate = String(nodeData.next_prompt_date || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
+        const next = nextDate ? `<div class="card-subtitle">${t('next_prompt')}: ${escapeHtml(nextDate)}</div>` : '';
+        html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('fed'))}</div><div class="card-value" style="color:var(--text-muted)">${escapeHtml(t('feeding_' + status))}</div>${score}${when}${next}</div>`;
+    } else if (nodeData.fed !== undefined) {
         const isFed = nodeData.fed >= 1;
         const fedLabel = escapeHtml(metricLabel('fed'));
         const fedText = isFed ? t('fed_yes') : t('fed_no');
@@ -218,9 +241,9 @@ export async function fetchSensorData() {
         } else {
             document.getElementById('power-status').innerText = '-- V / -- mA';
         }
-        const time = new Date(data.timestamp * 1000);
+        const time = new Date((nodeData?.received_at || data.timestamp) * 1000);
         const statusEl = document.getElementById('update-time');
-        statusEl.innerText = t('last_synced', { time: time.toLocaleTimeString().toLowerCase() });
+        statusEl.innerText = nodeData?.stale ? t('feeding_stale') : t('last_synced', { time: time.toLocaleTimeString().toLowerCase() });
         statusEl.style.color = '';
     } catch (e) {
         // fetch 抛异常 = 网络层就没通，与 404 无关，可以放心提示

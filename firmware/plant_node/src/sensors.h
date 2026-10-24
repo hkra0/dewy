@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "aqua_model.h"
 
 struct SensorReadings {
     float temperature;   // 环境温度 (AHT20, ℃)
@@ -9,8 +10,11 @@ struct SensorReadings {
     float pressure;      // 气压 (BMP280, hPa)
     bool  press_ok;
     float water_temp;    // 水温 (DS18B20, ℃)
+    uint32_t water_temp_age;
     bool  water_temp_ok; // 水温是否有效
 };
 
 void sensors_init();
 SensorReadings sensors_read();
+
+aqua::Sample sensors_water();

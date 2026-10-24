@@ -18,6 +18,7 @@ flowchart LR
 
 ## Features
 
+- **ESP32 remote maintenance** — upload node-specific application firmware from the settings page or `scripts/esp32_maintenance.py`, with boot validation, automatic startup rollback and explicit failure feedback. View recent application serial output over authenticated MQTT. First installation requires USB. See the [setup and recovery guide](docs/esp32-maintenance.md).
 - **Live environment dashboard** — temperature, humidity, soil moisture, water temperature, pressure per node, plus UPS power draw and system health (CPU / memory / disk). Any other numeric field a driver returns (illuminance, CO₂, EC, water temp …) gets its own card and a toggleable history series automatically — no frontend change needed.
 - **ESP32 nodes & dynamic remote settings** — support for plant & aquarium sensor stations. Declare a `settings_schema` in TOML, and the web UI dynamically generates the settings form (e.g. temperature alarm thresholds, feeding reset time), syncing over MQTT to ESP32 onboard NVS.
 - **Automatic watering** — checked daily at 06:00; the pump runs (default 0.5 s) only if > 12 h since the last watering and soil moisture is below threshold (default 50%). Manual watering via UI is clamped to 0.1–1.0 s.
