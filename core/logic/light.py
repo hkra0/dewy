@@ -1,5 +1,9 @@
 """补光灯定时控制。
 
+每个节点至多一盏灯，配置在 `auto_light.<node_id>`，运行态在
+`state.lights[node_id]`，两者都按节点各管各的——主节点的植物灯与 aqua 的
+鱼缸灯时段不同、手动覆盖也互不影响。
+
 两种模式：fixed（固定时刻）与日出日落（按经纬度实时推算，支持偏移量）。
 手动切灯会置 manual_override，到下一个开/关边界自动失效。
 """
@@ -53,10 +57,47 @@ def fetch_ip_location():
         return None, None
 
 
-def get_effective_light_times():
-    """返回当天生效的 (开灯分钟数, 关灯分钟数)。任何异常都退回默认时段。"""
-    cfg = config.global_config["auto_light"]
-    if cfg["mode"] == "fixed":
+def light_config(node_id):
+    """该节点的补光灯配置；节点没配灯时返回 None。"""
+    cfg = config.global_config.get("auto_light", {}).get(node_id)
+    return cfg if isinstance(cfg, dict) else None
+
+
+def light_nodes():
+    """配置了灯、且灯的执行器确实加载成功的节点。"""
+    actuators = state.hardware_manager.actuators
+    return [
+        node_id for node_id, cfg in config.global_config.get("auto_light", {}).items()
+        if isinstance(cfg, dict) and cfg.get("actuator_id", "light") in actuators.get(node_id, {})
+    ]
+
+
+def light_state(node_id):
+    """该节点灯的运行态（可变 dict），第一次访问时补齐初始值。"""
+    return state.lights.setdefault(node_id, {
+        "status": "--",
+        "manual_override": False,
+        "manual_override_until": None,
+        "ignore_feedback_until": 0,
+    })
+
+
+def capture_light_node():
+    """拍照补光该点哪个节点的灯：相机挂在哪个节点就点哪个节点的。
+
+    灯与相机不在同一株植物上时点灯毫无意义，所以不能随便挑一盏。
+    配置里没声明相机（默认 rpicam 回退）时，相机就是树莓派自己的，
+    按 main 处理，与其它端点默认 main 的约定一致。
+    """
+    return state.hardware_manager.camera_node_id() or "main"
+
+
+def get_effective_light_times(node_id="main"):
+    """返回该节点当天生效的 (开灯分钟数, 关灯分钟数)。任何异常都退回默认时段。"""
+    cfg = light_config(node_id)
+    if cfg is None:
+        return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
+    if cfg.get("mode", "fixed") == "fixed":
         try:
             on_h, on_m = map(int, cfg["on_time"].split(":"))
             off_h, off_m = map(int, cfg["off_time"].split(":"))
@@ -99,12 +140,14 @@ def get_effective_light_times():
             return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
 
 
-def set_light(on, retain=False):
+def set_light(node_id, on, retain=False):
     """开灯或关灯。具体下发什么指令由继电器驱动按配置决定。"""
-    l_node = config.global_config["auto_light"]["node_id"]
-    l_act = config.global_config["auto_light"]["actuator_id"]
+    cfg = light_config(node_id)
+    if cfg is None:
+        return False
     return state.hardware_manager.trigger_actuator(
-        l_node, l_act, mqtt_client=state.global_mqtt_client, state=on, retain=retain
+        node_id, cfg.get("actuator_id", "light"),
+        mqtt_client=state.global_mqtt_client, state=on, retain=retain
     )
 
 
@@ -124,17 +167,21 @@ def fill_light_for_capture(duration):
     """
     if not config.global_config.get("camera", {}).get("fill_light", True):
         return False
-    if state.light_status == "ON" or not state.global_mqtt_client:
+    node_id = capture_light_node()
+    cfg = light_config(node_id)
+    if cfg is None:
+        return False
+    ls = light_state(node_id)
+    if ls["status"] == "ON" or not state.global_mqtt_client:
         return False
 
     # 这盏灯几秒后会自己灭，期间 ESP32 回报的 "ON" 不代表用户开了灯，
     # 忽略窗口要盖住整个点亮时长再加一点余量。
-    state.ignore_light_feedback_until = time.time() + duration + 3
-    l_node = config.global_config["auto_light"]["node_id"]
-    l_act = config.global_config["auto_light"]["actuator_id"]
+    ls["ignore_feedback_until"] = time.time() + duration + 3
     try:
         state.hardware_manager.trigger_actuator(
-            l_node, l_act, mqtt_client=state.global_mqtt_client, duration=duration
+            node_id, cfg.get("actuator_id", "light"),
+            mqtt_client=state.global_mqtt_client, duration=duration
         )
         time.sleep(0.6)
         return True
@@ -144,15 +191,26 @@ def fill_light_for_capture(duration):
 
 
 def apply_light_schedule(now):
-    """按当前时刻推进一次灯控状态机。由 background_logger 每轮调用。
+    """按当前时刻推进一次所有节点的灯控状态机。由 background_logger 每轮调用。
 
     每轮都重发一次 MQTT 指令（而非只在状态变化时发），
-    这样 ESP32 掉电重启后能在下一轮自动恢复到正确状态。
+    这样继电器掉电重启后能在下一轮自动恢复到正确状态。
+    节点之间互相隔离：一盏灯的配置出错不该让另一盏停摆。
     """
-    if not config.global_config["auto_light"]["enabled"]:
+    if not state.global_mqtt_client:
+        return
+    for node_id in light_nodes():
+        try:
+            _apply_node_schedule(node_id, now)
+        except Exception:
+            logger.exception("节点 %s 的定时灯控失败", node_id)
+
+
+def _apply_node_schedule(node_id, now):
+    if not light_config(node_id).get("enabled", True):
         return
 
-    on_time, off_time = get_effective_light_times()
+    on_time, off_time = get_effective_light_times(node_id)
     time_val = now.hour * 60 + now.minute
     if on_time < off_time:
         is_light_time = on_time <= time_val < off_time
@@ -160,28 +218,26 @@ def apply_light_schedule(now):
         # 跨午夜时段
         is_light_time = time_val >= on_time or time_val < off_time
 
-    if not state.global_mqtt_client:
-        return
-
-    if state.manual_override:
-        if state.manual_override_until and now >= state.manual_override_until:
+    ls = light_state(node_id)
+    if ls["manual_override"]:
+        if ls["manual_override_until"] and now >= ls["manual_override_until"]:
             # 覆盖到期，交还给定时控制
-            state.manual_override = False
-            state.manual_override_until = None
-            logger.info("🔄 手动覆盖已到期，恢复定时控制")
+            ls["manual_override"] = False
+            ls["manual_override_until"] = None
+            logger.info("🔄 节点 %s 手动覆盖已到期，恢复定时控制", node_id)
 
             desired = "ON" if is_light_time else "OFF"
-            set_light(desired == "ON")
-            state.light_status = desired
+            set_light(node_id, desired == "ON")
+            ls["status"] = desired
         else:
             # 覆盖期内：维持用户选定的状态
-            set_light(state.light_status == "ON")
+            set_light(node_id, ls["status"] == "ON")
 
-    if not state.manual_override:
+    if not ls["manual_override"]:
         desired = "ON" if is_light_time else "OFF"
 
-        if state.light_status != desired:
-            logger.info("💡 定时灯控: %s", desired)
-            state.light_status = desired
+        if ls["status"] != desired:
+            logger.info("💡 节点 %s 定时灯控: %s", node_id, desired)
+            ls["status"] = desired
 
-        set_light(desired == "ON")
+        set_light(node_id, desired == "ON")

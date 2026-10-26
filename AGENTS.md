@@ -173,6 +173,13 @@ Python 侧的续期**只写在"确认仍需省电"的那个分支里**（`logic/
   详见下方硬件抽象层一节与"容易被误修的既有行为"。
 - **补光灯**：`fixed` 固定时段，或按经纬度实时推算日出日落（支持偏移量，经纬度缺失时用 IP 定位）。
   手动切灯置 `manual_override`，到下一个开/关边界自动失效。
+  **每个节点至多一盏灯，一切按节点分开**：配置在 `auto_light.<node_id>`（`config.LIGHT_DEFAULTS`
+  为单段默认值，挂了 `light` 执行器的节点由 `merge_defaults` 自动补一段；旧版扁平结构读到时
+  挪进它的 `node_id` 名下），运行态在 `state.lights[node_id]`（一律经 `light.light_state()` 取），
+  `/api/light` 带 `node_id`（省略为 main），`/api/monitor` 返回 `lights: {node: status}`。
+  **不要退回全局单例**：aqua 的灯是一个独立 MQTT 插座，全局只有一个 `light_status` 时，
+  它的回报会改写主节点灯的状态，一个节点的手动覆盖也会挡住另一个节点的定时。
+  MQTT 回报只认"该节点配置的那个灯执行器"，别的继电器（MQTT 水泵之类）的回报不是灯的状态。
 - **每日照片**：`daily_photo.enabled` 这个开关**既管拍、也管看**——关掉后后台不再拍，
   前端的"照片"子页签与时间轴也一起收起（经 `capabilities.daily_photo` 下发）。
   开着时到点（`daily_photo.hour`，按整点判断）拍一张 HQ 图（默认 2592×1944）+ 320×240 缩略图。
@@ -182,7 +189,10 @@ Python 侧的续期**只写在"确认仍需省电"的那个分支里**（`logic/
   统一走 `light.fill_light_for_capture(duration)`（灯已亮 / 无 MQTT 时跳过，失败只记警告——照片偏暗好过拍不成）。
   由 `camera.fill_light` 控制，默认开；关掉它的场景是灯离镜头太近导致过曝，或灯与相机不在同一株植物上。
   **它是拍照的全局设置，不隶属于每日照片**——放回 `daily_photo` 段会让人以为只管定时那一张。
-  也**不要在调用方各写一份这段逻辑**：忽略回报的时间窗（`ignore_light_feedback_until`）曾经在两处写成不同的值。
+  也**不要在调用方各写一份这段逻辑**：忽略回报的时间窗（`state.lights[node]["ignore_feedback_until"]`）曾经在两处写成不同的值。
+  点的是**相机所在节点**的灯（`light.capture_light_node()`，取自 `HardwareManager.camera_node_id()`，
+  未声明相机时按 main）；该节点没灯就不补光，**绝不去点别的节点的灯**——那是另一株植物或鱼缸。
+  拍摄期间 `/api/light` 也只挡这一盏，切别的节点的灯不受影响。
 - **重拍当日照片**：`POST /api/photo/retake`，设置页的手动入口。不带 `force` 时当天已有照片直接回 409，
   由前端提示覆盖并要求三秒内二次点击，第二次带 `force=true` 才真的覆盖。
   路径**不能**改成 `/api/photos/retake`——Worker 里 `/api/photos/` 整个前缀归 viewer key 管，
@@ -268,11 +278,16 @@ ABC 实际只能按节点统计。真要支持单节点多土壤传感器，`soi
 具体下发什么字面量由驱动按配置决定——`MQTT_Relay` 的 `on_command`/`off_command`/
 `query_command`/`pulse_command` 与回报解析用的 `on_feedback`/`off_feedback` 都在
 hardware_config 里，默认值是本项目 ESP32 固件那一套。**core/ 与 api/ 里不应再出现
-`a1`/`b1`/`n1`/`f1` 这类固件私有字面量**；灯控统一走 `core.logic.light.set_light(on)`，
+`a1`/`b1`/`n1`/`f1` 这类固件私有字面量**；灯控统一走 `core.logic.light.set_light(node_id, on)`，
 MQTT 回报统一走 `actuator.parse_feedback(information)`。
 
 水泵执行器的 id 默认为 `pump`、灯为 `light`，分别由 `data/config.json` 的
-`auto_water.actuator_id` 与 `auto_light.actuator_id` 决定（多株植物常见 pump_a / pump_b）。
+`auto_water.actuator_id` 与 `auto_light.<node_id>.actuator_id` 决定（多株植物常见 pump_a / pump_b）。
+
+**执行器不分节点类型**：`mqtt_node` 也可以声明 `[nodes.<id>.actuators.*]`。aqua 的补光灯就是
+这样——一个独立的 ESP8266 MQTT 插座，逻辑上属于 aqua，物理上不接在 ESP32 上，由树莓派直接
+发指令（与主节点那盏灯同款同固件）。灯归哪个节点由配置表达，不由"谁来发指令"表达；
+不要为了"看起来属于 aqua"让 ESP32 中转——多一跳、多一份 C++ 调度，broker 仍在树莓派上。
 
 ### 节点能力由服务端下发
 
@@ -643,8 +658,8 @@ SQLite（WAL 模式），主要五张表：
   指令幂等、无实际影响，属已知行为。
 - **`cleanup_old_photos` 里的 `MIN_PHOTOS_TO_CLEAN = 30` 是触发门槛，不是删除下限**。
   一旦触发会沿曲线一直删到磁盘够用，实测 120 张可删到 18 张。
-- **切灯的乐观状态必须会过期**（`dashboard.js` 的 `optimisticLightStatus` /
-  `optimisticLightUntil`）。它只用来填补"MQTT 指令已发、服务端 `light_status` 还没回报"
+- **切灯的乐观状态必须会过期**（`dashboard.js` 的 `optimisticLights[node]`，按节点分开记）。
+  它只用来填补"MQTT 指令已发、服务端 `lights[node]` 还没回报"
   的那一个轮询周期。两个交还时机缺一不可：服务端追上时提前交还、超过 TTL(35s) 兜底交还。
   一经设置就永不清空的话，定时灯控到点关灯、或 `manual_override` 到期之后，
   界面会一直显示用户当初点的那个值。**失败分支也不要把点击前的状态写回成新的乐观值**——

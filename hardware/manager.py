@@ -79,7 +79,6 @@ class HardwareManager:
             node_type = node_info.get("type", "local")
             if node_type == "local":
                 self.local_sensors[node_id] = {}
-                self.actuators[node_id] = {}
                 
                 for s_id, s_conf in node_info.get("sensors", {}).items():
                     # 老配置用 [nodes.x.sensors.camera] 作为"这个节点有相机"的标记，
@@ -93,11 +92,6 @@ class HardwareManager:
                     if obj is not None:
                         self.local_sensors[node_id][s_id] = obj
 
-                for a_id, a_conf in node_info.get("actuators", {}).items():
-                    obj = self._build_device(node_id, "执行器", a_id, a_conf)
-                    if obj is not None:
-                        self.actuators[node_id][a_id] = obj
-
                 # 相机一个节点至多一个，故是单个表而非字典
                 cam_conf = node_info.get("camera")
                 if cam_conf:
@@ -106,6 +100,15 @@ class HardwareManager:
                         self.cameras[node_id] = obj
             elif node_type == "mqtt_node":
                 self.mqtt_nodes[node_id] = node_info
+
+            # 执行器不分节点类型：MQTT_Relay 这类执行器本来就不经过节点自己的
+            # 芯片（aqua 的灯是一个独立的 MQTT 插座，逻辑上属于 aqua 节点，
+            # 指令由树莓派直接发给插座），所以 mqtt_node 也可以声明执行器。
+            self.actuators[node_id] = {}
+            for a_id, a_conf in node_info.get("actuators", {}).items():
+                obj = self._build_device(node_id, "执行器", a_id, a_conf)
+                if obj is not None:
+                    self.actuators[node_id][a_id] = obj
                 
     def _build_device(self, node_id, kind, dev_id, conf):
         """实例化一个传感器/执行器，失败只跳过它自己。
@@ -347,6 +350,18 @@ class HardwareManager:
         否则一台没接摄像头的机器也会长出一个永远拍不出图的相机页。
         """
         return node_id in self.cameras or node_id in self._legacy_camera_nodes
+
+    def camera_node_id(self):
+        """get_camera() 不带参数时选中的那个相机挂在哪个节点上。
+
+        配置里没声明任何相机（走默认 rpicam 回退）时返回 None。
+        拍照补光要据此决定点哪个节点的灯。
+        """
+        if self.cameras:
+            return next(iter(self.cameras))
+        if self._legacy_camera_nodes:
+            return sorted(self._legacy_camera_nodes)[0]
+        return None
 
     def get_camera(self, node_id=None):
         """取相机驱动，未配置任何相机时返回 None。

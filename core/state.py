@@ -66,11 +66,11 @@ PI_SECRET_TOKEN = _load_secret_token()
 hardware_manager = HardwareManager(DATA_DIR)
 
 global_mqtt_client = None
-light_status = "--"
-manual_override = False
-manual_override_until = None
+# 每个节点一盏灯，运行态按节点分开：{node_id: {"status", "manual_override",
+# "manual_override_until", "ignore_feedback_until"}}。一律经
+# core.logic.light.light_state(node_id) 取，它负责补齐初始值。
+lights = {}
 camera_in_progress = False
-ignore_light_feedback_until = 0
 power_save_mode = False
 
 mqtt_topic_to_node = {}

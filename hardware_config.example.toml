@@ -85,8 +85,10 @@ address = "0x43"
 # base_hum = 50.0
 
 # ---- Actuators ----
-# The ids used by the app are configurable in the UI's settings tab:
-# auto_water.actuator_id (default "pump") and auto_light.actuator_id (default "light").
+# The ids used by the app: auto_water.actuator_id (default "pump") and
+# auto_light.<node_id>.actuator_id (default "light"), both in data/config.json.
+# Every node can have its own light — including mqtt_node nodes, whose light is
+# typically a standalone MQTT plug the Pi commands directly (see the aqua example).
 [nodes.main.actuators.pump]
 driver = "GPIO_Relay"
 pin = 4
@@ -147,6 +149,13 @@ mqtt_client_id = "ESP32_Aqua_Node_01"
 # reporting a new value needs no change here. Listing `metrics` turns that into a
 # whitelist instead.
 metrics = ["temperature", "humidity", "pressure", "water_temp", "fed", "fed_time", "feeding_score"]
+
+# A light that logically belongs to this node but is a standalone MQTT plug, not
+# wired to the ESP32. The Pi schedules and commands it directly; set the plug's
+# subscribe and publish topics both to `topic`, with a client id of its own.
+[nodes.aqua.actuators.light]
+driver = "MQTT_Relay"
+topic = "YOUR_AQUA_LIGHT_TOPIC"
 
 # ---- Dynamic Remote Settings Schema ----
 # Declare parameters that can be tuned from the Web UI Settings tab.

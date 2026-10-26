@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import { showToast, escapeHtml } from './ui.js';
 import { state, getViewerKey, getWaterKey, nodeCaps } from './state.js';
-import { apiGet, apiWater, apiWaterPost } from './api.js';
+import { apiGet, apiWaterPost } from './api.js';
 import { extraMetricEntries, metricLabel, metricUnit, metricColor } from './metrics.js';
 import { switchHistType } from './navigation.js';
 import { fetchAllData } from './refresh.js';
@@ -18,37 +18,37 @@ function formatVal(v, unit) {
 }
 
 // 手动切灯后的乐观状态。存在的理由只有一个：切灯指令走 MQTT，
-// 服务端的 light_status 要等下一次轮询才会反映出来，中间这段空窗期
-// 不能让卡片弹回旧值。
+// 服务端的 lights[node] 要等下一次轮询才会反映出来，中间这段空窗期
+// 不能让卡片弹回旧值。按节点分开记：每个节点各有一盏灯，切完 aqua 的灯
+// 马上切到 main，main 的卡片不该显示 aqua 的乐观值。
 //
 // 因此它**必须会过期**。一经设置就永不清空的话，服务端的真实状态会被
 // 永久遮蔽——定时灯控到点关灯、或 manual_override 到期回归定时控制之后，
 // 界面仍然显示用户当初点的那个值。
 // 两个交还时机：服务端已经追上（提前交还），或超过 TTL（兜底交还）。
-let optimisticLightStatus = null;
-let optimisticLightUntil = 0;
+// { [nodeId]: { status, until } }
+const optimisticLights = {};
 
 // 略长于一个轮询周期（refresh.js 是 30s），确保正常情况下
 // 至少有一次轮询机会把服务端值带回来。
 const OPTIMISTIC_LIGHT_TTL_MS = 35000;
 
 /** 决定这一帧该显示哪个状态，并在条件满足时把控制权交还给服务端。 */
-function effectiveLightStatus(serverStatus) {
-    if (optimisticLightStatus) {
-        const expired = Date.now() > optimisticLightUntil;
-        if (expired || serverStatus === optimisticLightStatus) {
-            optimisticLightStatus = null;
-            optimisticLightUntil = 0;
+function effectiveLightStatus(nodeId, serverStatus) {
+    const optimistic = optimisticLights[nodeId];
+    if (optimistic) {
+        const expired = Date.now() > optimistic.until;
+        if (expired || serverStatus === optimistic.status) {
+            delete optimisticLights[nodeId];
         } else {
-            return optimisticLightStatus;
+            return optimistic.status;
         }
     }
     return serverStatus;
 }
 
-function clearOptimisticLight() {
-    optimisticLightStatus = null;
-    optimisticLightUntil = 0;
+function clearOptimisticLight(nodeId) {
+    delete optimisticLights[nodeId];
 }
 
 // 手动浇水时长的允许范围。必须与 api/routers.py 的 trigger_manual_watering
@@ -155,11 +155,11 @@ export function renderDynamicCards(nodeData, globalData) {
              + `<div class="card-value" style="color: ${fedColor};">${fedText}${fedTime}</div></div>`;
     }
 
-    // 补光灯状态。挂在哪个节点上由配置决定（auto_light.node_id/actuator_id），
+    // 补光灯状态。每个节点至多一盏，配置在 auto_light.<node>，
     // 所以看能力而不是写死 'main'。切灯后的空窗期显示乐观值，
     // 服务端追上或 TTL 到期后自动交还——见 effectiveLightStatus。
     if (caps.light) {
-        const status = effectiveLightStatus(globalData.light_status);
+        const status = effectiveLightStatus(state.currentDevice, globalData.lights?.[state.currentDevice]);
         if (status) {
             const color = status === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
             const statusText = status === 'ON' ? t('state_on') : (status === 'OFF' ? t('state_off') : status);
@@ -294,6 +294,8 @@ export async function toggleLight() {
     if (!statusEl) return;
 
     lightToggleInProgress = true;
+    // 记下点击时的节点：请求返回前用户可能已经切到别的设备
+    const nodeId = state.currentDevice;
 
     // statusEl 里已经是 effectiveLightStatus 的结果，直接读它即可
     const currentStatus = statusEl.innerText.trim();
@@ -301,14 +303,13 @@ export async function toggleLight() {
     const newStatus = isCurrentlyOn ? 'OFF' : 'ON';
 
     // 乐观更新：只用来填补"指令已发出、服务端还没回报"的空窗期
-    optimisticLightStatus = newStatus;
-    optimisticLightUntil = Date.now() + OPTIMISTIC_LIGHT_TTL_MS;
+    optimisticLights[nodeId] = { status: newStatus, until: Date.now() + OPTIMISTIC_LIGHT_TTL_MS };
     statusEl.innerText = newStatus;
     statusEl.style.color = newStatus === 'ON' ? 'var(--metric-light-on)' : 'var(--text-muted)';
     showToast(newStatus === 'ON' ? t('light_on') : t('light_off'), 'success');
 
     try {
-        const res = await apiWater('/api/light', { method: 'POST' });
+        const res = await apiWaterPost('/api/light', { node_id: nodeId });
         if (!res.ok) {
             if (res.status === 409) throw new Error('camera');
             throw new Error('fail');
@@ -318,7 +319,7 @@ export async function toggleLight() {
         // 顺手把 DOM 恢复成点击前的样子（下一次轮询会重新渲染这张卡片）。
         // 注意不要在这里写回 currentStatus 作为新的乐观值：那等于用一个
         // 永不过期的值继续遮蔽服务端，正是本次修复要消除的问题。
-        clearOptimisticLight();
+        clearOptimisticLight(nodeId);
         statusEl.innerText = currentStatus;
         statusEl.style.color = isCurrentlyOn ? 'var(--metric-light-on)' : 'var(--text-muted)';
         showToast(e.message === 'camera' ? t('cam_capturing') : t('light_fail'), 'error');

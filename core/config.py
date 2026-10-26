@@ -21,7 +21,10 @@ DEFAULT_CONFIG = {
         "sensor_recovery_rise": 15.0,
         "sensor_recovery_samples": 3,
     },
-    "auto_light": {"enabled": True, "mode": "fixed", "on_time": "07:30", "off_time": "21:30", "sun_on_offset": 0, "sun_off_offset": 0, "lat": "", "lng": "", "node_id": "main", "actuator_id": "light"},
+    # 补光灯按节点分段：{node_id: {...LIGHT_DEFAULTS}}。每株植物（每个鱼缸）
+    # 的光照时段各不相同，一份全局时段管不了两盏灯。具体分段由 merge_defaults
+    # 按"哪些节点挂了灯"补齐，这里只给空表。
+    "auto_light": {},
     # 拍照的通用设置。补光放这里而不是 daily_photo 里：实时预览、高清抓拍、
     # 每日照片走的是同一个 fill_light_for_capture()，它对三条路径一起生效，
     # 挂在 daily_photo 下会让人以为只管定时那一张。
@@ -34,7 +37,47 @@ DEFAULT_CONFIG = {
     # 远程 ESP32 节点设置（按 node_id 分组，值由 settings_schema.default 补齐）
     "node_settings": {},
 }
-# deepcopy 而非 copy：浅拷贝下 global_config["auto_light"] 就是 DEFAULT_CONFIG
+# 单个节点的补光灯配置。actuator_id 是该节点上灯的执行器 id。
+LIGHT_DEFAULTS = {
+    "enabled": True, "mode": "fixed", "on_time": "07:30", "off_time": "21:30",
+    "sun_on_offset": 0, "sun_off_offset": 0, "lat": "", "lng": "",
+    "actuator_id": "light",
+}
+
+
+def _merge_light_defaults(cfg):
+    """把 auto_light 整理成 {node_id: 完整配置}。
+
+    旧版本是单盏灯的扁平结构（{"enabled":…, "node_id": "main", …}），
+    读到时原样挪进它的 node_id 名下，用户的时段设置不丢。
+    挂了默认 id（"light"）执行器的节点自动获得一份默认配置；
+    用别的 id 的节点需要在 config.json 里手写一段并填 actuator_id。
+    """
+    lights = cfg.get("auto_light")
+    if not isinstance(lights, dict):
+        lights = {}
+    # 只挪非 dict 的键：新版 Pi 配旧版前端（Worker 晚一步部署、浏览器缓存）时，
+    # 旧前端会把扁平字段铺在新的节点表上一起提交，整表当旧格式会把各节点
+    # 的配置套进 main 名下。
+    flat = {k: lights.pop(k) for k in list(lights) if not isinstance(lights[k], dict)}
+    if flat:
+        lights.setdefault(flat.pop("node_id", "main"), {}).update(flat)
+
+    hm = getattr(state, "hardware_manager", None)
+    actuators = getattr(hm, "actuators", None)
+    if isinstance(actuators, dict):
+        for node_id, acts in actuators.items():
+            if LIGHT_DEFAULTS["actuator_id"] in acts:
+                lights.setdefault(node_id, {})
+
+    for node_cfg in lights.values():
+        if isinstance(node_cfg, dict):
+            for k, v in LIGHT_DEFAULTS.items():
+                node_cfg.setdefault(k, v)
+    cfg["auto_light"] = lights
+
+
+# deepcopy 而非 copy：浅拷贝下 global_config 的各段就是 DEFAULT_CONFIG
 # 里那个 dict，IP 定位回写 lat/lng 会连默认值一起改掉。
 global_config = copy.deepcopy(DEFAULT_CONFIG)
 
@@ -60,6 +103,8 @@ def merge_defaults(cfg):
         elif isinstance(v, dict) and isinstance(cfg[k], dict):
             for subk, subv in v.items():
                 if subk not in cfg[k]: cfg[k][subk] = subv
+
+    _merge_light_defaults(cfg)
 
     # ---- 远程节点设置默认值填充 ----
     if hasattr(state, "hardware_manager") and getattr(state.hardware_manager, "mqtt_nodes", None):

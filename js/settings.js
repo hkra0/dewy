@@ -212,15 +212,21 @@ export async function fetchConfig() {
         renderWateringSafety(data.watering_safety || {});
         
         initDualSlider();
-        document.getElementById('cfg-light-enabled').checked = data.auto_light.enabled;
-        document.getElementById('cfg-light-mode').value = data.auto_light.mode;
-        document.getElementById('cfg-light-on').value = data.auto_light.on_time;
-        document.getElementById('cfg-light-off').value = data.auto_light.off_time;
-        document.getElementById('cfg-light-on-offset').value = data.auto_light.sun_on_offset;
-        document.getElementById('cfg-light-off-offset').value = data.auto_light.sun_off_offset;
-        document.getElementById('cfg-light-lat').value = data.auto_light.lat || "";
-        document.getElementById('cfg-light-lng').value = data.auto_light.lng || "";
-        if (data.effective_light_on && data.effective_light_off) document.getElementById('cfg-light-effective-times').innerText = `` + t('currently_scheduled', { on: data.effective_light_on, off: data.effective_light_off }) + ``;
+        // 补光灯按节点分段（auto_light.<node>），表单只展示当前设备那一段。
+        // 当前设备没有灯时整张卡片是隐藏的（navigation.js 看 caps.light），
+        // 保存时也不会写这一段——见 saveConfig。
+        const light = (data.auto_light || {})[state.currentDevice] || {};
+        document.getElementById('cfg-light-enabled').checked = light.enabled !== false;
+        document.getElementById('cfg-light-mode').value = light.mode || 'fixed';
+        document.getElementById('cfg-light-on').value = light.on_time || '07:30';
+        document.getElementById('cfg-light-off').value = light.off_time || '21:30';
+        document.getElementById('cfg-light-on-offset').value = light.sun_on_offset ?? 0;
+        document.getElementById('cfg-light-off-offset').value = light.sun_off_offset ?? 0;
+        document.getElementById('cfg-light-lat').value = light.lat || "";
+        document.getElementById('cfg-light-lng').value = light.lng || "";
+        const effective = (data.effective_light_times || {})[state.currentDevice];
+        document.getElementById('cfg-light-effective-times').innerText =
+            effective ? t('currently_scheduled', { on: effective.on, off: effective.off }) : '';
 
         // 两个段都可能来自旧版本配置文件，取不到时用后端默认值兜底。
         // 补光在 camera 段而不是 daily_photo 段：它对所有拍摄路径生效。
@@ -327,6 +333,22 @@ export async function saveConfig() {
         nodeSettings[dev] = thisNodeSettings;
     }
 
+    // 只改当前设备那一段，其它节点的灯原样回传
+    const lights = { ...(loadedConfig.auto_light || {}) };
+    if (lights[dev]) {
+        lights[dev] = {
+            ...lights[dev],
+            enabled: document.getElementById('cfg-light-enabled').checked,
+            mode: document.getElementById('cfg-light-mode').value,
+            on_time: document.getElementById('cfg-light-on').value,
+            off_time: document.getElementById('cfg-light-off').value,
+            sun_on_offset: parseInt(document.getElementById('cfg-light-on-offset').value) || 0,
+            sun_off_offset: parseInt(document.getElementById('cfg-light-off-offset').value) || 0,
+            lat: document.getElementById('cfg-light-lat').value,
+            lng: document.getElementById('cfg-light-lng').value
+        };
+    }
+
     const cfg = {
         auto_water: {
             ...(loadedConfig.auto_water || {}),
@@ -340,17 +362,7 @@ export async function saveConfig() {
             start_hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-water-start-hour').value) || 6)),
             end_hour: Math.min(23, Math.max(0, parseInt(document.getElementById('cfg-water-end-hour').value) || 20))
         },
-        auto_light: {
-            ...(loadedConfig.auto_light || {}),
-            enabled: document.getElementById('cfg-light-enabled').checked,
-            mode: document.getElementById('cfg-light-mode').value,
-            on_time: document.getElementById('cfg-light-on').value,
-            off_time: document.getElementById('cfg-light-off').value,
-            sun_on_offset: parseInt(document.getElementById('cfg-light-on-offset').value) || 0,
-            sun_off_offset: parseInt(document.getElementById('cfg-light-off-offset').value) || 0,
-            lat: document.getElementById('cfg-light-lat').value,
-            lng: document.getElementById('cfg-light-lng').value
-        },
+        auto_light: lights,
         camera: {
             ...(loadedConfig.camera || {}),
             fill_light: document.getElementById('cfg-photo-fill-light').checked

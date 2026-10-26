@@ -121,16 +121,23 @@ def on_mqtt_message(client, userdata, msg):
                 maintenance_receive(topic, data)
             return
         
-        # 判断是否为某个继电器的反馈
-        for acts in state.hardware_manager.actuators.values():
-            for actuator in acts.values():
+        # 判断是否为某个继电器的反馈。回报只记到它所属节点的灯上——
+        # 以前全局只有一个 light_status，aqua 插座的回报会覆盖主节点的灯；
+        # 不是灯的继电器（MQTT 水泵之类）的回报也不该被当成灯的状态。
+        for node_id, acts in state.hardware_manager.actuators.items():
+            for act_id, actuator in acts.items():
                 if getattr(actuator, "topic", None) != topic:
                     continue
-                if time.time() > state.ignore_light_feedback_until:
+                from core.logic.light import light_config, light_state
+                cfg = light_config(node_id)
+                if cfg is None or cfg.get("actuator_id", "light") != act_id:
+                    return
+                ls = light_state(node_id)
+                if time.time() > ls["ignore_feedback_until"]:
                     # 回报里用什么字面量表示开/关由驱动按配置解析
                     status = actuator.parse_feedback(data.get("information", ""))
                     if status:
-                        state.light_status = status
+                        ls["status"] = status
                 return
         
         # 判断是否为某个节点的配置状态回报

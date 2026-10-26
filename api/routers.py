@@ -5,6 +5,7 @@ import os
 import re
 import time
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response
@@ -21,6 +22,9 @@ from core.logic import (
     compute_next_boundary,
     set_light,
     fill_light_for_capture,
+    capture_light_node,
+    light_nodes,
+    light_state,
     daily_photo_capture,
     node_capabilities,
     watering_safety_status,
@@ -81,6 +85,10 @@ class EmergencyStopRequest(BaseModel):
     active: bool = True
     node_id: str = "main"
 
+
+class LightRequest(BaseModel):
+    node_id: str = "main"
+
 # 允许发给前端的节点字段。白名单而非黑名单：hardware_config 的节点段里还放着
 # ESP32 的构建参数（wifi_password、mqtt_host…），逐个去黑名单迟早漏一个，
 # 而这个端点只要 viewer key 就能读。
@@ -126,7 +134,8 @@ def get_monitor_data():
     return {
         "timestamp": int(time.time()),
         "nodes": nodes_data,
-        "light_status": state.light_status,
+        # 每个配了灯的节点一项。前端按当前设备取自己那盏。
+        "lights": {n: light_state(n)["status"] for n in light_nodes()},
         "system_health": get_system_stats(),
         "system": {"device": "Raspberry Pi Zero 2 WH", "status": "Healthy"}
     }
@@ -371,10 +380,12 @@ def set_pump_emergency_stop(req: EmergencyStopRequest):
 
 @router.get("/api/config")
 def get_config_endpoint():
-    on_m, off_m = get_effective_light_times()
     res = config.global_config.copy()
-    res["effective_light_on"] = f"{on_m//60:02d}:{on_m%60:02d}"
-    res["effective_light_off"] = f"{off_m//60:02d}:{off_m%60:02d}"
+    effective = {}
+    for node_id in light_nodes():
+        on_m, off_m = get_effective_light_times(node_id)
+        effective[node_id] = {"on": f"{on_m//60:02d}:{on_m%60:02d}", "off": f"{off_m//60:02d}:{off_m%60:02d}"}
+    res["effective_light_times"] = effective
     node_id = res.get("auto_water", {}).get("node_id", "main")
     res["watering_safety"] = watering_safety_status(node_id)
     res["node_config_status"] = config_status()
@@ -407,24 +418,30 @@ async def update_config(req: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/api/light")
-def toggle_manual_light():
+def toggle_manual_light(req: Optional[LightRequest] = None):
+    # 请求体可省略：旧版前端不带 node_id，按 main 处理（与 /api/water 的默认一致）
+    node_id = (req or LightRequest()).node_id
+    if node_id not in light_nodes():
+        raise HTTPException(status_code=404, detail="No light on this node")
     if not state.global_mqtt_client:
         raise HTTPException(status_code=500, detail="MQTT not connected")
-    if state.camera_in_progress:
+    # 只挡正在给相机补光的那盏灯：主节点拍照时切 aqua 的灯不影响曝光
+    if state.camera_in_progress and node_id == capture_light_node():
         raise HTTPException(status_code=409, detail="Camera capture in progress")
-        
-    turn_on = state.light_status != "ON"
+
+    ls = light_state(node_id)
+    turn_on = ls["status"] != "ON"
 
     now = datetime.now()
-    on_time, off_time = get_effective_light_times()
-    state.manual_override = True
-    state.manual_override_until = compute_next_boundary(now, on_time, off_time)
+    on_time, off_time = get_effective_light_times(node_id)
+    ls["manual_override"] = True
+    ls["manual_override_until"] = compute_next_boundary(now, on_time, off_time)
 
-    state.light_status = "ON" if turn_on else "OFF"
-    logger.info("🔧 手动切灯: %s，覆盖至 %s",
-                state.light_status, state.manual_override_until.strftime('%H:%M'))
+    ls["status"] = "ON" if turn_on else "OFF"
+    logger.info("🔧 节点 %s 手动切灯: %s，覆盖至 %s",
+                node_id, ls["status"], ls["manual_override_until"].strftime('%H:%M'))
 
-    success = set_light(turn_on, retain=True)
+    success = set_light(node_id, turn_on, retain=True)
 
     if success:
         return {"status": "success"}

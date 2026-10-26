@@ -28,7 +28,7 @@ _spec.loader.exec_module(real_config)
 def photo_config(camera=None, **overrides):
     """一份可用的配置，字段与 DEFAULT_CONFIG 对齐。"""
     cfg = {
-        "auto_light": {"node_id": "main", "actuator_id": "light"},
+        "auto_light": {"main": {"enabled": True, "actuator_id": "light"}},
         "camera": {"fill_light": True},
         "daily_photo": {"enabled": True, "hour": 12, "disk_limit_free_gb": 20},
     }
@@ -45,9 +45,11 @@ class FillLightForCaptureTest(unittest.TestCase):
         config.global_config = photo_config()
 
         self.hm = MagicMock()
+        self.hm.camera_node_id.return_value = "main"
         state.hardware_manager = self.hm
         state.global_mqtt_client = MagicMock()
-        state.light_status = "OFF"
+        state.lights = {"main": {"status": "OFF", "manual_override": False,
+                                 "manual_override_until": None, "ignore_feedback_until": 0}}
 
         # 真的 sleep 0.6 秒只会拖慢测试，补光时序不是这里要验证的东西
         patcher = patch.object(light.time, "sleep")
@@ -79,7 +81,7 @@ class FillLightForCaptureTest(unittest.TestCase):
 
     def test_already_on_light_is_left_alone(self):
         # 灯本来就亮着，再发一个"亮 4 秒"的脉冲反而会在 4 秒后把它关掉
-        state.light_status = "ON"
+        state.lights["main"]["status"] = "ON"
         self.assertFalse(light.fill_light_for_capture(4))
         self.hm.trigger_actuator.assert_not_called()
 
@@ -92,17 +94,31 @@ class FillLightForCaptureTest(unittest.TestCase):
         # 灯会自己灭，期间 ESP32 回报的 ON 不是用户的意图
         with patch.object(light.time, "time", return_value=1000.0):
             light.fill_light_for_capture(4)
-        self.assertGreaterEqual(state.ignore_light_feedback_until, 1004.0)
+        self.assertGreaterEqual(state.lights["main"]["ignore_feedback_until"], 1004.0)
 
     def test_hardware_failure_does_not_raise(self):
         # 补光失败只是照片偏暗，不该让拍照整个失败
         self.hm.trigger_actuator.side_effect = RuntimeError("mqtt down")
         self.assertFalse(light.fill_light_for_capture(4))
 
-    def test_uses_the_configured_light_actuator(self):
-        config.global_config["auto_light"] = {"node_id": "sub1", "actuator_id": "grow_lamp"}
+    def test_uses_the_light_on_the_camera_node(self):
+        # 点的是相机所在节点的灯，执行器 id 取该节点的配置
+        self.hm.camera_node_id.return_value = "sub1"
+        config.global_config["auto_light"]["sub1"] = {"actuator_id": "grow_lamp"}
         light.fill_light_for_capture(2)
         self.assertEqual(self.hm.trigger_actuator.call_args.args[:2], ("sub1", "grow_lamp"))
+
+    def test_another_nodes_light_is_never_used(self):
+        # 相机节点没灯时宁可不补光，也不能去点别的植物（鱼缸）上的灯
+        self.hm.camera_node_id.return_value = "sub1"
+        self.assertFalse(light.fill_light_for_capture(2))
+        self.hm.trigger_actuator.assert_not_called()
+
+    def test_default_camera_lights_main(self):
+        # 没声明相机时用的是树莓派自己的默认相机
+        self.hm.camera_node_id.return_value = None
+        light.fill_light_for_capture(2)
+        self.assertEqual(self.hm.trigger_actuator.call_args.args[:2], ("main", "light"))
 
 
 class MergeDefaultsTest(unittest.TestCase):
@@ -169,6 +185,17 @@ class NodeCapabilitiesTest(unittest.TestCase):
         self.assertTrue(self.caps()["pump"])
         config.global_config["auto_water"]["actuator_id"] = "pump_b"
         self.assertFalse(self.caps()["pump"])
+        self.assertTrue(self.caps()["light"])
+        config.global_config["auto_light"]["main"]["actuator_id"] = "grow_lamp"
+        self.assertFalse(self.caps()["light"])
+
+    def test_light_is_per_node(self):
+        # aqua 挂了灯不代表 main 有灯，反之亦然
+        self.hm.actuators["aqua"] = {"light": object()}
+        config.global_config["auto_light"]["aqua"] = {"actuator_id": "light"}
+        self.assertTrue(capabilities.node_capabilities("aqua")["light"])
+        del config.global_config["auto_light"]["main"]
+        self.assertFalse(self.caps()["light"])
 
     def test_daily_photo_needs_both_a_camera_and_the_switch(self):
         self.assertTrue(self.caps()["daily_photo"])

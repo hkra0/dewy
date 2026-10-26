@@ -11,6 +11,7 @@
 
 import core.config as config
 import core.state as state
+from core.logic.light import light_nodes
 
 
 def node_capabilities(node_id):
@@ -36,7 +37,7 @@ def node_capabilities(node_id):
         "camera": has_camera,
         "daily_photo": has_camera and config.global_config["daily_photo"].get("enabled", True),
         "pump": config.global_config["auto_water"].get("actuator_id", "pump") in actuators,
-        "light": config.global_config["auto_light"].get("actuator_id", "light") in actuators,
+        "light": node_id in light_nodes(),
         "soil_calibration": bool(hm.calibratable_sensors(node_id)),
         "node_settings": has_node_settings,
         "maintenance": bool(hm.mqtt_nodes.get(node_id, {}).get("config_topic")),
