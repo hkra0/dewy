@@ -5,6 +5,7 @@ import { apiGet } from './api.js';
 import { ensureChart } from './cdn.js';
 import { loadPhotoTimeline } from './timeline.js';
 import { metricLabel, metricUnit, metricColor } from './metrics.js';
+import { fmtNum } from './ui.js';
 
 let myChart = null;
 const historyCache = {};
@@ -359,7 +360,7 @@ export async function renderHistoryUI(data, type, animate = false) {
         if (context.dataset.isTemp && context.dataset.tempDist) {
             const dist = context.dataset.tempDist[context.dataIndex];
             if (dist && dist.min !== undefined && dist.max !== undefined) {
-                const val = context.parsed.y !== null ? context.parsed.y : '--';
+                const val = context.parsed.y !== null ? fmtNum(context.parsed.y) : '--';
                 return [
                     `${context.dataset.label}: ${val}℃`,
                     `  ${t('temp_core')}: ${dist.p25} ~ ${dist.p75}℃`,
@@ -372,7 +373,8 @@ export async function renderHistoryUI(data, type, animate = false) {
             label += ': ';
         }
         if (context.parsed.y !== null) {
-            label += context.parsed.y;
+            // 额外指标（水温等）在库里没有取整，统一到一位小数
+            label += fmtNum(context.parsed.y);
         }
         return label;
     };

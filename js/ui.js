@@ -18,6 +18,16 @@ export function initKeyboardActivation() {
     });
 }
 
+/** 界面上的数值统一走这里：默认最多一位小数，不补尾随 0。
+ *  本地传感器在服务端已取整，ESP32 节点上报的是原始浮点（18.9375），
+ *  历史图表里的额外指标也没取整——各处自己拼字符串，精度就各不相同。
+ *  非数值原样返回。 */
+export function fmtNum(v, digits = 1) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return v;
+    const f = 10 ** digits;
+    return String(Math.round(v * f) / f);
+}
+
 /** 拼进 innerHTML 的文本必须先过这里。
  *
  *  额外指标的标签来自字段名，而字段名可能来自 MQTT 节点上报的 JSON——

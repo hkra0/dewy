@@ -129,7 +129,14 @@ def get_monitor_data():
         
     for node_id, info in state.mqtt_latest_data.items():
         from core.mqtt_handler import node_snapshot
-        nodes_data[node_id] = node_snapshot(info)
+        snapshot = node_snapshot(info)
+        # 积温模式下前端要把 feeding_score 换算成百分比进度，阈值在节点设置里
+        # （要浇水密钥才能读 /api/config），只有 viewer key 的访客也该看得到进度。
+        if "feeding_score" in snapshot:
+            threshold = config.global_config.get("node_settings", {}).get(node_id, {}).get("feed_threshold")
+            if threshold:
+                snapshot["feeding_threshold"] = threshold
+        nodes_data[node_id] = snapshot
 
     return {
         "timestamp": int(time.time()),

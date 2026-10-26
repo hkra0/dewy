@@ -9,7 +9,7 @@ import { tf } from './i18n.js';
 // 已有专属界面的字段，不进"其它指标"区：
 // 前四个是环境卡片，后两个在系统页的电源状态里。
 export const BUILT_IN_FIELDS = new Set([
-    'data_version', 'water_temp_age', 'feeding_score', 'next_prompt_date', 'received_at', 'skipped',
+    'data_version', 'water_temp_age', 'feeding_score', 'feeding_threshold', 'next_prompt_date', 'received_at', 'skipped',
     'water_temp', 'temperature', 'humidity', 'soil_moisture', 'soil_adc_raw', 'pressure', 'voltage', 'current', 'fed', 'fed_time',
 ]);
 

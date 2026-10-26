@@ -1,6 +1,6 @@
 // 环境视图：动态指标卡片、实时数据、浇水与切灯。
 import { t } from './i18n.js';
-import { showToast, escapeHtml } from './ui.js';
+import { showToast, escapeHtml, fmtNum } from './ui.js';
 import { state, getViewerKey, getWaterKey, nodeCaps } from './state.js';
 import { apiGet, apiWaterPost } from './api.js';
 import { extraMetricEntries, metricLabel, metricUnit, metricColor } from './metrics.js';
@@ -12,9 +12,27 @@ let lightToggleInProgress = false;
 // 最近一帧的节点读数，供 toggleSoilView 就地翻转卡片而无需重新拉取。
 let _lastNodeData = null;
 
-/** 数值格式化：null/undefined -> "--"，否则拼上单位。 */
+/** 数值格式化：null/undefined -> "--"，数值最多一位小数（fmtNum），再拼上单位。 */
 function formatVal(v, unit) {
-    return (v !== undefined && v !== null) ? `${v}${unit ? ' ' + unit : ''}` : '--';
+    if (v === undefined || v === null) return '--';
+    return `${fmtNum(v)}${unit ? ' ' + unit : ''}`;
+}
+
+// 水温样本在这个秒数以内都算新鲜（与固件的 MAX_SAMPLE_GAP 15s 一致），
+// 不必显示"样本年龄"——正常时它总是一两秒，只是噪音。
+const WATER_SAMPLE_FRESH_S = 15;
+
+/** fed_time（"YYYY-MM-DD HH:MM"，节点本地时间）→ "今天 07:54" / "昨天 07:54" / "3 天前"。
+ *  积温模式下两次喂食可能隔好几天，"隔了多久"比具体日期更有用。 */
+function fedWhen(text) {
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(text || '');
+    if (!m) return text || '';
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const days = Math.round((today - new Date(+m[1], +m[2] - 1, +m[3])) / 86400000);
+    if (days <= 0) return t('fed_when_today', { time: m[4] });
+    if (days === 1) return t('fed_when_yesterday', { time: m[4] });
+    return t('fed_when_days', { days });
 }
 
 // 手动切灯后的乐观状态。存在的理由只有一个：切灯指令走 MQTT，
@@ -61,7 +79,7 @@ function waterStatus(data) {
     const parts = [];
     if (data.stale) parts.push(t('feeding_stale'));
     if (data.water_temp_valid === false) parts.push(t('feeding_probe_fault'));
-    else if (data.water_temp_age > 0) parts.push(t('sample_age', { seconds: data.water_temp_age }));
+    else if (data.water_temp_age > WATER_SAMPLE_FRESH_S) parts.push(t('sample_age', { seconds: data.water_temp_age }));
     if (data.time_valid === false) parts.push(t('feeding_time_pending'));
     for (const alarm of data.alarms || []) {
         let text = t('alarm_' + alarm.kind);
@@ -88,7 +106,10 @@ export function renderDynamicCards(nodeData, globalData) {
 
     // 1. 水温
     if (nodeData.water_temp !== undefined) {
-        html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('water_temp'))}</div><div class="card-value" style="color: var(--metric-water-temp);">${formatVal(nodeData.water_temp, '℃')}</div><div class="card-subtitle">${waterStatus(nodeData)}</div></div>`;
+        // 只有异常（离线、探头故障、报警…）才有副标题，正常时与其它卡片一样只有数值
+        const status = waterStatus(nodeData);
+        const subtitle = status ? `<div class="card-subtitle">${status}</div>` : '';
+        html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('water_temp'))}</div><div class="card-value" style="color: var(--metric-water-temp);">${formatVal(nodeData.water_temp, '℃')}</div>${subtitle}</div>`;
     }
 
     // 2. 气温
@@ -137,13 +158,25 @@ export function renderDynamicCards(nodeData, globalData) {
     }
 
     // 7. 喂食状态
+    // 喂食卡片同时服务每日模式与积温模式，所以主值只回答"现在要不要喂"
+    // （已喂食 / 该喂食了 / 暂不用喂 / 暂停原因），不再带"今日"——积温模式
+    // 下一次喂食可能隔好几天。副标题一行：上次喂食距今多久；积温模式且还没
+    // 喂的时候再加百分比进度（feeding_score 只在积温模式下上报，阈值由服务端
+    // 从节点设置附上，缺省按固件默认 100）。
     if (nodeData.feeding_state) {
         const status = nodeData.stale ? 'stale' : nodeData.feeding_state;
-        const score = Number.isFinite(nodeData.feeding_score) ? `<div class="card-subtitle">${t('feeding_progress')}: ${nodeData.feeding_score.toFixed(1)}</div>` : '';
-        const when = nodeData.fed_time ? `<div class="card-subtitle">${t('last_fed')}: ${escapeHtml(nodeData.fed_time)}</div>` : '';
-        const nextDate = String(nodeData.next_prompt_date || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
-        const next = nextDate ? `<div class="card-subtitle">${t('next_prompt')}: ${escapeHtml(nextDate)}</div>` : '';
-        html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('fed'))}</div><div class="card-value" style="color:var(--text-muted)">${escapeHtml(t('feeding_' + status))}</div>${score}${when}${next}</div>`;
+        const parts = [];
+        if (nodeData.fed_time) {
+            const when = fedWhen(nodeData.fed_time);
+            parts.push(status === 'fed' ? when : t('last_fed', { when }));
+        }
+        if (status !== 'fed' && status !== 'skipped' && Number.isFinite(nodeData.feeding_score)) {
+            const threshold = nodeData.feeding_threshold > 0 ? nodeData.feeding_threshold : 100;
+            parts.push(t('feeding_progress', { pct: Math.min(100, Math.round(nodeData.feeding_score / threshold * 100)) }));
+        }
+        const color = status === 'fed' ? 'var(--accent)' : (status === 'due' ? 'var(--danger)' : 'var(--text-muted)');
+        const subtitle = parts.length ? `<div class="card-subtitle">${escapeHtml(parts.join(' · '))}</div>` : '';
+        html += `<div class="card"><div class="card-title">${escapeHtml(metricLabel('fed'))}</div><div class="card-value" style="color: ${color};">${escapeHtml(t('feeding_' + status))}</div>${subtitle}</div>`;
     } else if (nodeData.fed !== undefined) {
         const isFed = nodeData.fed >= 1;
         const isSkipped = nodeData.skipped >= 1;
@@ -232,13 +265,14 @@ export async function fetchSensorData() {
 
         // System stats
         if (data.system_health) {
-            document.getElementById('sys-temp').innerText = data.system_health.cpu_temperature + ' ℃';
-            document.getElementById('sys-ram').innerText = data.system_health.ram_usage_percent + ' %';
-            document.getElementById('sys-disk').innerText = data.system_health.disk_usage_percent + ' %';
+            document.getElementById('sys-temp').innerText = formatVal(data.system_health.cpu_temperature, '℃');
+            document.getElementById('sys-ram').innerText = formatVal(data.system_health.ram_usage_percent, '%');
+            document.getElementById('sys-disk').innerText = formatVal(data.system_health.disk_usage_percent, '%');
         }
         if (nodeData && nodeData.voltage != null && nodeData.current != null) {
-            const cVal = nodeData.current;
-            document.getElementById('power-status').innerText = nodeData.voltage + ' V / ' + (cVal > 0 ? '+' + cVal : cVal) + ' mA';
+            // 电压是 4.0x V 量级，一位小数会把电量变化抹平，保留两位；电流按整数 mA
+            const cVal = Math.round(nodeData.current);
+            document.getElementById('power-status').innerText = fmtNum(nodeData.voltage, 2) + ' V / ' + (cVal > 0 ? '+' + cVal : cVal) + ' mA';
         } else {
             document.getElementById('power-status').innerText = '-- V / -- mA';
         }
