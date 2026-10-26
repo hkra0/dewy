@@ -49,6 +49,11 @@ const context = vm.createContext({
 });
 vm.runInContext(fs.readFileSync(new URL('../js/maintenance.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?$/gm, '').replace(/\bexport /g, ''), context);
+// 默认折叠：不发任何维护请求
+vm.runInContext('refreshMaintenance()', context);
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(resolveOld, undefined);
+element('cfg-maintenance-card').open = true;   // 下面测的是展开后的行为
 vm.runInContext('refreshMaintenance()', context);
 context.state.currentDevice = 'other';
 vm.runInContext('refreshMaintenance()', context);

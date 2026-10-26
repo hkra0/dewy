@@ -491,6 +491,36 @@ body {
     min-width: 0;
 }
 
+/* 整张卡片可折叠（固件更新）：summary 就是标题行，右侧一个箭头指示展开状态 */
+.form-collapsible > summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    margin-bottom: 0;
+}
+
+.form-collapsible > summary::-webkit-details-marker {
+    display: none;
+}
+
+.form-collapsible > summary::after {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid var(--text-muted);
+    border-bottom: 2px solid var(--text-muted);
+    transform: rotate(45deg);
+    transition: transform 0.2s;
+}
+
+.form-collapsible[open] > summary {
+    margin-bottom: 15px;
+}
+
+.form-collapsible[open] > summary::after {
+    transform: rotate(-135deg);
+}
+
 /* 节点设置里不常调的参数，默认折叠 */
 .form-advanced summary {
     cursor: pointer;

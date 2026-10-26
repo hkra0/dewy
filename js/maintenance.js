@@ -35,6 +35,8 @@ export function refreshMaintenance() {
     if (!card) return;
     const visible = state.currentTab === 'settings' && nodeCaps().maintenance && !!getWaterKey();
     card.classList.toggle('hidden', !visible);
+    // 折叠时不轮询：状态与串口日志每 2 秒一次请求，没人看的时候白白占着树莓派与 MQTT。
+    // 展开/折叠都会经 ontoggle 回到这里，折叠时 generation 自增即停掉旧的轮询链。
     document.getElementById('maintenance-log').textContent = '';
     document.getElementById('maintenance-file').value = '';
     document.getElementById('maintenance-upload').disabled = true;
@@ -42,10 +44,12 @@ export function refreshMaintenance() {
     document.getElementById('maintenance-progress').value = 0;
     document.getElementById('maintenance-feedback').textContent = '';
     document.getElementById('maintenance-feedback').classList.toggle('hidden', true);
-    if (visible) poll(gen, state.currentDevice);
+    if (visible && card.open) poll(gen, state.currentDevice);
 }
 
 async function poll(gen, node) {
+    // 定时器排好之后卡片才被折叠（或切了设备）：不要再多发这一次
+    if (gen !== generation) return;
     try {
         const res = await apiWater(`/api/maintenance/${encodeURIComponent(node)}?after=${cursor}`);
         if (gen !== generation) return;

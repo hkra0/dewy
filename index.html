@@ -560,8 +560,10 @@
                      （settings.js renderNodeSettings），由 navigation.js 依据 caps.node_settings 显隐 -->
                 <div class="node-settings-cards hidden" id="cfg-node-settings-card"></div>
 
-                <div class="card full-width form-card hidden" id="cfg-maintenance-card">
-                    <div class="form-card-head" data-i18n="maint_title">Remote Maintenance</div>
+                <!-- 固件更新不常用，默认折叠；展开时才开始轮询状态与串口日志（见 maintenance.js） -->
+                <details class="card full-width form-card form-collapsible hidden" id="cfg-maintenance-card"
+                    ontoggle="refreshMaintenance()">
+                    <summary class="form-card-head"><span data-i18n="maint_title">Remote Maintenance</span></summary>
                     <div class="form-body">
                         <p class="form-desc" data-i18n="maint_desc">Upload application firmware.bin for this node. Initial installation requires USB.</p>
                         <label for="maintenance-file" data-i18n="maint_file">Firmware (.bin)</label>
@@ -573,7 +575,7 @@
                         <h3 data-i18n="maint_logs">Serial output</h3>
                         <pre id="maintenance-log" tabindex="0" data-i18n-aria="maint_logs" aria-label="Serial output"></pre>
                     </div>
-                </div>
+                </details>
                 <div class="card full-width form-card--flush">
                     <button class="action-btn" id="save-cfg-btn" style="margin-top: 0;" onclick="saveConfigAndRefresh()"
                         data-i18n="save_cfg">Save Configuration</button>
