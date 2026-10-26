@@ -88,4 +88,25 @@ vm.runInContext('renderDynamicCards(fixture, {})', context);
 context.fixture = { feeding_state: 'due', fed: 0, fed_time: `${day(1)} 08:10` };
 vm.runInContext('renderDynamicCards(fixture, {})', context);
 assert.match(element('dynamic-cards').innerHTML, /该喂食了[\s\S]*上次 昨天 08:10/);
+// 节点设置按 schema 元数据分组：每组一张卡片、同 row 排一行、条件项带 show_if、高级项折叠
+{
+    const acc = { feeding_mode: 'temperature_accumulation' };
+    const html = vm.runInContext('renderNodeSettings', context)({
+        temp_alarm_low: { type: 'number', unit: '℃', group: 'alarm', row: 'alarm_range' },
+        temp_alarm_high: { type: 'number', unit: '℃', group: 'alarm', row: 'alarm_range' },
+        feeding_mode: { type: 'select', options: ['daily', 'temperature_accumulation'], group: 'feeding' },
+        feed_threshold: { type: 'number', group: 'feeding', show_if: acc },
+        feed_rate_1: { type: 'number', unit: '/h', group: 'feeding', show_if: acc, advanced: true },
+    }, { temp_alarm_low: 10, temp_alarm_high: 30, feeding_mode: 'daily' }, 'tank 设置');
+    assert.equal((html.match(/class="card full-width form-card"/g) || []).length, 2);
+    assert.match(html, /水温报警[\s\S]*报警范围[\s\S]*value="10"[\s\S]*~[\s\S]*value="30"/);
+    assert.match(html, /喂食提醒[\s\S]*每天在提醒时段内提醒一次/);
+    assert.match(html, /data-show-if="\{&quot;feeding_mode&quot;:&quot;temperature_accumulation&quot;\}"/);
+    assert.match(html, /<details class="form-advanced"><summary>高级<\/summary>[\s\S]*cfg-ns-feed_rate_1/);
+    assert.equal((html.match(/id="node-config-status"/g) || []).length, 1);
+    // 没有 group 的旧 schema：一张卡片，标题用节点名
+    const legacy = vm.runInContext('renderNodeSettings', context)(
+        { feed_reset_hour: { type: 'number', label: 'cfg_feed_reset_hour' } }, {}, 'tank 设置');
+    assert.match(legacy, /tank 设置[\s\S]*每日喂食重置时刻/);
+}
 console.log('PASS: boolean/select serialization, retained settings, bilingual status, metadata filtering, legacy card');

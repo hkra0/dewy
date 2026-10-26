@@ -161,15 +161,13 @@ topic = "YOUR_AQUA_LIGHT_TOPIC"
 # Declare parameters that can be tuned from the Web UI Settings tab.
 # Dewy will render the form, persist values in data/config.json, and push
 # JSON payloads to <config_topic>/set whenever settings are saved.
-
-[nodes.aqua.settings_schema.temp_alarm_high]
-type = "number"
-label = "cfg_temp_alarm_high"
-default = 32
-min = -10
-max = 60
-step = 0.5
-unit = "℃"
+#
+# Optional presentation keys (the backend ignores them; all omitted = one row
+# per field in a single card):
+#   group    fields with the same group share a card titled by i18n cfg_group_<group>
+#   row      fields with the same row share one line (e.g. low ~ high), titled by cfg_row_<row>
+#   show_if  { field = value } — show only while the form matches (e.g. a mode's parameters)
+#   advanced fold the field into the card's collapsed "Advanced" section
 
 [nodes.aqua.settings_schema.temp_alarm_low]
 type = "number"
@@ -179,112 +177,25 @@ min = -20
 max = 40
 step = 0.5
 unit = "℃"
+group = "alarm"
+row = "alarm_range"
+
+[nodes.aqua.settings_schema.temp_alarm_high]
+type = "number"
+label = "cfg_temp_alarm_high"
+default = 32
+min = -10
+max = 60
+step = 0.5
+unit = "℃"
+group = "alarm"
+row = "alarm_range"
 
 [nodes.aqua.settings_schema.low_alarm_enabled]
 type = "boolean"
 label = "cfg_low_alarm_enabled"
 default = true
-
-[nodes.aqua.settings_schema.feeding_mode]
-type = "select"
-label = "cfg_feeding_mode"
-default = "daily"
-options = ["daily", "temperature_accumulation"]
-
-[nodes.aqua.settings_schema.feed_start_hour]
-type = "number"
-label = "cfg_feed_start_hour"
-default = 7
-min = 0
-max = 23
-step = 1
-unit = ":00"
-
-[nodes.aqua.settings_schema.feed_end_hour]
-type = "number"
-label = "cfg_feed_end_hour"
-default = 21
-min = 1
-max = 24
-step = 1
-unit = ":00"
-
-[nodes.aqua.settings_schema.feed_min_temp]
-type = "number"
-label = "cfg_feed_min_temp"
-default = 10
-min = -10
-max = 12
-step = 0.5
-unit = "℃"
-
-[nodes.aqua.settings_schema.feed_max_temp]
-type = "number"
-label = "cfg_feed_max_temp"
-default = 31.5
-min = 20.5
-max = 45
-step = 0.5
-unit = "℃"
-
-[nodes.aqua.settings_schema.feed_rate_1]
-type = "number"
-label = "cfg_feed_rate_1"
-default = 1.5
-min = 0
-max = 20
-step = 0.05
-unit = "/h"
-
-[nodes.aqua.settings_schema.feed_rate_2]
-type = "number"
-label = "cfg_feed_rate_2"
-default = 2.25
-min = 0
-max = 20
-step = 0.05
-unit = "/h"
-
-[nodes.aqua.settings_schema.feed_rate_3]
-type = "number"
-label = "cfg_feed_rate_3"
-default = 4.6
-min = 0
-max = 20
-step = 0.05
-unit = "/h"
-
-[nodes.aqua.settings_schema.feed_rate_4]
-type = "number"
-label = "cfg_feed_rate_4"
-default = 5
-min = 0
-max = 20
-step = 0.05
-unit = "/h"
-
-[nodes.aqua.settings_schema.feed_threshold]
-type = "number"
-label = "cfg_feed_threshold"
-default = 100
-min = 1
-max = 1000
-step = 1
-unit = ""
-
-[nodes.aqua.settings_schema.feed_score_cap]
-type = "number"
-label = "cfg_feed_score_cap"
-default = 120
-min = 1
-max = 1200
-step = 1
-unit = ""
-
-[nodes.aqua.settings_schema.skip_cycle]
-type = "boolean"
-label = "cfg_skip_cycle"
-default = false
+group = "alarm"
 
 [nodes.aqua.settings_schema.temp_change_threshold]
 type = "number"
@@ -294,6 +205,8 @@ min = 0.1
 max = 20
 step = 0.1
 unit = "℃"
+group = "alarm"
+row = "temp_change"
 
 [nodes.aqua.settings_schema.temp_change_minutes]
 type = "number"
@@ -303,3 +216,134 @@ min = 5
 max = 60
 step = 1
 unit = "min"
+group = "alarm"
+row = "temp_change"
+
+[nodes.aqua.settings_schema.feeding_mode]
+type = "select"
+label = "cfg_feeding_mode"
+default = "daily"
+options = ["daily", "temperature_accumulation"]
+group = "feeding"
+
+[nodes.aqua.settings_schema.feed_start_hour]
+type = "number"
+label = "cfg_feed_start_hour"
+default = 7
+min = 0
+max = 23
+step = 1
+unit = ":00"
+group = "feeding"
+row = "feed_hours"
+
+[nodes.aqua.settings_schema.feed_end_hour]
+type = "number"
+label = "cfg_feed_end_hour"
+default = 21
+min = 1
+max = 24
+step = 1
+unit = ":00"
+group = "feeding"
+row = "feed_hours"
+
+[nodes.aqua.settings_schema.feed_min_temp]
+type = "number"
+label = "cfg_feed_min_temp"
+default = 10
+min = -10
+max = 12
+step = 0.5
+unit = "℃"
+group = "feeding"
+row = "feed_temp"
+
+[nodes.aqua.settings_schema.feed_max_temp]
+type = "number"
+label = "cfg_feed_max_temp"
+default = 31.5
+min = 20.5
+max = 45
+step = 0.5
+unit = "℃"
+group = "feeding"
+row = "feed_temp"
+
+[nodes.aqua.settings_schema.feed_threshold]
+type = "number"
+label = "cfg_feed_threshold"
+default = 100
+min = 1
+max = 1000
+step = 1
+unit = ""
+group = "feeding"
+show_if = { feeding_mode = "temperature_accumulation" }
+
+[nodes.aqua.settings_schema.skip_cycle]
+type = "boolean"
+label = "cfg_skip_cycle"
+default = false
+group = "feeding"
+show_if = { feeding_mode = "temperature_accumulation" }
+
+[nodes.aqua.settings_schema.feed_rate_1]
+type = "number"
+label = "cfg_feed_rate_1"
+default = 1.5
+min = 0
+max = 20
+step = 0.05
+unit = "/h"
+group = "feeding"
+show_if = { feeding_mode = "temperature_accumulation" }
+advanced = true
+
+[nodes.aqua.settings_schema.feed_rate_2]
+type = "number"
+label = "cfg_feed_rate_2"
+default = 2.25
+min = 0
+max = 20
+step = 0.05
+unit = "/h"
+group = "feeding"
+show_if = { feeding_mode = "temperature_accumulation" }
+advanced = true
+
+[nodes.aqua.settings_schema.feed_rate_3]
+type = "number"
+label = "cfg_feed_rate_3"
+default = 4.6
+min = 0
+max = 20
+step = 0.05
+unit = "/h"
+group = "feeding"
+show_if = { feeding_mode = "temperature_accumulation" }
+advanced = true
+
+[nodes.aqua.settings_schema.feed_rate_4]
+type = "number"
+label = "cfg_feed_rate_4"
+default = 5
+min = 0
+max = 20
+step = 0.05
+unit = "/h"
+group = "feeding"
+show_if = { feeding_mode = "temperature_accumulation" }
+advanced = true
+
+[nodes.aqua.settings_schema.feed_score_cap]
+type = "number"
+label = "cfg_feed_score_cap"
+default = 120
+min = 1
+max = 1200
+step = 1
+unit = ""
+group = "feeding"
+show_if = { feeding_mode = "temperature_accumulation" }
+advanced = true

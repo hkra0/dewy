@@ -472,6 +472,37 @@ body {
     line-height: 1.5;
 }
 
+/* 节点远程设置的卡片容器：与 .settings-content 一样不参与布局，
+   里面动态生成的 .full-width 卡片仍是设置页 grid 的直接子项 */
+.node-settings-cards {
+    display: contents;
+}
+
+/* 标签不换行，让控件去收缩：下拉框很宽时"提醒模式"会被挤成两行 */
+.ns-item .form-row {
+    gap: 12px;
+}
+
+.ns-item .form-row > label {
+    flex-shrink: 0;
+}
+
+.ns-item .form-select {
+    min-width: 0;
+}
+
+/* 节点设置里不常调的参数，默认折叠 */
+.form-advanced summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+.form-advanced[open] summary {
+    margin-bottom: 5px;
+}
+
 /* 保存按钮所在的卡片不需要内边距，按钮自己铺满 */
 .form-card--flush {
     padding: 0;

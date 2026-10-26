@@ -474,6 +474,14 @@ ESP32 的报警阈值与喂食时间不需要重新编译固件，可以在前�
 1. **Schema 声明在 hardware_config.toml**：在 `[nodes.<node_id>.settings_schema]` 下声明参数名、类型、取值范围、步长与默认值。后端不解析业务含义，仅作为元数据透传给前端。
 2. **当前值存于 data/config.json**：树莓派将各节点的当前配置保存在 `node_settings.<node_id>` 字段。
 3. **前端动态生成表单**：前端读取 `/api/nodes` 返回的 schema，在设置页自动生成对应输入控件，保存时打包提交。
+   schema 可选四个**纯展示**元数据（后端不读）：`group`（同组一张卡片，标题 `cfg_group_<group>`）、
+   `row`（同行排列，如下限~上限，行标题 `cfg_row_<row>`、说明 `cfg_row_<row>_hint`）、
+   `show_if = { 字段 = 值 }`（条件满足才显示，如积温参数只在积温模式出现）、`advanced`（折叠进"高级"）。
+   都不写时退化成一张卡片一项一行。渲染在 `settings.js` 的 `renderNodeSettings`；**不要为某个节点
+   在前端写专属表单**——分组规则跟着 schema 走，换一个 ESP32 节点只需改 hardware_config。
+   被 `show_if` 藏起来的输入框仍在 DOM 里，保存时原样回传，不会被清掉。
+   树莓派上的 `hardware_config.toml` 不随 git 部署，固件新增设置后要手动同步 schema 段，
+   否则推送缺字段，固件的跨字段校验会整包拒收（回报 `config_error: inconsistent_fields`）。
 4. **MQTT 自动推送与 NVS 存储**：保存设置或 MQTT 重连时，后端向 `device/<node_id>/config/set` 发布 JSON 载荷。ESP32 收到后立即更新内存并写入板载 NVS，同时向 `device/<node_id>/config/state` 发送确认。
 
 ### WS2812B 低亮度色彩保持与平滑过渡

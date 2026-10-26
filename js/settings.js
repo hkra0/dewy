@@ -1,4 +1,4 @@
-import { t } from './i18n.js';
+import { t, tf } from './i18n.js';
 import { showToast, escapeHtml } from './ui.js';
 import { getWaterKey, state } from './state.js';
 import { apiWater, apiWaterPost } from './api.js';
@@ -243,45 +243,21 @@ export async function fetchConfig() {
         document.getElementById('cfg-calib-window-days').value = calib.window_days ?? 30;
         document.getElementById('cfg-calib-max-drift').value = Math.round((calib.max_drift_ratio ?? 0.15) * 100);
 
-        // 远程节点动态设置
+        // 远程节点动态设置：按 schema 元数据分组成卡片，见 renderNodeSettings
         const dev = state.currentDevice;
         const nodeInfo = state.availableNodes[dev] || {};
         const schema = nodeInfo.settings_schema;
-        const nodeCard = document.getElementById('cfg-node-settings-card');
-        const nodeTitle = document.getElementById('cfg-node-settings-title');
-        const nodeGroup = document.getElementById('cfg-node-settings-group');
-        if (nodeCard && nodeGroup) {
+        const nodeCards = document.getElementById('cfg-node-settings-card');
+        if (nodeCards) {
             if (schema && Object.keys(schema).length > 0) {
-                if (nodeTitle) {
-                    nodeTitle.innerText = `${nodeInfo.description || dev} ${t('settings')}`;
-                }
-                let html = '';
                 const currentVals = (data.node_settings && data.node_settings[dev]) || {};
-                for (const [key, meta] of Object.entries(schema)) {
-                    const label = t(meta.label || key);
-                    const val = currentVals[key] ?? meta.default ?? '';
-                    const min = meta.min !== undefined ? `min="${meta.min}"` : '';
-                    const max = meta.max !== undefined ? `max="${meta.max}"` : '';
-                    const step = meta.step !== undefined ? `step="${meta.step}"` : '';
-                    const unit = meta.unit ? `<span class="unit-label" style="margin-left:6px; opacity:0.8;">${escapeHtml(meta.unit)}</span>` : '';
-                    const id = `cfg-ns-${escapeHtml(key)}`;
-                    let control;
-                    if (meta.type === 'boolean') {
-                        control = `<input type="checkbox" id="${id}" ${val === true ? 'checked' : ''}>`;
-                    } else if (meta.type === 'select') {
-                        control = `<select id="${id}" class="form-input">${(meta.options || []).map(option =>
-                            `<option value="${escapeHtml(option)}" ${option === val ? 'selected' : ''}>${escapeHtml(t('option_' + option))}</option>`).join('')}</select>`;
-                    } else {
-                        control = `<input type="${meta.type === 'number' ? 'number' : 'text'}" id="${id}"
-                            class="form-input form-input--sm" value="${escapeHtml(String(val))}" ${min} ${max} ${step}>`;
-                    }
-                    html += `<div class="form-row"><label for="${id}">${escapeHtml(label)}</label><div>${control}${unit}</div></div>`;
-                }
-                html += '<p id="node-config-status" class="card-subtitle" aria-live="polite"></p>';
-                nodeGroup.innerHTML = html;
+                nodeCards.innerHTML = renderNodeSettings(schema, currentVals, `${nodeInfo.description || dev} ${t('settings')}`);
+                // 赋值而不是 addEventListener：fetchConfig 每次切设备都会跑，不能叠监听器
+                nodeCards.onchange = () => applyNodeSettingsVisibility(nodeCards);
+                applyNodeSettingsVisibility(nodeCards);
                 renderNodeConfigStatus(data.node_config_status);
             } else {
-                nodeGroup.innerHTML = '';
+                nodeCards.innerHTML = '';
             }
         }
 
@@ -298,6 +274,105 @@ export async function fetchConfig() {
         // 不该让用户永远停在转圈上。
         showSettingsLoading(false);
     }
+}
+
+// —— 节点远程设置的渲染 ——
+//
+// 字段由 hardware_config 的 settings_schema 声明，前端不认识具体业务，
+// 只认这几个可选的展示元数据（都不写时退化成"一项一行、一张卡片"）：
+//   group    同组的字段放在同一张卡片里，标题取 i18n 的 cfg_group_<group>
+//   row      同一 row 的字段排在一行（如报警下限~上限），行标题取 cfg_row_<row>，
+//            行下说明取 cfg_row_<row>_hint
+//   show_if  {字段: 值}，条件全部满足才显示（如积温参数只在积温模式下出现）
+//   advanced 收进卡片底部默认折叠的"高级"区
+// 藏起来的输入框照样留在 DOM 里，saveConfig 按 id 读取、原样回传。
+
+function nodeControl(key, meta, val) {
+    const id = `cfg-ns-${escapeHtml(key)}`;
+    if (meta.type === 'boolean') return `<input type="checkbox" id="${id}" ${val === true ? 'checked' : ''}>`;
+    if (meta.type === 'select') {
+        return `<select id="${id}" class="form-select">${(meta.options || []).map(option =>
+            `<option value="${escapeHtml(option)}" ${option === val ? 'selected' : ''}>${escapeHtml(t('option_' + option))}</option>`).join('')}</select>`;
+    }
+    const attrs = ['min', 'max', 'step'].filter(a => meta[a] !== undefined).map(a => `${a}="${meta[a]}"`).join(' ');
+    return `<input type="${meta.type === 'number' ? 'number' : 'text'}" id="${id}" class="form-input" value="${escapeHtml(String(val))}" ${attrs}>`;
+}
+
+function nodeRow(fields, values) {
+    const [firstKey, firstMeta] = fields[0];
+    const value = (key, meta) => values[key] ?? meta.default ?? '';
+    const label = fields.length > 1 || firstMeta.row
+        ? tf('cfg_row_' + firstMeta.row, t(firstMeta.label || firstKey))
+        : t(firstMeta.label || firstKey);
+    const hint = firstMeta.row ? tf('cfg_row_' + firstMeta.row + '_hint', '') : '';
+    const showIf = firstMeta.show_if ? ` data-show-if="${escapeHtml(JSON.stringify(firstMeta.show_if))}"` : '';
+    const forId = `cfg-ns-${escapeHtml(firstKey)}`;
+
+    let control;
+    if (fields.length === 1 && firstMeta.type !== 'number' && firstMeta.type !== undefined && firstMeta.type !== 'text') {
+        control = nodeControl(firstKey, firstMeta, value(firstKey, firstMeta));
+    } else {
+        // 同单位的一对是区间（10 ℃ ~ 30 ℃），不同单位的是两个量（1.8 ℃ / 30 min）
+        const sameUnit = fields.every(([, m]) => (m.unit || '') === (firstMeta.unit || ''));
+        const sep = `<span class="separator">${sameUnit ? '~' : '/'}</span>`;
+        control = `<div class="input-group-row">${fields.map(([k, m]) =>
+            nodeControl(k, m, value(k, m)) + (m.unit ? `<span>${escapeHtml(m.unit)}</span>` : '')).join(sep)}</div>`;
+    }
+    // 下拉框的每个选项可以有一句说明（option_desc_<value>），随选择切换
+    const desc = firstMeta.type === 'select'
+        ? `<div class="form-desc" data-option-desc="${forId}">${escapeHtml(tf('option_desc_' + value(firstKey, firstMeta), ''))}</div>`
+        : (hint ? `<div class="form-desc">${escapeHtml(hint)}</div>` : '');
+    return `<div class="ns-item"${showIf}><div class="form-row"><label for="${forId}">${escapeHtml(label)}</label>${control}</div>${desc}</div>`;
+}
+
+export function renderNodeSettings(schema, values, defaultTitle) {
+    // 按 schema 的声明顺序：组按首次出现排序，行内字段也按声明顺序
+    const groups = new Map();
+    for (const [key, meta] of Object.entries(schema)) {
+        const g = meta.group || '';
+        if (!groups.has(g)) groups.set(g, new Map());
+        const rows = groups.get(g);
+        const rowKey = meta.row ? 'row:' + meta.row : 'key:' + key;
+        if (!rows.has(rowKey)) rows.set(rowKey, []);
+        rows.get(rowKey).push([key, meta]);
+    }
+    const cards = [...groups].map(([g, rows], i, all) => {
+        const title = g ? tf('cfg_group_' + g, g) : defaultTitle;
+        const main = [], advanced = [];
+        for (const fields of rows.values()) (fields[0][1].advanced ? advanced : main).push(nodeRow(fields, values));
+        const adv = advanced.length
+            ? `<details class="form-advanced"><summary>${escapeHtml(t('settings_advanced'))}</summary><div class="form-group">${advanced.join('')}</div></details>`
+            : '';
+        // 同步状态只放一处：最后一张卡片底部
+        const status = i === all.length - 1 ? '<p id="node-config-status" class="card-subtitle" aria-live="polite"></p>' : '';
+        return `<div class="card full-width form-card"><div class="form-card-head"><span>${escapeHtml(title)}</span></div>`
+            + `<div class="form-body">${main.join('')}${adv}${status}</div></div>`;
+    });
+    return cards.join('');
+}
+
+/** 按当前表单值重算 show_if 的显隐，并刷新下拉框的选项说明。 */
+export function applyNodeSettingsVisibility(root) {
+    const current = key => {
+        const el = document.getElementById(`cfg-ns-${key}`);
+        if (!el) return undefined;
+        return el.type === 'checkbox' ? el.checked : el.value;
+    };
+    root.querySelectorAll('[data-show-if]').forEach(item => {
+        let cond = {};
+        try { cond = JSON.parse(item.dataset.showIf); } catch (e) { /* 坏的元数据：照常显示 */ }
+        const ok = Object.entries(cond).every(([k, want]) =>
+            (Array.isArray(want) ? want : [want]).some(w => String(w) === String(current(k))));
+        item.classList.toggle('hidden', !ok);
+    });
+    // 折叠区里的项全被条件藏起来时，连"高级"标题一起收起
+    root.querySelectorAll('.form-advanced').forEach(det => {
+        det.classList.toggle('hidden', !det.querySelector('.ns-item:not(.hidden)'));
+    });
+    root.querySelectorAll('[data-option-desc]').forEach(desc => {
+        const sel = document.getElementById(desc.dataset.optionDesc);
+        if (sel) desc.textContent = tf('option_desc_' + sel.value, '');
+    });
 }
 
 /** 保存设置页的全部配置。返回是否保存成功——调用方据此决定要不要重算
