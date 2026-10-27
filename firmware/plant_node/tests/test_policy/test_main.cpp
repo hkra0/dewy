@@ -131,6 +131,22 @@ void config_constraints() {
     c=Config{}; c.feed_max_temp=40; TEST_ASSERT_FALSE(c.valid());
     c=Config{}; c.score_cap=99; TEST_ASSERT_FALSE(c.valid());
 }
+void legacy_migration_is_always_valid() {
+    // 实测场景：旧版报警上限 30，新字段 feed_max_temp 默认 31.5，曾导致整包拒收
+    Config c=legacy_config(30,10,7);
+    TEST_ASSERT_TRUE(c.valid()); TEST_ASSERT_EQUAL_FLOAT(30,c.feed_max_temp);
+    TEST_ASSERT_EQUAL_FLOAT(30,c.temp_alarm_high); TEST_ASSERT_EQUAL_FLOAT(10,c.temp_alarm_low); TEST_ASSERT_EQUAL(7,c.start_hour);
+    // 迁移后，只带旧三项的推送也能通过
+    Config out; std::string error;
+    TEST_ASSERT_TRUE(parse_config("{\"temp_alarm_high\":30,\"temp_alarm_low\":10,\"feed_start_hour\":7}",c,out,error));
+    // 默认上限不受影响
+    TEST_ASSERT_EQUAL_FLOAT(31.5f,legacy_config(32,18,7).feed_max_temp);
+    // 旧值本身无法组成合法配置：退回默认报警阈值，保留整点
+    c=legacy_config(15,10,8); TEST_ASSERT_TRUE(c.valid()); TEST_ASSERT_EQUAL(8,c.start_hour);
+    TEST_ASSERT_EQUAL_FLOAT(32,c.temp_alarm_high);
+    c=legacy_config(30,35,7); TEST_ASSERT_TRUE(c.valid());
+    c=legacy_config(30,10,40); TEST_ASSERT_TRUE(c.valid()); TEST_ASSERT_EQUAL(7,c.start_hour);
+}
 void config_protocol_is_atomic_and_replay_stable() {
     Config old, out=old; std::string error;
     TEST_ASSERT_FALSE(parse_config("{\"temp_alarm_high\":35,\"feed_start_hour\":22}",old,out,error));
@@ -186,7 +202,7 @@ int main() {
     RUN_TEST(cool_third_morning); RUN_TEST(warm_next_morning); RUN_TEST(skip_dates_and_auto_skip);
     RUN_TEST(undo_restores_progress_and_record); RUN_TEST(invalid_cache_gap_and_boundaries);
     RUN_TEST(alarm_hysteresis_silence_priority); RUN_TEST(temperature_window_and_gap);
-    RUN_TEST(release_only_gestures_and_rollover); RUN_TEST(restart_year_and_clock_correction); RUN_TEST(config_constraints); RUN_TEST(probe_quality_cache_and_first_sample);
+    RUN_TEST(release_only_gestures_and_rollover); RUN_TEST(restart_year_and_clock_correction); RUN_TEST(config_constraints); RUN_TEST(legacy_migration_is_always_valid); RUN_TEST(probe_quality_cache_and_first_sample);
     RUN_TEST(config_protocol_is_atomic_and_replay_stable); RUN_TEST(active_alarm_pause_and_low_alarm);
     RUN_TEST(ota_trial_requires_stability_and_live_main_loop);
     return UNITY_END();

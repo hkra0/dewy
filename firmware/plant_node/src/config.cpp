@@ -17,9 +17,8 @@ bool config_apply(const char* json) {
 void config_init() {
     Preferences p; p.begin("aqua_cfg",true);
     String saved=p.getString("v2","");
-    rtConfig.temp_alarm_high=p.getFloat("t_high",32);
-    rtConfig.temp_alarm_low=p.getFloat("t_low",18);
-    rtConfig.start_hour=p.getInt("feed_hr",7); p.end();
+    // 旧版只存了这三个键，迁移规则见 aqua::legacy_config。有 v2 记录时下面会整份覆盖。
+    rtConfig=aqua::legacy_config(p.getFloat("t_high",32),p.getFloat("t_low",18),p.getInt("feed_hr",7)); p.end();
     if(saved.length()) config_apply(saved.c_str());
 }
 String config_to_json() {

@@ -29,6 +29,20 @@ struct Config {
             (!low_alarm_enabled || t>=temp_alarm_low) && t<temp_alarm_high;
     }
 };
+// 从旧版 NVS（只有 t_high / t_low / feed_hr 三个键）迁移出一份**一定合法**的配置。
+// 旧版没有"暂停提醒水温上界"，它的默认值 31.5 可能高于用户设的报警上限（例如 30），
+// 原样拼起来就违反 feed_max_temp <= temp_alarm_high；而之后每次下发的设置都以
+// 当前配置为底合并再校验，这个不一致会让 Pi 推来的每一包都被整包拒收
+// （inconsistent_fields），只有带齐 feed_max_temp 的推送才救得回来。
+// 先把上界压到报警上限以内；仍不合法（旧值本身越界）时依次退回默认报警阈值、整份默认值。
+inline Config legacy_config(float high,float low,int start_hour) {
+    Config c; c.temp_alarm_high=high; c.temp_alarm_low=low; c.start_hour=start_hour;
+    c.feed_max_temp=std::min(c.feed_max_temp,high);
+    if(c.valid()) return c;
+    Config keep_hour; keep_hour.start_hour=start_hour;
+    if(keep_hour.valid()) return keep_hour;
+    return Config{};
+}
 struct Time {
     uint32_t ms=0;
     int64_t utc=0;
