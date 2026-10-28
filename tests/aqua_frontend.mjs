@@ -122,7 +122,9 @@ assert.match(element('dynamic-cards').innerHTML, /该喂食了[\s\S]*上次 昨�
     }, {}, 'tank 设置', presets);
     assert.match(html, /预设[\s\S]*data-preset-group="feeding"[\s\S]*自定义[\s\S]*koi[\s\S]*cfg-ns-feeding_mode/);
     assert.match(html, /data-rate-of="cfg-ns-feed_rate_1" data-rate-toward="cfg-ns-feed_threshold"/);
-    assert.doesNotMatch(html, /id="cfg-ns-(koi|heated)/);   // 下拉框不能被 saveConfig 当成设置项
+    assert.doesNotMatch(html, /id="cfg-ns-(koi|heated)/);
+    // 主区域有提醒间隔一览（速率常收在"高级"里，换预设要看得出变化）
+    assert.match(html, /提醒间隔[\s\S]*ns-period-list[\s\S]*data-rate-of="cfg-ns-feed_rate_1"/);   // 下拉框不能被 saveConfig 当成设置项
 
     element('cfg-ns-feeding_mode').value = 'daily';
     element('cfg-ns-feed_rate_1').value = '9';
@@ -154,6 +156,18 @@ assert.match(element('dynamic-cards').innerHTML, /该喂食了[\s\S]*上次 昨�
     element('cfg-ns-feeding_mode').value = 'daily';
     refresh();
     assert.equal(sel.value, 'heated');
+
+    // 真实浏览器的顺序：先 input 再 change。input 不能把下拉框按旧表单拨回旧预设
+    element('cfg-ns-feeding_mode').value = 'temperature_accumulation';
+    element('cfg-ns-feed_rate_1').value = '5';
+    refresh();
+    assert.equal(sel.value, '');
+    sel.value = 'koi';
+    const onEvent = vm.runInContext('onNodeSettingsEvent', context);
+    onEvent({ type: 'input', target: sel }, root, presets);
+    onEvent({ type: 'change', target: sel }, root, presets);
+    assert.equal(sel.value, 'koi');
+    assert.equal(element('cfg-ns-feed_rate_1').value, '1.5');
 
     const fmt = vm.runInContext('formatPeriod', context);
     assert.equal(fmt(0, 100), '不提醒');

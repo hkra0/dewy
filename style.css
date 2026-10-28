@@ -1834,6 +1834,18 @@ input:checked+.slider:before {
     margin: 0 2px;
     color: var(--border);
 }
+/* 主区域的提醒间隔一览：速率收在"高级"里，换预设的效果要在这里看得见 */
+.ns-period-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.ns-period-list .ns-period {
+    color: var(--text-main);
+}
+
 /* rate_toward 字段旁的折算周期（≈ 每 2 天），随输入实时更新 */
 .input-group-row .ns-period {
     margin-left: 4px;

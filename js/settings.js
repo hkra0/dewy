@@ -254,12 +254,10 @@ export async function fetchConfig() {
                 nodeCards.innerHTML = renderNodeSettings(schema, currentVals, `${nodeInfo.description || dev} ${t('settings')}`,
                     nodeInfo.settings_presets || {});
                 // 赋值而不是 addEventListener：fetchConfig 每次切设备都会跑，不能叠监听器
-                nodeCards.onchange = e => {
-                    applyNodeSettingsPreset(e.target, nodeInfo.settings_presets || {});
-                    applyNodeSettingsVisibility(nodeCards);
-                };
-                // 数字框的 change 要等失焦才触发，换算周期与预设匹配要跟着输入实时变
-                nodeCards.oninput = () => applyNodeSettingsVisibility(nodeCards);
+                // input 也要接：数字框的 change 要等失焦才触发，换算周期与预设匹配要跟着输入实时变
+                const onEvent = e => onNodeSettingsEvent(e, nodeCards, nodeInfo.settings_presets || {});
+                nodeCards.onchange = onEvent;
+                nodeCards.oninput = onEvent;
                 applyNodeSettingsVisibility(nodeCards);
                 renderNodeConfigStatus(data.node_config_status);
             } else {
@@ -356,8 +354,29 @@ function nodeFieldMatches(key, want) {
     return String(el.value) === String(want);
 }
 
-/** 预设下拉框被选中时把它的 values 填进表单；其它控件的 change 不处理。 */
-export function applyNodeSettingsPreset(target, presets) {
+// 速率常被收进"高级"，而几个预设的差别恰恰全在速率上——不在主区域摆出折算结果，
+// 换预设时看起来就像什么都没变。
+function periodSummary(fields) {
+    const rates = fields.filter(([, m]) => m.rate_toward);
+    if (!rates.length) return '';
+    const showIf = rates[0][1].show_if ? ` data-show-if="${escapeHtml(JSON.stringify(rates[0][1].show_if))}"` : '';
+    const items = rates.map(([k, m]) => `<span class="ns-period-item">${escapeHtml(tf((m.label || k) + '_short', t(m.label || k)))} `
+        + `<span class="ns-period" data-rate-of="cfg-ns-${escapeHtml(k)}" data-rate-toward="cfg-ns-${escapeHtml(m.rate_toward)}"></span></span>`);
+    return `<div class="ns-item"${showIf}><div class="form-row"><label>${escapeHtml(t('period_summary'))}</label></div>`
+        + `<div class="ns-period-list">${items.join('')}</div></div>`;
+}
+
+/** 节点设置卡片上的 input / change。
+ *  下拉框选中时浏览器**先发 input 再发 change**：若 input 只重算显隐，预设匹配会按
+ *  尚未改动的表单把下拉框拨回旧预设，紧接着的 change 读到的就是旧值——看起来就是
+ *  "选了没反应"。所以两种事件都要先应用预设（幂等），提示只在 change 时弹一次。 */
+export function onNodeSettingsEvent(e, root, presets) {
+    applyNodeSettingsPreset(e.target, presets, e.type === 'change');
+    applyNodeSettingsVisibility(root);
+}
+
+/** 预设下拉框被选中时把它的 values 填进表单；其它控件的事件不处理。 */
+export function applyNodeSettingsPreset(target, presets, announce = true) {
     const preset = target?.dataset?.presetGroup !== undefined && presets[target.value];
     if (!preset) return;
     for (const [key, want] of Object.entries(preset.values || {})) {
@@ -366,6 +385,7 @@ export function applyNodeSettingsPreset(target, presets) {
         if (el.type === 'checkbox') el.checked = want === true;
         else el.value = String(want);
     }
+    if (announce) showToast(t('preset_applied'), 'success');
 }
 
 /** 速率 → 周期的可读说明：threshold / rate 小时，36 小时以内按小时，再长按半天取整。 */
@@ -391,6 +411,7 @@ export function renderNodeSettings(schema, values, defaultTitle, presets = {}) {
         const title = g ? tf('cfg_group_' + g, g) : defaultTitle;
         const main = [], advanced = [];
         for (const fields of rows.values()) (fields[0][1].advanced ? advanced : main).push(nodeRow(fields, values));
+        main.push(periodSummary([...rows.values()].flat()));
         const adv = advanced.length
             ? `<details class="form-advanced"><summary>${escapeHtml(t('settings_advanced'))}</summary><div class="form-group">${advanced.join('')}</div></details>`
             : '';
