@@ -480,6 +480,13 @@ ESP32 的报警阈值与喂食时间不需要重新编译固件，可以在前�
    都不写时退化成一张卡片一项一行。渲染在 `settings.js` 的 `renderNodeSettings`；**不要为某个节点
    在前端写专属表单**——分组规则跟着 schema 走，换一个 ESP32 节点只需改 hardware_config。
    被 `show_if` 藏起来的输入框仍在 DOM 里，保存时原样回传，不会被清掉。
+   数字字段可加 `rate_toward = "<字段>"`，表示它是朝那个字段累积的每小时速率，前端在旁边显示
+   折算周期（≈ 每 2 天）——积温模式的速率本身没有直观含义，换算成"多久喂一次"才看得懂。
+   节点段另可声明 `[nodes.<id>.settings_presets.<preset>]`（`group` + `values`），在该组卡片顶部
+   渲染成"预设"下拉框（文案 `preset_<id>` / `preset_desc_<id>`）。选中**只填表单**，保存仍走
+   "保存配置"；下拉框不带 `cfg-ns-` 前缀，不会被当成设置项回传，也不落盘——它显示的是"当前表单
+   与哪个预设一致"，对不上就是"自定义"。预设**不要写 `feed_max_temp`**：它受报警上限约束，
+   而报警上限归用户在另一张卡片里设，预设盖过去可能让整包被固件拒收；提醒时段同理留给用户。
    树莓派上的 `hardware_config.toml` 不随 git 部署，固件新增设置后要手动同步 schema 段，
    否则推送缺字段，固件的跨字段校验会整包拒收（回报 `config_error: inconsistent_fields`）。
 4. **MQTT 自动推送与 NVS 存储**：保存设置或 MQTT 重连时，后端向 `device/<node_id>/config/set` 发布 JSON 载荷。ESP32 收到后立即更新内存并写入板载 NVS，同时向 `device/<node_id>/config/state` 发送确认。

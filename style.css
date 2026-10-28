@@ -1834,6 +1834,12 @@ input:checked+.slider:before {
     margin: 0 2px;
     color: var(--border);
 }
+/* rate_toward 字段旁的折算周期（≈ 每 2 天），随输入实时更新 */
+.input-group-row .ns-period {
+    margin-left: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+}
 
 /* Bounded maintenance console; text is inserted with textContent. */
 #maintenance-log {

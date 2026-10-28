@@ -168,6 +168,8 @@ topic = "YOUR_AQUA_LIGHT_TOPIC"
 #   row      fields with the same row share one line (e.g. low ~ high), titled by cfg_row_<row>
 #   show_if  { field = value } — show only while the form matches (e.g. a mode's parameters)
 #   advanced fold the field into the card's collapsed "Advanced" section
+#   rate_toward  "<field>": this number is a per-hour rate toward that field's value;
+#            the UI shows the implied period next to it (e.g. "≈ every 2 days")
 
 [nodes.aqua.settings_schema.temp_alarm_low]
 type = "number"
@@ -299,6 +301,7 @@ unit = "/h"
 group = "feeding"
 show_if = { feeding_mode = "temperature_accumulation" }
 advanced = true
+rate_toward = "feed_threshold"
 
 [nodes.aqua.settings_schema.feed_rate_2]
 type = "number"
@@ -311,6 +314,7 @@ unit = "/h"
 group = "feeding"
 show_if = { feeding_mode = "temperature_accumulation" }
 advanced = true
+rate_toward = "feed_threshold"
 
 [nodes.aqua.settings_schema.feed_rate_3]
 type = "number"
@@ -323,6 +327,7 @@ unit = "/h"
 group = "feeding"
 show_if = { feeding_mode = "temperature_accumulation" }
 advanced = true
+rate_toward = "feed_threshold"
 
 [nodes.aqua.settings_schema.feed_rate_4]
 type = "number"
@@ -335,6 +340,7 @@ unit = "/h"
 group = "feeding"
 show_if = { feeding_mode = "temperature_accumulation" }
 advanced = true
+rate_toward = "feed_threshold"
 
 [nodes.aqua.settings_schema.feed_score_cap]
 type = "number"
@@ -347,3 +353,28 @@ unit = ""
 group = "feeding"
 show_if = { feeding_mode = "temperature_accumulation" }
 advanced = true
+
+# ---- Settings presets ----
+# One-click starting points shown as a dropdown at the top of the card for
+# `group`. Choosing one only fills the form; nothing is saved until "Save".
+# The dropdown shows "Custom" whenever the form matches no preset. Labels and
+# descriptions come from i18n preset_<id> / preset_desc_<id>.
+# Leave out fields the user owns (reminder hours) and fields bounded by other
+# groups (feed_max_temp must stay <= temp_alarm_high, or the node rejects the push).
+# With feed_threshold = 100 the period at each band is 100 / rate hours.
+
+[nodes.aqua.settings_presets.goldfish_koi]
+group = "feeding"
+values = { feeding_mode = "temperature_accumulation", feed_min_temp = 10, feed_threshold = 100, skip_cycle = false, feed_rate_1 = 1.5, feed_rate_2 = 2.25, feed_rate_3 = 4.6, feed_rate_4 = 5, feed_score_cap = 120 }
+
+[nodes.aqua.settings_presets.goldfish_diet]
+group = "feeding"
+values = { feeding_mode = "temperature_accumulation", feed_min_temp = 10, feed_threshold = 100, skip_cycle = false, feed_rate_1 = 0.75, feed_rate_2 = 1.1, feed_rate_3 = 2.3, feed_rate_4 = 2.3, feed_score_cap = 120 }
+
+[nodes.aqua.settings_presets.small_temperate]
+group = "feeding"
+values = { feeding_mode = "temperature_accumulation", feed_min_temp = 10, feed_threshold = 100, skip_cycle = false, feed_rate_1 = 1, feed_rate_2 = 2, feed_rate_3 = 5, feed_rate_4 = 5, feed_score_cap = 120 }
+
+[nodes.aqua.settings_presets.tropical]
+group = "feeding"
+values = { feeding_mode = "daily" }

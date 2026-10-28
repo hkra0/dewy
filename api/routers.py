@@ -92,7 +92,7 @@ class LightRequest(BaseModel):
 # 允许发给前端的节点字段。白名单而非黑名单：hardware_config 的节点段里还放着
 # ESP32 的构建参数（wifi_password、mqtt_host…），逐个去黑名单迟早漏一个，
 # 而这个端点只要 viewer key 就能读。
-_PUBLIC_NODE_FIELDS = ("type", "description", "settings_schema", "metric_metadata")
+_PUBLIC_NODE_FIELDS = ("type", "description", "settings_schema", "settings_presets", "metric_metadata")
 
 
 @router.get("/api/nodes")

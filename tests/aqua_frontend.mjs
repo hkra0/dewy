@@ -109,4 +109,55 @@ assert.match(element('dynamic-cards').innerHTML, /该喂食了[\s\S]*上次 昨�
         { feed_reset_hour: { type: 'number', label: 'cfg_feed_reset_hour' } }, {}, 'tank 设置');
     assert.match(legacy, /tank 设置[\s\S]*每日喂食重置时刻/);
 }
-console.log('PASS: boolean/select serialization, retained settings, bilingual status, metadata filtering, legacy card');
+// 预设：组卡片顶部一个下拉框；选中只填表单；表单对不上任何预设时显示"自定义"；速率旁显示折算周期
+{
+    const presets = {
+        koi: { group: 'feeding', values: { feeding_mode: 'temperature_accumulation', feed_rate_1: 1.5, skip_cycle: false } },
+        heated: { group: 'feeding', values: { feeding_mode: 'daily' } },
+    };
+    const html = vm.runInContext('renderNodeSettings', context)({
+        feeding_mode: { type: 'select', options: ['daily', 'temperature_accumulation'], group: 'feeding' },
+        feed_threshold: { type: 'number', group: 'feeding' },
+        feed_rate_1: { type: 'number', unit: '/h', group: 'feeding', rate_toward: 'feed_threshold' },
+    }, {}, 'tank 设置', presets);
+    assert.match(html, /预设[\s\S]*data-preset-group="feeding"[\s\S]*自定义[\s\S]*koi[\s\S]*cfg-ns-feeding_mode/);
+    assert.match(html, /data-rate-of="cfg-ns-feed_rate_1" data-rate-toward="cfg-ns-feed_threshold"/);
+    assert.doesNotMatch(html, /id="cfg-ns-(koi|heated)/);   // 下拉框不能被 saveConfig 当成设置项
+
+    element('cfg-ns-feeding_mode').value = 'daily';
+    element('cfg-ns-feed_rate_1').value = '9';
+    const skip = element('cfg-ns-skip_cycle'); skip.type = 'checkbox'; skip.checked = true;
+    vm.runInContext('applyNodeSettingsPreset', context)({ dataset: { presetGroup: 'feeding' }, value: 'koi' }, presets);
+    assert.equal(element('cfg-ns-feeding_mode').value, 'temperature_accumulation');
+    assert.equal(element('cfg-ns-feed_rate_1').value, '1.5');
+    assert.equal(skip.checked, false);
+    // 别的控件的 change 不能误触发预设
+    vm.runInContext('applyNodeSettingsPreset', context)({ dataset: {}, value: 'heated' }, presets);
+    assert.equal(element('cfg-ns-feeding_mode').value, 'temperature_accumulation');
+
+    // 下拉框跟随表单
+    context.state.availableNodes.tank.settings_presets = presets;
+    element('cfg-ns-feed_threshold').value = '100';
+    const sel = { dataset: { presetGroup: 'feeding' }, id: 'cfg-nsp-feeding', value: '' };
+    const desc = { textContent: '' }, period = { dataset: { rateOf: 'cfg-ns-feed_rate_1', rateToward: 'cfg-ns-feed_threshold' }, textContent: '' };
+    const root = { querySelector: () => desc,
+        querySelectorAll: q => q === '[data-preset-group]' ? [sel] : q === '[data-rate-of]' ? [period] : [] };
+    const refresh = () => vm.runInContext('applyNodeSettingsVisibility', context)(root);
+    refresh();
+    assert.equal(sel.value, 'koi');
+    assert.equal(period.textContent, '≈ 每 3 天');
+    element('cfg-ns-feed_rate_1').value = '5';
+    refresh();
+    assert.equal(sel.value, '');
+    assert.match(desc.textContent, /手动调整/);
+    assert.equal(period.textContent, '≈ 每 20 小时');
+    element('cfg-ns-feeding_mode').value = 'daily';
+    refresh();
+    assert.equal(sel.value, 'heated');
+
+    const fmt = vm.runInContext('formatPeriod', context);
+    assert.equal(fmt(0, 100), '不提醒');
+    assert.equal(fmt(2.25, 100), '≈ 每 2 天');
+    assert.equal(fmt(0.75, 100), '≈ 每 5.5 天');
+}
+console.log('PASS: boolean/select serialization, retained settings, bilingual status, metadata filtering, legacy card, presets');

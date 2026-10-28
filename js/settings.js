@@ -251,9 +251,15 @@ export async function fetchConfig() {
         if (nodeCards) {
             if (schema && Object.keys(schema).length > 0) {
                 const currentVals = (data.node_settings && data.node_settings[dev]) || {};
-                nodeCards.innerHTML = renderNodeSettings(schema, currentVals, `${nodeInfo.description || dev} ${t('settings')}`);
+                nodeCards.innerHTML = renderNodeSettings(schema, currentVals, `${nodeInfo.description || dev} ${t('settings')}`,
+                    nodeInfo.settings_presets || {});
                 // 赋值而不是 addEventListener：fetchConfig 每次切设备都会跑，不能叠监听器
-                nodeCards.onchange = () => applyNodeSettingsVisibility(nodeCards);
+                nodeCards.onchange = e => {
+                    applyNodeSettingsPreset(e.target, nodeInfo.settings_presets || {});
+                    applyNodeSettingsVisibility(nodeCards);
+                };
+                // 数字框的 change 要等失焦才触发，换算周期与预设匹配要跟着输入实时变
+                nodeCards.oninput = () => applyNodeSettingsVisibility(nodeCards);
                 applyNodeSettingsVisibility(nodeCards);
                 renderNodeConfigStatus(data.node_config_status);
             } else {
@@ -285,7 +291,12 @@ export async function fetchConfig() {
 //            行下说明取 cfg_row_<row>_hint
 //   show_if  {字段: 值}，条件全部满足才显示（如积温参数只在积温模式下出现）
 //   advanced 收进卡片底部默认折叠的"高级"区
+//   rate_toward  "<字段>"：本值是朝该字段累积的每小时速率，旁边显示折算周期（≈ 每 2 天）
 // 藏起来的输入框照样留在 DOM 里，saveConfig 按 id 读取、原样回传。
+//
+// 另有节点级的 settings_presets：{id: {group, values}}，在对应组的卡片顶部渲染成
+// 一个下拉框。选中只是把 values 填进表单，保存仍走"保存配置"；下拉框本身不带
+// cfg-ns- 前缀，不会被当成设置项回传。表单与任何预设都对不上时显示"自定义"。
 
 function nodeControl(key, meta, val) {
     const id = `cfg-ns-${escapeHtml(key)}`;
@@ -304,7 +315,7 @@ function nodeRow(fields, values) {
     const label = fields.length > 1 || firstMeta.row
         ? tf('cfg_row_' + firstMeta.row, t(firstMeta.label || firstKey))
         : t(firstMeta.label || firstKey);
-    const hint = firstMeta.row ? tf('cfg_row_' + firstMeta.row + '_hint', '') : '';
+    const hint = tf(firstMeta.row ? 'cfg_row_' + firstMeta.row + '_hint' : (firstMeta.label || firstKey) + '_hint', '');
     const showIf = firstMeta.show_if ? ` data-show-if="${escapeHtml(JSON.stringify(firstMeta.show_if))}"` : '';
     const forId = `cfg-ns-${escapeHtml(firstKey)}`;
 
@@ -316,7 +327,8 @@ function nodeRow(fields, values) {
         const sameUnit = fields.every(([, m]) => (m.unit || '') === (firstMeta.unit || ''));
         const sep = `<span class="separator">${sameUnit ? '~' : '/'}</span>`;
         control = `<div class="input-group-row">${fields.map(([k, m]) =>
-            nodeControl(k, m, value(k, m)) + (m.unit ? `<span>${escapeHtml(m.unit)}</span>` : '')).join(sep)}</div>`;
+            nodeControl(k, m, value(k, m)) + (m.unit ? `<span>${escapeHtml(m.unit)}</span>` : '')
+            + (m.rate_toward ? `<span class="ns-period" data-rate-of="cfg-ns-${escapeHtml(k)}" data-rate-toward="cfg-ns-${escapeHtml(m.rate_toward)}"></span>` : '')).join(sep)}</div>`;
     }
     // 下拉框的每个选项可以有一句说明（option_desc_<value>），随选择切换
     const desc = firstMeta.type === 'select'
@@ -325,7 +337,46 @@ function nodeRow(fields, values) {
     return `<div class="ns-item"${showIf}><div class="form-row"><label for="${forId}">${escapeHtml(label)}</label>${control}</div>${desc}</div>`;
 }
 
-export function renderNodeSettings(schema, values, defaultTitle) {
+function presetPicker(group, presets) {
+    const ids = Object.keys(presets).filter(id => (presets[id].group || '') === group);
+    if (!ids.length) return '';
+    const id = `cfg-nsp-${escapeHtml(group)}`;
+    const options = [`<option value="">${escapeHtml(t('preset_custom'))}</option>`]
+        .concat(ids.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(tf('preset_' + p, p))}</option>`));
+    return `<div class="ns-item"><div class="form-row"><label for="${id}">${escapeHtml(t('preset_label'))}</label>`
+        + `<select id="${id}" class="form-select" data-preset-group="${escapeHtml(group)}">${options.join('')}</select></div>`
+        + `<div class="form-desc" data-preset-desc="${id}"></div></div>`;
+}
+
+function nodeFieldMatches(key, want) {
+    const el = document.getElementById(`cfg-ns-${key}`);
+    if (!el) return true;   // 预设里多写了 schema 没有的字段：不该让它永远匹配不上
+    if (el.type === 'checkbox') return el.checked === want;
+    if (typeof want === 'number') return parseFloat(el.value) === want;
+    return String(el.value) === String(want);
+}
+
+/** 预设下拉框被选中时把它的 values 填进表单；其它控件的 change 不处理。 */
+export function applyNodeSettingsPreset(target, presets) {
+    const preset = target?.dataset?.presetGroup !== undefined && presets[target.value];
+    if (!preset) return;
+    for (const [key, want] of Object.entries(preset.values || {})) {
+        const el = document.getElementById(`cfg-ns-${key}`);
+        if (!el) continue;
+        if (el.type === 'checkbox') el.checked = want === true;
+        else el.value = String(want);
+    }
+}
+
+/** 速率 → 周期的可读说明：threshold / rate 小时，36 小时以内按小时，再长按半天取整。 */
+export function formatPeriod(rate, threshold) {
+    if (!(rate > 0) || !(threshold > 0)) return t('period_never');
+    const hours = threshold / rate;
+    if (hours < 36) return t('period_hours').replace('{n}', Math.round(hours));
+    return t('period_days').replace('{n}', Math.round(hours / 12) / 2);
+}
+
+export function renderNodeSettings(schema, values, defaultTitle, presets = {}) {
     // 按 schema 的声明顺序：组按首次出现排序，行内字段也按声明顺序
     const groups = new Map();
     for (const [key, meta] of Object.entries(schema)) {
@@ -346,7 +397,7 @@ export function renderNodeSettings(schema, values, defaultTitle) {
         // 同步状态只放一处：最后一张卡片底部
         const status = i === all.length - 1 ? '<p id="node-config-status" class="card-subtitle" aria-live="polite"></p>' : '';
         return `<div class="card full-width form-card"><div class="form-card-head"><span>${escapeHtml(title)}</span></div>`
-            + `<div class="form-body">${main.join('')}${adv}${status}</div></div>`;
+            + `<div class="form-body">${presetPicker(g, presets)}${main.join('')}${adv}${status}</div></div>`;
     });
     return cards.join('');
 }
@@ -372,6 +423,21 @@ export function applyNodeSettingsVisibility(root) {
     root.querySelectorAll('[data-option-desc]').forEach(desc => {
         const sel = document.getElementById(desc.dataset.optionDesc);
         if (sel) desc.textContent = tf('option_desc_' + sel.value, '');
+    });
+    root.querySelectorAll('[data-rate-of]').forEach(span => {
+        const rate = parseFloat(document.getElementById(span.dataset.rateOf)?.value);
+        const threshold = parseFloat(document.getElementById(span.dataset.rateToward)?.value);
+        span.textContent = formatPeriod(rate, threshold);
+    });
+    // 预设下拉框跟随表单：第一个全部字段都对得上的预设，否则"自定义"
+    const presets = state.availableNodes[state.currentDevice]?.settings_presets || {};
+    root.querySelectorAll('[data-preset-group]').forEach(sel => {
+        const group = sel.dataset.presetGroup;
+        const hit = Object.keys(presets).find(id => (presets[id].group || '') === group
+            && Object.entries(presets[id].values || {}).every(([k, v]) => nodeFieldMatches(k, v)));
+        sel.value = hit || '';
+        const desc = root.querySelector(`[data-preset-desc="${sel.id}"]`);
+        if (desc) desc.textContent = hit ? tf('preset_desc_' + hit, '') : t('preset_desc_custom');
     });
 }
 
