@@ -140,7 +140,7 @@ def get_effective_light_times(node_id="main"):
             return DEFAULT_ON_MINUTES, DEFAULT_OFF_MINUTES
 
 
-def set_light(node_id, on, retain=False):
+def set_light(node_id, on, retain=True):
     """开灯或关灯。具体下发什么指令由继电器驱动按配置决定。"""
     cfg = light_config(node_id)
     if cfg is None:
