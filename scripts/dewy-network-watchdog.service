@@ -1,0 +1,7 @@
+[Unit]
+Description=Dewy Network Watchdog Service
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/hkra/dewy/scripts/network_watchdog.sh

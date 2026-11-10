@@ -1,0 +1,15 @@
+[Unit]
+Description=Dewy mDNS Unicast Responder Helper
+After=network.target avahi-daemon.service
+Wants=avahi-daemon.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /home/hkra/dewy/scripts/mdns_unicast_responder.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
