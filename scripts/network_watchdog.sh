@@ -23,3 +23,4 @@ if ! systemctl is-active --quiet cloudflared; then
     logger -t dewy-watchdog "cloudflared inactive, restarting service..."
     systemctl restart cloudflared
 fi
+
